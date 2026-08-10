@@ -1,4 +1,5 @@
 import { grantProgressReward } from "./player-progression.js";
+import { createInitialInventory } from "./shop-state.js";
 
 export const ADVENTURE_QUEST = Object.freeze({
   id: "adventureStart",
@@ -14,6 +15,7 @@ export function createInitialProgress() {
     exp: 0,
     nextLevelExp: 100,
     gold: 0,
+    inventory: createInitialInventory(),
     completedQuests: [],
     quests: {
       [ADVENTURE_QUEST.id]: {
@@ -28,6 +30,7 @@ function cloneProgress(progress) {
   const quest = progress.quests[ADVENTURE_QUEST.id];
   return {
     ...progress,
+    inventory: { ...progress.inventory },
     completedQuests: [...progress.completedQuests],
     quests: {
       ...progress.quests,

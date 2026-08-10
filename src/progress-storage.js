@@ -7,8 +7,10 @@ import {
   nextLevelExp,
 } from "./player-progression.js";
 
-const STORAGE_VERSION = 2;
-const STORAGE_PREFIX = "pixel-world.progress.v2:";
+const STORAGE_VERSION = 3;
+const STORAGE_PREFIX = "pixel-world.progress.v3:";
+const V2_STORAGE_PREFIX = "pixel-world.progress.v2:";
+const V2_STORAGE_VERSION = 2;
 const LEGACY_STORAGE_PREFIX = "pixel-world.progress.v1:";
 const LEGACY_STORAGE_VERSION = 1;
 const VALID_STATUSES = new Set([
@@ -41,7 +43,7 @@ function isReachableQuest(quest) {
   return quest.progress === ADVENTURE_QUEST.required;
 }
 
-function isValidProgress(progress) {
+function isValidBaseProgress(progress) {
   if (!isRecord(progress)) return false;
   if (!Number.isSafeInteger(progress.level) || progress.level < 1) return false;
   if (!Number.isSafeInteger(progress.nextLevelExp)
@@ -69,6 +71,23 @@ function isValidProgress(progress) {
     === (quest.status === "completed");
 }
 
+function isValidInventory(inventory) {
+  return isRecord(inventory)
+    && ["hpPotion", "mpPotion"].every((itemId) => (
+      Number.isSafeInteger(inventory[itemId])
+      && inventory[itemId] >= 0
+      && inventory[itemId] <= 99
+    ));
+}
+
+function isValidProgress(progress) {
+  return isValidBaseProgress(progress) && isValidInventory(progress.inventory);
+}
+
+function isValidV2Progress(progress) {
+  return isValidBaseProgress(progress);
+}
+
 function isValidLegacyProgress(progress) {
   if (!isRecord(progress)) return false;
   if (!Number.isSafeInteger(progress.exp) || progress.exp < 0 || progress.exp > 99) {
@@ -85,6 +104,27 @@ function toProgress(value) {
     exp: value.exp,
     nextLevelExp: value.nextLevelExp,
     gold: value.gold,
+    inventory: {
+      hpPotion: value.inventory.hpPotion,
+      mpPotion: value.inventory.mpPotion,
+    },
+    completedQuests: [...value.completedQuests],
+    quests: {
+      [ADVENTURE_QUEST.id]: {
+        status: value.quests[ADVENTURE_QUEST.id].status,
+        progress: value.quests[ADVENTURE_QUEST.id].progress,
+      },
+    },
+  };
+}
+
+function migrateV2Progress(value) {
+  return {
+    level: value.level,
+    exp: value.exp,
+    nextLevelExp: value.nextLevelExp,
+    gold: value.gold,
+    inventory: { hpPotion: 0, mpPotion: 0 },
     completedQuests: [...value.completedQuests],
     quests: {
       [ADVENTURE_QUEST.id]: {
@@ -114,40 +154,47 @@ export function legacyProgressStorageKey(nickname) {
   return `${LEGACY_STORAGE_PREFIX}${encodeURIComponent(normalizeNickname(nickname))}`;
 }
 
+export function v2ProgressStorageKey(nickname) {
+  return `${V2_STORAGE_PREFIX}${encodeURIComponent(normalizeNickname(nickname))}`;
+}
+
+function parseStoredValue(raw) {
+  if (raw === null || raw === undefined) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
 export function loadProgressWithStatus(storage, nickname) {
   try {
-    const v2Raw = storage?.getItem(progressStorageKey(nickname));
-    if (v2Raw !== null && v2Raw !== undefined) {
-      let parsed;
-      try {
-        parsed = JSON.parse(v2Raw);
-      } catch {
-        parsed = null;
-      }
-      if (parsed?.version === STORAGE_VERSION && isValidProgress(parsed)) {
-        return {
-          progress: toProgress(parsed),
-          migrationWriteFailed: false,
-        };
-      }
+    const v3 = parseStoredValue(storage?.getItem(progressStorageKey(nickname)));
+    if (v3?.version === STORAGE_VERSION && isValidProgress(v3)) {
+      return {
+        progress: toProgress(v3),
+        migrationWriteFailed: false,
+      };
     }
 
-    const v1Raw = storage?.getItem(legacyProgressStorageKey(nickname));
-    if (v1Raw !== null && v1Raw !== undefined) {
-      let parsed;
-      try {
-        parsed = JSON.parse(v1Raw);
-      } catch {
-        parsed = null;
-      }
-      if (parsed?.version === LEGACY_STORAGE_VERSION && isValidLegacyProgress(parsed)) {
-        const migrated = migrateLegacyProgress(parsed);
-        const migrationSave = saveProgress(storage, nickname, migrated);
-        return {
-          progress: migrated,
-          migrationWriteFailed: !migrationSave.ok,
-        };
-      }
+    const v2 = parseStoredValue(storage?.getItem(v2ProgressStorageKey(nickname)));
+    if (v2?.version === V2_STORAGE_VERSION && isValidV2Progress(v2)) {
+      const migrated = migrateV2Progress(v2);
+      const migrationSave = saveProgress(storage, nickname, migrated);
+      return {
+        progress: migrated,
+        migrationWriteFailed: !migrationSave.ok,
+      };
+    }
+
+    const v1 = parseStoredValue(storage?.getItem(legacyProgressStorageKey(nickname)));
+    if (v1?.version === LEGACY_STORAGE_VERSION && isValidLegacyProgress(v1)) {
+      const migrated = migrateLegacyProgress(v1);
+      const migrationSave = saveProgress(storage, nickname, migrated);
+      return {
+        progress: migrated,
+        migrationWriteFailed: !migrationSave.ok,
+      };
     }
   } catch {
     // Storage access and malformed JSON both recover to initial progress.
