@@ -31,7 +31,7 @@ function eventNode(documentRef, overrides = {}) {
       node.dispatch("click", { target: node });
     },
     focus() {
-      documentRef.activeElement = node;
+      if (!node.disabled) documentRef.activeElement = node;
     },
     blur() {
       if (documentRef.activeElement === node) documentRef.activeElement = null;
@@ -215,6 +215,7 @@ test.afterEach(() => {
 test("상점 모달의 Tab과 Shift+Tab은 네 개 버튼 안에서만 순환한다", () => {
   const { game, elements, documentRef } = constructedShopHarness();
   const mia = getNpcsForWorld("village").find(npc => npc.id === "mia");
+  game.progress = { ...game.progress, gold: 100 };
   assert.equal(game.openShop(mia), true);
   assert.strictEqual(documentRef.activeElement, elements.shopCloseButton);
 
@@ -242,6 +243,22 @@ test("상점 모달의 Tab과 Shift+Tab은 네 개 버튼 안에서만 순환한
     preventDefault() {},
   });
   assert.strictEqual(documentRef.activeElement, elements.shopCloseButton);
+});
+
+test("Gold 부족으로 구매 버튼이 비활성화되면 Tab은 사용 가능한 닫기 버튼으로 이동한다", () => {
+  const { game, elements, documentRef } = constructedShopHarness();
+  const mia = getNpcsForWorld("village").find(npc => npc.id === "mia");
+  assert.equal(game.openShop(mia), true);
+  assert.equal(elements.buyHpPotionButton.disabled, true);
+  assert.equal(elements.buyMpPotionButton.disabled, true);
+
+  elements.shopOverlay.dispatch("keydown", {
+    code: "Tab",
+    shiftKey: false,
+    preventDefault() {},
+  });
+
+  assert.strictEqual(documentRef.activeElement, elements.shopDoneButton);
 });
 
 test("실제 입력 이벤트는 F로 미아 상점을 열고 1·2 키와 슬롯 클릭을 물약에 연결한다", () => {

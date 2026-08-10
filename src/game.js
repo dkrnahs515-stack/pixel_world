@@ -154,7 +154,7 @@ export class PixelRPG {
         elements.buyHpPotionButton,
         elements.buyMpPotionButton,
         elements.shopDoneButton,
-      ].filter(Boolean);
+      ].filter(control => control && !control.disabled);
       event.preventDefault();
       nextDialogueFocus(controls, document.activeElement, event.shiftKey)?.focus();
     });
