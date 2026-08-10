@@ -56,6 +56,20 @@ button, input { font: inherit; }
 .dialogue-card .modal-description { min-height: 44px; white-space: pre-line; }
 .dialogue-close { position: absolute; top: 12px; right: 14px; width: 34px; height: 34px; padding: 0; border: 1px solid rgba(255,255,255,.18); border-radius: 9px; background: rgba(51,65,85,.68); color: #e2e8f0; cursor: pointer; font-size: 24px; line-height: 1; }
 .dialogue-close:hover { background: rgba(71,85,105,.9); }
+.shop-overlay { pointer-events: auto; position: absolute; inset: 0; z-index: 36; display: grid; place-items: center; padding: 20px; background: rgba(5,9,17,.8); backdrop-filter: blur(5px); }
+.shop-card { position: relative; width: min(100%,560px); text-align: left; }
+.shop-card .modal-emblem { margin-left: 0; }
+.modal-emblem.shop { border-color: rgba(45,212,191,.55); background: rgba(15,118,110,.38); }
+.shop-gold { display: flex; justify-content: space-between; margin-top: 16px; padding: 10px 12px; border: 1px solid rgba(251,191,36,.3); border-radius: 10px; background: rgba(120,53,15,.18); color: var(--item); font-weight: 900; }
+.shop-items { display: grid; gap: 10px; margin: 16px 0; }
+.shop-item { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 12px; align-items: center; padding: 13px; border: 1px solid var(--line); border-radius: 12px; background: rgba(3,8,18,.42); }
+.shop-item strong { display: block; color: #f8fafc; font-size: 14px; }
+.shop-item small { display: block; margin-top: 5px; color: var(--muted); font-size: 12px; }
+.shop-item small b { color: #fde68a; }
+.shop-item button { min-width: 94px; padding: 9px 11px; border: 1px solid rgba(251,191,36,.38); border-radius: 9px; background: linear-gradient(135deg,#f59e0b,#fbbf24); color: #3b2103; cursor: pointer; font-size: 12px; font-weight: 900; }
+.shop-item button:hover:not(:disabled) { filter: brightness(1.08); }
+.shop-item button:disabled { cursor: not-allowed; filter: grayscale(.7); opacity: .48; }
+.shop-done { width: 100%; }
 .chat-panel { pointer-events: auto; position: absolute; left: 14px; bottom: max(14px, env(safe-area-inset-bottom)); z-index: 10; display: grid; grid-template-rows: auto minmax(72px,1fr) auto; width: min(360px,calc(100vw - 28px)); height: min(230px,32vh); min-height: 168px; overflow: hidden; border-radius: 14px; text-shadow: none; }
 .chat-panel header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 11px; border-bottom: 1px solid rgba(255,255,255,.12); font-size: 12px; }
 .chat-status { padding: 3px 7px; border-radius: 999px; font-size: 10px; font-weight: 900; }
@@ -89,6 +103,9 @@ kbd { min-width: 23px; padding: 2px 5px; border: 1px solid rgba(255,255,255,.35)
 .slot .empty { position: absolute; inset: auto 0 10px; color: #aab6c7; font-size: 10px; }
 .slot .skill-name { position: absolute; inset: 27px 3px auto; font-size: 10px; font-weight: 900; }
 .slot .skill-cost { position: absolute; inset: auto 3px 6px; color: #c4b5fd; font-size: 9px; font-weight: 800; }
+.slot .item-name { position: absolute; inset: 25px 2px auto; font-size: 9px; font-weight: 900; }
+.slot .item-effect { position: absolute; left: 4px; bottom: 5px; color: #fde68a; font-size: 8px; font-weight: 800; }
+.slot .item-count { position: absolute; right: 4px; bottom: 4px; color: #fef3c7; font-size: 11px; font-weight: 900; }
 .slot .cooldown { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 8px; background: rgba(3,7,18,.68); color: #fff; font-size: 22px; font-weight: 900; }
 .slot .cooldown:empty { display: none; }
 .slot.unavailable { filter: grayscale(.6) brightness(.72); }
@@ -153,7 +170,11 @@ kbd { min-width: 23px; padding: 2px 5px; border: 1px solid rgba(255,255,255,.35)
   .player-header strong { max-width: 130px; }
   .slot { width: 46px; height: 46px; }
   .slot .empty { display: none; }
+  .slot .item-name, .slot .item-effect { display: none; }
   .modal-card { padding: 23px 20px; }
+  .shop-card { max-height: calc(100vh - 24px); overflow: auto; }
+  .shop-item { grid-template-columns: 1fr; }
+  .shop-item button { width: 100%; }
   .chat-panel { bottom: calc(76px + env(safe-area-inset-bottom)); width: calc(100vw - 28px); height: min(180px,27vh); min-height: 150px; }
   .chat-messages { padding: 7px 8px; }
   .chat-form { padding: 7px; }

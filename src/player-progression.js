@@ -1,11 +1,16 @@
 export const PROGRESSION_RULES = Object.freeze({
-  slimeExp: 3,
-  slimeGoldMin: 1,
-  slimeGoldMax: 3,
   baseMaxHp: 100,
   baseMaxMp: 100,
   maxHpPerLevel: 10,
   maxMpPerLevel: 5,
+});
+
+export const MONSTER_REWARDS = Object.freeze({
+  "fire-slime": Object.freeze({ label: "불꽃 슬라임", exp: 3, goldMin: 1, goldMax: 3 }),
+  "forest-slime": Object.freeze({ label: "숲 슬라임", exp: 4, goldMin: 2, goldMax: 4 }),
+  "water-slime": Object.freeze({ label: "물방울 슬라임", exp: 5, goldMin: 2, goldMax: 5 }),
+  boar: Object.freeze({ label: "멧돼지", exp: 7, goldMin: 3, goldMax: 6 }),
+  crab: Object.freeze({ label: "게", exp: 8, goldMin: 4, goldMax: 7 }),
 });
 
 export function nextLevelExp(level) {
@@ -31,20 +36,32 @@ export function grantProgressReward(progress, { exp = 0, gold = 0 } = {}) {
   return { progress: next, levelsGained };
 }
 
-export function rollSlimeGold(random = Math.random) {
+export function getMonsterReward(enemyKind, random = Math.random) {
+  const definition = MONSTER_REWARDS[enemyKind];
+  if (!definition) return null;
   const sample = Math.min(0.9999999999999999, Math.max(0, random()));
-  return PROGRESSION_RULES.slimeGoldMin + Math.floor(sample * 3);
+  const gold = definition.goldMin
+    + Math.floor(sample * (definition.goldMax - definition.goldMin + 1));
+  return {
+    kind: enemyKind,
+    label: definition.label,
+    exp: definition.exp,
+    gold,
+  };
 }
 
-export function grantHuntingReward(progress, { gold = true, random = Math.random } = {}) {
-  const rewardGold = gold ? rollSlimeGold(random) : 0;
+export function grantHuntingReward(progress, enemyKind, random = Math.random) {
+  const reward = getMonsterReward(enemyKind, random);
+  if (!reward) return null;
   const result = grantProgressReward(progress, {
-    exp: PROGRESSION_RULES.slimeExp,
-    gold: rewardGold,
+    exp: reward.exp,
+    gold: reward.gold,
   });
-  return { ...result, rewardExp: PROGRESSION_RULES.slimeExp, rewardGold };
-}
-
-export function grantSlimeReward(progress, random = Math.random) {
-  return grantHuntingReward(progress, { gold: true, random });
+  return {
+    ...result,
+    enemyKind: reward.kind,
+    label: reward.label,
+    rewardExp: reward.exp,
+    rewardGold: reward.gold,
+  };
 }

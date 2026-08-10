@@ -29,7 +29,7 @@ test("HUD는 레벨 진행 EXP 막대와 Gold를 표시한다", () => {
 
 test("적 처치 보상과 레벨 능력치가 게임에 연결된다", () => {
   const game = readFileSync(path.join(__dirname, "../src/game.js"), "utf8");
-  assert.match(game, /grantSlimeReward/);
+  assert.match(game, /grantHuntingReward/);
   assert.match(game, /statsForLevel/);
   assert.match(game, /recordEnemyKill/);
   assert.match(game, /LEVEL UP!/);

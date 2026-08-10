@@ -31,6 +31,19 @@ const elements = {
   dialogueActionButton: document.querySelector("#dialogueActionButton"),
   dialogueCloseButton: document.querySelector("#dialogueCloseButton"),
   npcPrompt: document.querySelector("#npcPrompt"),
+  npcPromptText: document.querySelector("#npcPromptText"),
+  shopOverlay: document.querySelector("#shopOverlay"),
+  shopGoldText: document.querySelector("#shopGoldText"),
+  shopCloseButton: document.querySelector("#shopCloseButton"),
+  shopDoneButton: document.querySelector("#shopDoneButton"),
+  buyHpPotionButton: document.querySelector("#buyHpPotionButton"),
+  buyMpPotionButton: document.querySelector("#buyMpPotionButton"),
+  shopHpPotionCount: document.querySelector("#shopHpPotionCount"),
+  shopMpPotionCount: document.querySelector("#shopMpPotionCount"),
+  hpPotionSlot: document.querySelector("#hpPotionSlot"),
+  mpPotionSlot: document.querySelector("#mpPotionSlot"),
+  hpPotionCount: document.querySelector("#hpPotionCount"),
+  mpPotionCount: document.querySelector("#mpPotionCount"),
   questTracker: document.querySelector("#questTracker"),
   questProgress: document.querySelector("#questProgress"),
   expText: document.querySelector("#expText"),
@@ -110,6 +123,13 @@ confirmExitButton.addEventListener("click", async () => {
 
 addEventListener("keydown", event => {
   if (!["Enter", "Escape"].includes(event.code)) return;
+  if (game.isShopOpen()) {
+    if (event.code === "Escape") {
+      event.preventDefault();
+      game.closeShop();
+    }
+    return;
+  }
   if (game.isDialogueOpen()) {
     const dialogueAction = dialogueKeyAction(event.code);
     if (dialogueAction === "close") {
@@ -149,6 +169,7 @@ addEventListener("pagehide", () => {
 function openExitDialog() {
   if (!game.isRunning()) return;
   game.closeNpcDialogue();
+  game.closeShop();
   game.cancelChatInput();
   game.setInputEnabled(false);
   exitOverlay.hidden = false;

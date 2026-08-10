@@ -112,7 +112,7 @@ async function withMinimumGold(run) {
   }
 }
 
-test("non-slime deaths grant hunting EXP without changing the slime quest", async () => {
+test("퀘스트 없이 멧돼지를 처치하면 7 EXP와 3 Gold를 얻는다", async () => {
   await withMinimumGold(() => {
     const { game, notifications, storage } = gameHarness({ progress: createInitialProgress() });
     game.enemies = [enemy("boar", 30)];
@@ -120,14 +120,14 @@ test("non-slime deaths grant hunting EXP without changing the slime quest", asyn
     game.applyAttackHits(lethalAttack);
 
     assert.equal(game.enemies[0].state, "dying");
-    assert.equal(game.progress.exp, 3);
-    assert.equal(game.progress.gold, 1);
+    assert.equal(game.progress.exp, 7);
+    assert.equal(game.progress.gold, 3);
     assert.equal(game.progress.quests.adventureStart.status, "available");
     assert.equal(game.progress.quests.adventureStart.progress, 0);
     assert.equal(storage.writes.length, 1);
-    assert.equal(storage.writes[0].value.exp, 3);
-    assert.equal(storage.writes[0].value.gold, 1);
-    assert.deepEqual(notifications, ["몬스터 처치! EXP +3 · Gold +1"]);
+    assert.equal(storage.writes[0].value.exp, 7);
+    assert.equal(storage.writes[0].value.gold, 3);
+    assert.deepEqual(notifications, ["멧돼지 처치! EXP +7 · Gold +3"]);
   });
 });
 
@@ -188,11 +188,12 @@ test("multi-kill attacks leave a level-up notification last and save once", asyn
     game.applyAttackHits(lethalAttack);
 
     assert.equal(game.progress.level, 2);
-    assert.equal(game.progress.exp, 5);
+    assert.equal(game.progress.exp, 6);
+    assert.equal(game.progress.gold, 3);
     assert.equal(storage.writes.length, 1);
     assert.deepEqual(notifications, [
-      "슬라임 처치! EXP +3 · Gold +1",
-      "슬라임 처치! EXP +3 · Gold +1",
+      "불꽃 슬라임 처치! EXP +3 · Gold +1",
+      "숲 슬라임 처치! EXP +4 · Gold +2",
       "LEVEL UP! LV.2 · HP와 MP가 회복되었습니다.",
     ]);
   });

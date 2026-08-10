@@ -11,8 +11,9 @@ import { getNpcsForWorld } from "./npc-data.js";
 import { drawNpc, findNearbyNpc } from "./npcs.js";
 import { applyPlayerDamage, respawnPlayer, tickPlayerStatus } from "./player-combat.js";
 import { advancePortalTransition, createPortalTransition } from "./portal-transition.js";
-import { grantHuntingReward, grantSlimeReward, statsForLevel } from "./player-progression.js";
+import { grantHuntingReward, statsForLevel } from "./player-progression.js";
 import { loadProgressWithStatus, saveProgress } from "./progress-storage.js";
+import { SHOP_ITEMS, buyShopItem, usePotion } from "./shop-state.js";
 import {
   ADVENTURE_QUEST,
   acceptAdventureQuest,
@@ -76,6 +77,16 @@ export function loadPlayerProgress(storage, nickname) {
   return { ...loaded, notice };
 }
 
+function shopFailureMessage(reason, item) {
+  if (reason === "insufficient_gold") return "Gold가 부족합니다.";
+  if (reason === "inventory_full") return "물약을 더 이상 보유할 수 없습니다.";
+  if (reason === "out_of_stock") return `${item?.name || "해당 물약"}이 없습니다.`;
+  if (reason === "already_full") return item?.resource === "mp"
+    ? "MP가 이미 가득 찼습니다."
+    : "HP가 이미 가득 찼습니다.";
+  return "아이템을 사용할 수 없습니다.";
+}
+
 export class PixelRPG {
   constructor(elements) {
     this.canvas = elements.canvas;
@@ -132,6 +143,21 @@ export class PixelRPG {
       event.preventDefault();
       nextDialogueFocus(controls, document.activeElement, event.shiftKey)?.focus();
     });
+    elements.shopCloseButton?.addEventListener("click", () => this.closeShop());
+    elements.shopDoneButton?.addEventListener("click", () => this.closeShop());
+    elements.buyHpPotionButton?.addEventListener("click", () => this.buyItem("hpPotion"));
+    elements.buyMpPotionButton?.addEventListener("click", () => this.buyItem("mpPotion"));
+    elements.shopOverlay?.addEventListener("keydown", event => {
+      if (event.code !== "Tab") return;
+      const controls = [
+        elements.shopCloseButton,
+        elements.buyHpPotionButton,
+        elements.buyMpPotionButton,
+        elements.shopDoneButton,
+      ].filter(control => control && !control.disabled);
+      event.preventDefault();
+      nextDialogueFocus(controls, document.activeElement, event.shiftKey)?.focus();
+    });
     this.chat = new ChatController({
       panel: elements.chatPanel,
       list: elements.chatMessages,
@@ -173,8 +199,10 @@ export class PixelRPG {
     this.resize();
     this.drawMinimapBase();
     this.closeNpcDialogue();
+    this.closeShop();
     this.updateQuestHud();
     this.updateProgressHud();
+    this.updateInventoryHud();
     this.updateNpcPrompt();
 
     if (this.network) await this.network.stop();
@@ -210,6 +238,7 @@ export class PixelRPG {
     this.chatMessages = [];
     this.chatInputActive = false;
     this.closeNpcDialogue();
+    this.closeShop();
     this.nearbyNpc = null;
     this.updateNpcPrompt();
 
@@ -244,12 +273,13 @@ export class PixelRPG {
 
       if (event.code === "KeyF" && !event.repeat && !event.ctrlKey && !event.metaKey && !event.altKey) {
         if (this.isDialogueOpen()) this.closeNpcDialogue();
-        else if (this.inputEnabled) this.openNpcDialogue();
+        else if (this.isShopOpen()) this.closeShop();
+        else if (this.inputEnabled) this.openNpcInteraction();
         event.preventDefault();
         return;
       }
 
-      if (!this.inputEnabled || this.isDialogueOpen()) return;
+      if (!this.inputEnabled || this.isInteractionOpen()) return;
 
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.code)) {
         this.keys.add(event.code);
@@ -270,15 +300,19 @@ export class PixelRPG {
       }
 
       if (["KeyE", "KeyR", "Digit1", "Digit2", "Digit3"].includes(event.code) && !event.repeat) {
-        this.activateEmptySlot(event.code);
+        if (event.code === "Digit1") this.useItem("hpPotion");
+        else if (event.code === "Digit2") this.useItem("mpPotion");
+        else this.activateEmptySlot(event.code);
       }
     });
     addEventListener("keyup", event => this.keys.delete(event.code));
 
     document.querySelectorAll(".slot").forEach(button => {
       button.addEventListener("click", () => {
-        if (!this.running || !this.inputEnabled || this.isDialogueOpen()) return;
+        if (!this.running || !this.inputEnabled || this.isInteractionOpen()) return;
         if (button.dataset.code === "KeyQ") this.tryAttack("strong");
+        else if (button.dataset.code === "Digit1") this.useItem("hpPotion");
+        else if (button.dataset.code === "Digit2") this.useItem("mpPotion");
         else this.activateEmptySlot(button.dataset.code);
       });
     });
@@ -355,7 +389,7 @@ export class PixelRPG {
   }
 
   updatePlayerMovement(dt) {
-    const movement = this.inputEnabled && !this.chatInputActive && !this.isDialogueOpen()
+    const movement = this.inputEnabled && !this.chatInputActive && !this.isInteractionOpen()
       ? movementVector(this.keys)
       : { x: 0, y: 0 };
     const dx = movement.x;
@@ -373,7 +407,7 @@ export class PixelRPG {
   }
 
   openChatInput() {
-    if (this.isDialogueOpen()) return false;
+    if (this.isInteractionOpen()) return false;
     return this.chat.open();
   }
 
@@ -402,11 +436,26 @@ export class PixelRPG {
     return !this.ui.dialogueOverlay.hidden;
   }
 
-  openNpcDialogue() {
+  isShopOpen() {
+    return Boolean(this.ui.shopOverlay && !this.ui.shopOverlay.hidden);
+  }
+
+  isInteractionOpen() {
+    return this.isDialogueOpen() || this.isShopOpen();
+  }
+
+  openNpcInteraction() {
     if (!this.running || !this.inputEnabled || this.chatInputActive || this.portalTransition || this.player.respawnTimer > 0) return false;
     if (this.mapId !== "village") return false;
     const npc = findNearbyNpc(this.npcs, this.player);
-    if (!npc || npc.id !== "aren") return false;
+    if (!npc) return false;
+    if (npc.role === "shop") return this.openShop(npc);
+    if (npc.role === "quest") return this.openNpcDialogue(npc);
+    return false;
+  }
+
+  openNpcDialogue(npc = findNearbyNpc(this.npcs, this.player)) {
+    if (!npc || npc.role !== "quest" || npc.id !== "aren") return false;
 
     this.keys.clear();
     this.player.moving = false;
@@ -418,11 +467,33 @@ export class PixelRPG {
     return true;
   }
 
+  openShop(npc = findNearbyNpc(this.npcs, this.player)) {
+    if (!this.ui.shopOverlay || !npc || npc.role !== "shop") return false;
+    this.keys.clear();
+    this.player.moving = false;
+    this.attackState = null;
+    this.nearbyNpc = npc;
+    this.ui.shopOverlay.hidden = false;
+    this.updateShopHud();
+    this.ui.shopCloseButton?.focus();
+    this.updateNpcPrompt();
+    return true;
+  }
+
   closeNpcDialogue() {
     const wasOpen = this.isDialogueOpen();
     this.dialogue.close();
     if (wasOpen) this.canvas.focus();
     this.updateNpcPrompt();
+  }
+
+  closeShop() {
+    if (!this.ui.shopOverlay) return false;
+    const wasOpen = this.isShopOpen();
+    this.ui.shopOverlay.hidden = true;
+    if (wasOpen) this.canvas.focus();
+    this.updateNpcPrompt();
+    return wasOpen;
   }
 
   handleDialogueAction(action) {
@@ -467,16 +538,12 @@ export class PixelRPG {
 
   recordEnemyKill(enemyKind, { deferEffects = false } = {}) {
     this.recordQuestKill(enemyKind);
-    const isSlime = ADVENTURE_QUEST.targetKinds.includes(enemyKind);
-
-    const reward = isSlime
-      ? grantSlimeReward(this.progress)
-      : grantHuntingReward(this.progress);
+    const reward = grantHuntingReward(this.progress, enemyKind);
+    if (!reward) return null;
     this.progress = reward.progress;
     this.applyProgressionStats(reward.levelsGained > 0);
-    const result = { ...reward, isSlime };
-    if (!deferEffects) this.commitEnemyKillEffects([result]);
-    return result;
+    if (!deferEffects) this.commitEnemyKillEffects([reward]);
+    return reward;
   }
 
   commitEnemyKillEffects(rewards) {
@@ -486,9 +553,8 @@ export class PixelRPG {
     this.updateHud();
     this.updateBiome();
     for (const reward of rewards) {
-      const label = reward.isSlime ? "슬라임" : "몬스터";
       const gold = reward.rewardGold > 0 ? ` · Gold +${reward.rewardGold}` : "";
-      this.notify(`${label} 처치! EXP +${reward.rewardExp}${gold}`);
+      this.notify(`${reward.label} 처치! EXP +${reward.rewardExp}${gold}`);
     }
     if (rewards.some(reward => reward.levelsGained > 0)) {
       this.notify(`LEVEL UP! LV.${this.progress.level} · HP와 MP가 회복되었습니다.`);
@@ -496,9 +562,9 @@ export class PixelRPG {
     this.persistProgress();
   }
 
-  persistProgress() {
+  persistProgress(failureMessage = "진행 상황을 브라우저에 저장할 수 없습니다.") {
     const result = saveProgress(browserStorage(), this.player.name, this.progress);
-    if (!result.ok) this.notify("진행 상황을 브라우저에 저장할 수 없습니다.");
+    if (!result.ok) this.notify(failureMessage);
     return result.ok;
   }
 
@@ -518,20 +584,84 @@ export class PixelRPG {
     this.ui.goldText.textContent = `${this.progress.gold} G`;
   }
 
+  updateInventoryHud() {
+    const inventory = this.progress.inventory;
+    if (this.ui.hpPotionCount) this.ui.hpPotionCount.textContent = `×${inventory.hpPotion}`;
+    if (this.ui.mpPotionCount) this.ui.mpPotionCount.textContent = `×${inventory.mpPotion}`;
+    this.ui.hpPotionSlot?.classList.toggle("unavailable", inventory.hpPotion === 0);
+    this.ui.mpPotionSlot?.classList.toggle("unavailable", inventory.mpPotion === 0);
+  }
+
+  updateShopHud() {
+    if (!this.ui.shopOverlay) return;
+    const inventory = this.progress.inventory;
+    this.ui.shopGoldText.textContent = `${this.progress.gold} G`;
+    this.ui.shopHpPotionCount.textContent = `${inventory.hpPotion} / ${SHOP_ITEMS.hpPotion.maxQuantity}`;
+    this.ui.shopMpPotionCount.textContent = `${inventory.mpPotion} / ${SHOP_ITEMS.mpPotion.maxQuantity}`;
+    this.ui.buyHpPotionButton.disabled = this.progress.gold < SHOP_ITEMS.hpPotion.price
+      || inventory.hpPotion >= SHOP_ITEMS.hpPotion.maxQuantity;
+    this.ui.buyMpPotionButton.disabled = this.progress.gold < SHOP_ITEMS.mpPotion.price
+      || inventory.mpPotion >= SHOP_ITEMS.mpPotion.maxQuantity;
+  }
+
+  buyItem(itemId) {
+    const result = buyShopItem(this.progress, itemId);
+    if (!result.ok) {
+      this.notify(shopFailureMessage(result.reason, result.item));
+      return false;
+    }
+    this.progress = result.progress;
+    this.updateProgressHud();
+    this.updateInventoryHud();
+    this.updateShopHud();
+    this.notify(`${result.item.name}을 구매했습니다. Gold -${result.item.price}`);
+    this.persistProgress("구매했지만 진행 상황을 저장할 수 없습니다.");
+    return true;
+  }
+
+  useItem(itemId) {
+    if (!this.running || !this.inputEnabled || this.chatInputActive
+      || this.portalTransition || this.player.respawnTimer > 0 || this.isInteractionOpen()) {
+      return false;
+    }
+    const item = SHOP_ITEMS[itemId];
+    if (!item) return false;
+    const current = this.player[item.resource];
+    const max = this.player[item.resource === "hp" ? "maxHp" : "maxMp"];
+    const result = usePotion(this.progress, { itemId, current, max });
+    if (!result.ok) {
+      this.notify(shopFailureMessage(result.reason, result.item));
+      return false;
+    }
+    this.progress = result.progress;
+    this.player[item.resource] = result.value;
+    this.updateHud();
+    this.updateInventoryHud();
+    this.updateShopHud();
+    this.notify(`${result.item.name} 사용! ${item.resource.toUpperCase()} +${result.recovered}`);
+    this.persistProgress();
+    return true;
+  }
+
   updateNpcPrompt() {
     const eligible = this.running
       && this.inputEnabled
       && this.mapId === "village"
       && !this.chatInputActive
-      && !this.isDialogueOpen()
+      && !this.isInteractionOpen()
       && !this.portalTransition
       && this.player.respawnTimer <= 0;
     this.nearbyNpc = eligible ? findNearbyNpc(this.npcs, this.player) : null;
     this.ui.npcPrompt.hidden = !this.nearbyNpc;
+    if (this.nearbyNpc && this.ui.npcPromptText) {
+      this.ui.npcPromptText.textContent = this.nearbyNpc.role === "shop"
+        ? "연금술사 미아의 상점 이용하기"
+        : "현자 아렌과 대화하기";
+    }
   }
 
   tryEnterPortal() {
-    if (!this.inputEnabled || this.isDialogueOpen() || this.portalCooldown > 0 || this.portalTransition) return;
+    if (!this.inputEnabled || this.isInteractionOpen() || this.portalCooldown > 0 || this.portalTransition) return;
     const portal = findActivePortal(this.mapId, this.player.x, this.player.y, PLAYER_RADIUS);
     if (!portal) return;
     if (!portal.destination) {
@@ -607,7 +737,7 @@ export class PixelRPG {
   }
 
   tryAttack(kind) {
-    if (!this.running || !this.inputEnabled || this.isDialogueOpen() || this.player.respawnTimer > 0 || this.attackState) return;
+    if (!this.running || !this.inputEnabled || this.isInteractionOpen() || this.player.respawnTimer > 0 || this.attackState) return;
     const definition = attackDefinition(kind);
     const cooldown = kind === "strong" ? this.strongCooldown : this.basicCooldown;
     if (cooldown > 0) {

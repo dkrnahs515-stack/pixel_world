@@ -1,5 +1,7 @@
 # Hunting Reward and Render Stability Implementation Plan
 
+> **Superseded:** 몬스터 보상과 저장 버전 규칙은 `2026-08-10-monster-rewards-potion-shop.md`의 차등 보상·localStorage v3 설계로 대체되었습니다. Canvas 렌더링 안정화 내용만 현재 규칙으로 유지됩니다.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 모든 몬스터 처치 보상을 `3 EXP + 1~3 Gold`로 통일하고 Canvas 깜빡임 원인을 제거해 Pages에 배포한다.

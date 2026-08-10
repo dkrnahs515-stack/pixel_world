@@ -89,7 +89,7 @@
       <span id="questProgress">현자 아렌과 대화하세요.</span>
     </section>
 
-    <div id="npcPrompt" class="npc-prompt" hidden><kbd>F</kbd><span>현자 아렌과 대화하기</span></div>
+    <div id="npcPrompt" class="npc-prompt" hidden><kbd>F</kbd><span id="npcPromptText">현자 아렌과 대화하기</span></div>
 
     <section id="dialogueOverlay" class="dialogue-overlay" hidden>
       <div class="modal-card dialogue-card" role="dialog" aria-modal="true" aria-labelledby="dialogueTitle" aria-describedby="dialogueBody">
@@ -99,6 +99,33 @@
         <h2 id="dialogueTitle">현자 아렌</h2>
         <p id="dialogueBody" class="modal-description"></p>
         <button id="dialogueActionButton" class="primary-button" type="button">퀘스트 수락</button>
+      </div>
+    </section>
+
+    <section id="shopOverlay" class="shop-overlay" hidden>
+      <div class="modal-card shop-card" role="dialog" aria-modal="true" aria-labelledby="shopTitle">
+        <button id="shopCloseButton" class="dialogue-close" type="button" aria-label="상점 닫기">×</button>
+        <div class="modal-emblem shop" aria-hidden="true">🧪</div>
+        <p class="eyebrow">ALCHEMIST SHOP</p>
+        <h2 id="shopTitle">연금술사 미아의 상점</h2>
+        <div class="shop-gold"><span>보유 Gold</span><b id="shopGoldText">0 G</b></div>
+        <div class="shop-items">
+          <article class="shop-item">
+            <div>
+              <strong>작은 체력 물약</strong>
+              <small>HP 30 회복 · 보유 <b id="shopHpPotionCount">0 / 99</b></small>
+            </div>
+            <button id="buyHpPotionButton" type="button">10 G 구매</button>
+          </article>
+          <article class="shop-item">
+            <div>
+              <strong>작은 마력 물약</strong>
+              <small>MP 25 회복 · 보유 <b id="shopMpPotionCount">0 / 99</b></small>
+            </div>
+            <button id="buyMpPotionButton" type="button">15 G 구매</button>
+          </article>
+        </div>
+        <button id="shopDoneButton" class="secondary-button shop-done" type="button">상점 닫기</button>
       </div>
     </section>
 
@@ -143,8 +170,16 @@
         <button class="slot" data-code="KeyR" type="button"><span class="key">R</span><span class="slot-type">SKILL</span><span class="empty">비어 있음</span></button>
       </div>
       <div class="slot-group glass">
-        <button class="slot item" data-code="Digit1" type="button"><span class="key">1</span><span class="slot-type">ITEM</span><span class="empty">비어 있음</span></button>
-        <button class="slot item" data-code="Digit2" type="button"><span class="key">2</span><span class="slot-type">ITEM</span><span class="empty">비어 있음</span></button>
+        <button id="hpPotionSlot" class="slot item" data-code="Digit1" type="button" aria-label="작은 체력 물약 사용">
+          <span class="key">1</span><span class="slot-type">ITEM</span>
+          <span class="item-name">체력 물약</span><span class="item-effect">HP +30</span>
+          <span id="hpPotionCount" class="item-count">×0</span>
+        </button>
+        <button id="mpPotionSlot" class="slot item" data-code="Digit2" type="button" aria-label="작은 마력 물약 사용">
+          <span class="key">2</span><span class="slot-type">ITEM</span>
+          <span class="item-name">마력 물약</span><span class="item-effect">MP +25</span>
+          <span id="mpPotionCount" class="item-count">×0</span>
+        </button>
         <button class="slot item" data-code="Digit3" type="button"><span class="key">3</span><span class="slot-type">ITEM</span><span class="empty">비어 있음</span></button>
       </div>
     </section>
