@@ -17,6 +17,104 @@ function fakeNode(overrides = {}) {
   };
 }
 
+function eventNode(documentRef, overrides = {}) {
+  const listeners = new Map();
+  const node = fakeNode({
+    addEventListener(type, listener) {
+      if (!listeners.has(type)) listeners.set(type, []);
+      listeners.get(type).push(listener);
+    },
+    dispatch(type, event = {}) {
+      for (const listener of listeners.get(type) || []) listener(event);
+    },
+    click() {
+      node.dispatch("click", { target: node });
+    },
+    focus() {
+      documentRef.activeElement = node;
+    },
+    blur() {
+      if (documentRef.activeElement === node) documentRef.activeElement = null;
+    },
+    ...overrides,
+  });
+  return node;
+}
+
+function constructedShopHarness() {
+  const windowListeners = new Map();
+  const drawingContext = new Proxy({}, {
+    get(target, property) {
+      if (!(property in target)) target[property] = () => ({ addColorStop() {} });
+      return target[property];
+    },
+    set(target, property, value) {
+      target[property] = value;
+      return true;
+    },
+  });
+  const documentRef = {
+    activeElement: null,
+    createDocumentFragment() { return { append() {} }; },
+    createElement(tagName) {
+      return eventNode(documentRef, {
+        append() {},
+        ...(tagName === "canvas" ? { getContext: () => drawingContext } : {}),
+      });
+    },
+  };
+  globalThis.document = documentRef;
+  globalThis.devicePixelRatio = 1;
+  globalThis.HTMLInputElement = class {};
+  globalThis.HTMLTextAreaElement = class {};
+  globalThis.HTMLSelectElement = class {};
+  globalThis.addEventListener = (type, listener) => {
+    if (!windowListeners.has(type)) windowListeners.set(type, []);
+    windowListeners.get(type).push(listener);
+  };
+
+  const context = drawingContext;
+  const canvas = eventNode(documentRef, { getContext: () => context });
+  const minimap = eventNode(documentRef, { getContext: () => context });
+  const chatSubmitButton = eventNode(documentRef);
+  const chatForm = eventNode(documentRef, { querySelector: () => chatSubmitButton });
+  const elements = {
+    canvas,
+    minimap,
+    dialogueOverlay: eventNode(documentRef, { hidden: true }),
+    dialogueTitle: eventNode(documentRef),
+    dialogueBody: eventNode(documentRef),
+    dialogueActionButton: eventNode(documentRef),
+    dialogueCloseButton: eventNode(documentRef),
+    shopOverlay: eventNode(documentRef, { hidden: true }),
+    shopGoldText: eventNode(documentRef),
+    shopCloseButton: eventNode(documentRef),
+    shopDoneButton: eventNode(documentRef),
+    buyHpPotionButton: eventNode(documentRef),
+    buyMpPotionButton: eventNode(documentRef),
+    shopHpPotionCount: eventNode(documentRef),
+    shopMpPotionCount: eventNode(documentRef),
+    hpPotionSlot: eventNode(documentRef, { dataset: { code: "Digit1" } }),
+    mpPotionSlot: eventNode(documentRef, { dataset: { code: "Digit2" } }),
+    hpPotionCount: eventNode(documentRef),
+    mpPotionCount: eventNode(documentRef),
+    chatPanel: eventNode(documentRef),
+    chatMessages: eventNode(documentRef, { replaceChildren() {}, scrollHeight: 0, scrollTop: 0 }),
+    chatForm,
+    chatInput: eventNode(documentRef, { value: "" }),
+    chatStatus: eventNode(documentRef),
+    npcPrompt: eventNode(documentRef, { hidden: true }),
+    npcPromptText: eventNode(documentRef),
+  };
+  documentRef.querySelectorAll = selector => selector === ".slot"
+    ? [elements.hpPotionSlot, elements.mpPotionSlot]
+    : [];
+  const dispatchWindow = (type, event = {}) => {
+    for (const listener of windowListeners.get(type) || []) listener(event);
+  };
+  return { game: new PixelRPG(elements), elements, documentRef, dispatchWindow };
+}
+
 function messageNode(notifications) {
   const node = fakeNode();
   Object.defineProperty(node, "textContent", {
@@ -106,6 +204,85 @@ function shopHarness(overrides = {}) {
 
 test.afterEach(() => {
   delete globalThis.localStorage;
+  delete globalThis.document;
+  delete globalThis.devicePixelRatio;
+  delete globalThis.HTMLInputElement;
+  delete globalThis.HTMLTextAreaElement;
+  delete globalThis.HTMLSelectElement;
+  delete globalThis.addEventListener;
+});
+
+test("상점 모달의 Tab과 Shift+Tab은 네 개 버튼 안에서만 순환한다", () => {
+  const { game, elements, documentRef } = constructedShopHarness();
+  const mia = getNpcsForWorld("village").find(npc => npc.id === "mia");
+  assert.equal(game.openShop(mia), true);
+  assert.strictEqual(documentRef.activeElement, elements.shopCloseButton);
+
+  let prevented = false;
+  elements.shopOverlay.dispatch("keydown", {
+    code: "Tab",
+    shiftKey: false,
+    preventDefault() { prevented = true; },
+  });
+  assert.equal(prevented, true);
+  assert.strictEqual(documentRef.activeElement, elements.buyHpPotionButton);
+
+  elements.shopCloseButton.focus();
+  elements.shopOverlay.dispatch("keydown", {
+    code: "Tab",
+    shiftKey: true,
+    preventDefault() {},
+  });
+  assert.strictEqual(documentRef.activeElement, elements.shopDoneButton);
+
+  elements.chatInput.focus();
+  elements.shopOverlay.dispatch("keydown", {
+    code: "Tab",
+    shiftKey: false,
+    preventDefault() {},
+  });
+  assert.strictEqual(documentRef.activeElement, elements.shopCloseButton);
+});
+
+test("실제 입력 이벤트는 F로 미아 상점을 열고 1·2 키와 슬롯 클릭을 물약에 연결한다", () => {
+  const { game, elements, dispatchWindow } = constructedShopHarness();
+  const mia = getNpcsForWorld("village").find(npc => npc.id === "mia");
+  Object.assign(game.player, { x: mia.x, y: mia.y });
+  game.running = true;
+  game.inputEnabled = true;
+  game.bindEvents();
+
+  let prevented = false;
+  dispatchWindow("keydown", {
+    code: "KeyF",
+    target: {},
+    repeat: false,
+    ctrlKey: false,
+    metaKey: false,
+    altKey: false,
+    preventDefault() { prevented = true; },
+  });
+  assert.equal(prevented, true);
+  assert.equal(game.isShopOpen(), true);
+
+  game.closeShop();
+  const usedItems = [];
+  game.useItem = itemId => {
+    usedItems.push(itemId);
+    return true;
+  };
+  for (const code of ["Digit1", "Digit2"]) {
+    dispatchWindow("keydown", {
+      code,
+      target: {},
+      repeat: false,
+      preventDefault() {},
+    });
+  }
+  elements.hpPotionSlot.click();
+  elements.mpPotionSlot.click();
+
+  assert.deepEqual(usedItems, ["hpPotion", "mpPotion", "hpPotion", "mpPotion"]);
 });
 
 test("미아 근처의 F 상호작용은 상점을 열고 동적 안내를 표시한다", () => {

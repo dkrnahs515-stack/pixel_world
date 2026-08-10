@@ -147,6 +147,17 @@ export class PixelRPG {
     elements.shopDoneButton?.addEventListener("click", () => this.closeShop());
     elements.buyHpPotionButton?.addEventListener("click", () => this.buyItem("hpPotion"));
     elements.buyMpPotionButton?.addEventListener("click", () => this.buyItem("mpPotion"));
+    elements.shopOverlay?.addEventListener("keydown", event => {
+      if (event.code !== "Tab") return;
+      const controls = [
+        elements.shopCloseButton,
+        elements.buyHpPotionButton,
+        elements.buyMpPotionButton,
+        elements.shopDoneButton,
+      ].filter(Boolean);
+      event.preventDefault();
+      nextDialogueFocus(controls, document.activeElement, event.shiftKey)?.focus();
+    });
     this.chat = new ChatController({
       panel: elements.chatPanel,
       list: elements.chatMessages,
