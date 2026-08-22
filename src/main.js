@@ -1,4 +1,4 @@
-import { PixelRPG, dialogueKeyAction } from "./game.js";
+import { PixelRPG, interactionKeyAction } from "./game.js";
 import { chatKeyAction } from "./chat-controller.js";
 
 const elements = {
@@ -40,6 +40,14 @@ const elements = {
   buyMpPotionButton: document.querySelector("#buyMpPotionButton"),
   shopHpPotionCount: document.querySelector("#shopHpPotionCount"),
   shopMpPotionCount: document.querySelector("#shopMpPotionCount"),
+  inventoryButton: document.querySelector("#inventoryButton"),
+  inventoryOverlay: document.querySelector("#inventoryOverlay"),
+  inventoryCloseButton: document.querySelector("#inventoryCloseButton"),
+  inventoryDoneButton: document.querySelector("#inventoryDoneButton"),
+  inventoryHpPotionCount: document.querySelector("#inventoryHpPotionCount"),
+  inventoryMpPotionCount: document.querySelector("#inventoryMpPotionCount"),
+  inventoryHpUseButton: document.querySelector("#inventoryHpUseButton"),
+  inventoryMpUseButton: document.querySelector("#inventoryMpUseButton"),
   hpPotionSlot: document.querySelector("#hpPotionSlot"),
   mpPotionSlot: document.querySelector("#mpPotionSlot"),
   hpPotionCount: document.querySelector("#hpPotionCount"),
@@ -123,19 +131,17 @@ confirmExitButton.addEventListener("click", async () => {
 
 addEventListener("keydown", event => {
   if (!["Enter", "Escape"].includes(event.code)) return;
-  if (game.isShopOpen()) {
-    if (event.code === "Escape") {
-      event.preventDefault();
-      game.closeShop();
-    }
-    return;
-  }
-  if (game.isDialogueOpen()) {
-    const dialogueAction = dialogueKeyAction(event.code);
-    if (dialogueAction === "close") {
-      event.preventDefault();
-      game.closeNpcDialogue();
-    }
+  const interactionAction = interactionKeyAction({
+    code: event.code,
+    inventoryOpen: game.isInventoryOpen(),
+    shopOpen: game.isShopOpen(),
+    dialogueOpen: game.isDialogueOpen(),
+  });
+  if (interactionAction !== null) {
+    if (interactionAction === "close-inventory") game.closeInventory();
+    else if (interactionAction === "close-shop") game.closeShop();
+    else if (interactionAction === "close-dialogue") game.closeNpcDialogue();
+    if (interactionAction !== "block") event.preventDefault();
     return;
   }
   const action = chatKeyAction({
@@ -170,6 +176,7 @@ function openExitDialog() {
   if (!game.isRunning()) return;
   game.closeNpcDialogue();
   game.closeShop();
+  game.closeInventory();
   game.cancelChatInput();
   game.setInputEnabled(false);
   exitOverlay.hidden = false;

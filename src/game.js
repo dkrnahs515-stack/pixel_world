@@ -49,6 +49,13 @@ export function dialogueKeyAction(code) {
   return null;
 }
 
+export function interactionKeyAction({ code, inventoryOpen, shopOpen, dialogueOpen }) {
+  if (inventoryOpen) return code === "Escape" ? "close-inventory" : "block";
+  if (shopOpen) return code === "Escape" ? "close-shop" : "block";
+  if (dialogueOpen) return code === "Escape" ? "close-dialogue" : "block";
+  return null;
+}
+
 export function nextDialogueFocus(controls, activeElement, reverse = false) {
   if (!controls.length) return null;
   const currentIndex = controls.indexOf(activeElement);
@@ -158,6 +165,22 @@ export class PixelRPG {
       event.preventDefault();
       nextDialogueFocus(controls, document.activeElement, event.shiftKey)?.focus();
     });
+    elements.inventoryButton?.addEventListener("click", () => this.openInventory());
+    elements.inventoryCloseButton?.addEventListener("click", () => this.closeInventory());
+    elements.inventoryDoneButton?.addEventListener("click", () => this.closeInventory());
+    elements.inventoryHpUseButton?.addEventListener("click", () => this.useInventoryItem("hpPotion"));
+    elements.inventoryMpUseButton?.addEventListener("click", () => this.useInventoryItem("mpPotion"));
+    elements.inventoryOverlay?.addEventListener("keydown", event => {
+      if (event.code !== "Tab") return;
+      const controls = [
+        elements.inventoryCloseButton,
+        elements.inventoryHpUseButton,
+        elements.inventoryMpUseButton,
+        elements.inventoryDoneButton,
+      ].filter(control => control && !control.disabled);
+      event.preventDefault();
+      nextDialogueFocus(controls, document.activeElement, event.shiftKey)?.focus();
+    });
     this.chat = new ChatController({
       panel: elements.chatPanel,
       list: elements.chatMessages,
@@ -200,6 +223,7 @@ export class PixelRPG {
     this.drawMinimapBase();
     this.closeNpcDialogue();
     this.closeShop();
+    this.closeInventory();
     this.updateQuestHud();
     this.updateProgressHud();
     this.updateInventoryHud();
@@ -239,6 +263,7 @@ export class PixelRPG {
     this.chatInputActive = false;
     this.closeNpcDialogue();
     this.closeShop();
+    this.closeInventory();
     this.nearbyNpc = null;
     this.updateNpcPrompt();
 
@@ -270,6 +295,13 @@ export class PixelRPG {
     addEventListener("blur", () => this.keys.clear());
     addEventListener("keydown", event => {
       if (!this.running || this.chatInputActive || isTypingTarget(event.target)) return;
+
+      if (event.code === "KeyI" && !event.repeat && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        if (this.isInventoryOpen()) this.closeInventory();
+        else if (!this.isInteractionOpen() && this.inputEnabled) this.openInventory();
+        event.preventDefault();
+        return;
+      }
 
       if (event.code === "KeyF" && !event.repeat && !event.ctrlKey && !event.metaKey && !event.altKey) {
         if (this.isDialogueOpen()) this.closeNpcDialogue();
@@ -440,8 +472,12 @@ export class PixelRPG {
     return Boolean(this.ui.shopOverlay && !this.ui.shopOverlay.hidden);
   }
 
+  isInventoryOpen() {
+    return Boolean(this.ui.inventoryOverlay && !this.ui.inventoryOverlay.hidden);
+  }
+
   isInteractionOpen() {
-    return this.isDialogueOpen() || this.isShopOpen();
+    return this.isDialogueOpen() || this.isShopOpen() || this.isInventoryOpen();
   }
 
   openNpcInteraction() {
@@ -491,6 +527,30 @@ export class PixelRPG {
     if (!this.ui.shopOverlay) return false;
     const wasOpen = this.isShopOpen();
     this.ui.shopOverlay.hidden = true;
+    if (wasOpen) this.canvas.focus();
+    this.updateNpcPrompt();
+    return wasOpen;
+  }
+
+  openInventory() {
+    if (!this.ui.inventoryOverlay || !this.running || !this.inputEnabled || this.chatInputActive
+      || this.portalTransition || this.player.respawnTimer > 0 || this.isInteractionOpen()) {
+      return false;
+    }
+    this.keys.clear();
+    this.player.moving = false;
+    this.attackState = null;
+    this.ui.inventoryOverlay.hidden = false;
+    this.updateInventoryHud();
+    this.ui.inventoryCloseButton?.focus();
+    this.updateNpcPrompt();
+    return true;
+  }
+
+  closeInventory() {
+    if (!this.ui.inventoryOverlay) return false;
+    const wasOpen = this.isInventoryOpen();
+    this.ui.inventoryOverlay.hidden = true;
     if (wasOpen) this.canvas.focus();
     this.updateNpcPrompt();
     return wasOpen;
@@ -590,6 +650,18 @@ export class PixelRPG {
     if (this.ui.mpPotionCount) this.ui.mpPotionCount.textContent = `×${inventory.mpPotion}`;
     this.ui.hpPotionSlot?.classList.toggle("unavailable", inventory.hpPotion === 0);
     this.ui.mpPotionSlot?.classList.toggle("unavailable", inventory.mpPotion === 0);
+    if (this.ui.inventoryHpPotionCount) {
+      this.ui.inventoryHpPotionCount.textContent = `${inventory.hpPotion} / ${SHOP_ITEMS.hpPotion.maxQuantity}`;
+    }
+    if (this.ui.inventoryMpPotionCount) {
+      this.ui.inventoryMpPotionCount.textContent = `${inventory.mpPotion} / ${SHOP_ITEMS.mpPotion.maxQuantity}`;
+    }
+    if (this.ui.inventoryHpUseButton) {
+      this.ui.inventoryHpUseButton.disabled = inventory.hpPotion === 0 || this.player.hp >= this.player.maxHp;
+    }
+    if (this.ui.inventoryMpUseButton) {
+      this.ui.inventoryMpUseButton.disabled = inventory.mpPotion === 0 || this.player.mp >= this.player.maxMp;
+    }
   }
 
   updateShopHud() {
@@ -619,9 +691,10 @@ export class PixelRPG {
     return true;
   }
 
-  useItem(itemId) {
+  useItem(itemId, { fromInventory = false } = {}) {
+    const blockedInteraction = this.isInteractionOpen() && !(fromInventory && this.isInventoryOpen());
     if (!this.running || !this.inputEnabled || this.chatInputActive
-      || this.portalTransition || this.player.respawnTimer > 0 || this.isInteractionOpen()) {
+      || this.portalTransition || this.player.respawnTimer > 0 || blockedInteraction) {
       return false;
     }
     const item = SHOP_ITEMS[itemId];
@@ -641,6 +714,11 @@ export class PixelRPG {
     this.notify(`${result.item.name} 사용! ${item.resource.toUpperCase()} +${result.recovered}`);
     this.persistProgress();
     return true;
+  }
+
+  useInventoryItem(itemId) {
+    if (!this.isInventoryOpen()) return false;
+    return this.useItem(itemId, { fromInventory: true });
   }
 
   updateNpcPrompt() {
@@ -816,7 +894,10 @@ export class PixelRPG {
       this.keys.clear();
       this.attackState = null;
       this.player.moving = false;
+      this.closeInventory();
       this.ui.respawnOverlay.hidden = false;
+    } else if (this.isInventoryOpen()) {
+      this.updateInventoryHud();
     }
     return result;
   }
