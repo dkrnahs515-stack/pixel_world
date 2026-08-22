@@ -22,13 +22,16 @@ button, input { font: inherit; }
 .glass { border: 1px solid var(--line); background: var(--panel); backdrop-filter: blur(8px); box-shadow: 0 10px 30px rgba(0,0,0,.22); }
 .player-panel { position: absolute; top: 14px; left: 14px; width: 330px; padding: 13px 14px; border-radius: 14px; }
 .player-header { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 9px; }
-.player-header strong { display: block; max-width: 154px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; }
+.player-header strong { display: block; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; }
 .player-header small { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; }
 .player-actions { display: flex; align-items: center; gap: 6px; }
 .status { padding: 4px 7px; border-radius: 999px; font-size: 11px; font-weight: 800; text-shadow: none; white-space: nowrap; }
 .status.offline { color: #fecaca; background: rgba(127,29,29,.8); }
 .status.connecting { color: #fde68a; background: rgba(120,53,15,.8); }
 .status.online { color: #bbf7d0; background: rgba(20,83,45,.82); }
+.inventory-button { pointer-events: auto; display: flex; align-items: center; gap: 3px; height: 27px; padding: 2px 6px; border: 1px solid rgba(251,191,36,.4); border-radius: 7px; background: rgba(120,53,15,.58); color: #fef3c7; cursor: pointer; text-shadow: none; }
+.inventory-button:hover { background: rgba(146,64,14,.82); }
+.inventory-button kbd { min-width: 17px; padding: 0 3px; border-bottom-width: 2px; font-size: 9px; }
 .exit-button { pointer-events: auto; padding: 4px 8px; border: 1px solid rgba(254,202,202,.4); border-radius: 7px; background: rgba(127,29,29,.68); color: #fee2e2; cursor: pointer; font-size: 11px; font-weight: 800; text-shadow: none; }
 .exit-button:hover { background: rgba(185,28,28,.88); }
 .stat-row { display: flex; justify-content: space-between; margin-top: 5px; color: var(--muted); font-size: 11px; }
@@ -70,6 +73,24 @@ button, input { font: inherit; }
 .shop-item button:hover:not(:disabled) { filter: brightness(1.08); }
 .shop-item button:disabled { cursor: not-allowed; filter: grayscale(.7); opacity: .48; }
 .shop-done { width: 100%; }
+.inventory-overlay { pointer-events: auto; position: absolute; inset: 0; z-index: 37; display: grid; place-items: center; padding: 20px; background: rgba(5,9,17,.82); backdrop-filter: blur(5px); }
+.inventory-card { position: relative; width: min(100%,620px); text-align: left; }
+.inventory-card .modal-emblem { margin-left: 0; }
+.modal-emblem.inventory { border-color: rgba(251,191,36,.48); background: rgba(120,53,15,.34); }
+.inventory-description { margin: 7px 0 16px; color: var(--muted); font-size: 13px; }
+.inventory-items { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.inventory-item { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 10px; align-items: start; min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: linear-gradient(145deg,rgba(44,34,55,.74),rgba(3,8,18,.56)); }
+.inventory-item-icon { display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid rgba(255,255,255,.2); border-radius: 11px; font-size: 22px; }
+.hp-potion .inventory-item-icon { background: rgba(127,29,29,.46); color: #fda4af; }
+.mp-potion .inventory-item-icon { background: rgba(30,64,175,.46); color: #93c5fd; }
+.inventory-item-copy { min-width: 0; }
+.inventory-item-copy strong { display: block; color: #f8fafc; font-size: 14px; }
+.inventory-count { display: block; margin-top: 4px; color: #fde68a; font-size: 12px; }
+.inventory-item-copy p { min-height: 48px; margin: 9px 0 12px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.inventory-item > button { grid-column: 1 / -1; width: 100%; padding: 9px 11px; border: 1px solid rgba(251,191,36,.38); border-radius: 9px; background: linear-gradient(135deg,#f59e0b,#fbbf24); color: #3b2103; cursor: pointer; font-size: 12px; font-weight: 900; }
+.inventory-item > button:hover:not(:disabled) { filter: brightness(1.08); }
+.inventory-item > button:disabled { cursor: not-allowed; filter: grayscale(.7); opacity: .48; }
+.inventory-done { width: 100%; margin-top: 14px; }
 .chat-panel { pointer-events: auto; position: absolute; left: 14px; bottom: max(14px, env(safe-area-inset-bottom)); z-index: 10; display: grid; grid-template-rows: auto minmax(72px,1fr) auto; width: min(360px,calc(100vw - 28px)); height: min(230px,32vh); min-height: 168px; overflow: hidden; border-radius: 14px; text-shadow: none; }
 .chat-panel header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 11px; border-bottom: 1px solid rgba(255,255,255,.12); font-size: 12px; }
 .chat-status { padding: 3px 7px; border-radius: 999px; font-size: 10px; font-weight: 900; }
@@ -175,6 +196,9 @@ kbd { min-width: 23px; padding: 2px 5px; border: 1px solid rgba(255,255,255,.35)
   .shop-card { max-height: calc(100vh - 24px); overflow: auto; }
   .shop-item { grid-template-columns: 1fr; }
   .shop-item button { width: 100%; }
+  .inventory-card { max-height: calc(100vh - 24px); overflow: auto; }
+  .inventory-items { grid-template-columns: 1fr; }
+  .inventory-item-copy p { min-height: 0; }
   .chat-panel { bottom: calc(76px + env(safe-area-inset-bottom)); width: calc(100vw - 28px); height: min(180px,27vh); min-height: 150px; }
   .chat-messages { padding: 7px 8px; }
   .chat-form { padding: 7px; }

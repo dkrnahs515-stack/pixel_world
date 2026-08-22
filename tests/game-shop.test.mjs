@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PixelRPG } from "../src/game.js";
+import * as gameModule from "../src/game.js";
 import { getNpcsForWorld } from "../src/npc-data.js";
 import { createInitialProgress } from "../src/quest-state.js";
+
+const { PixelRPG } = gameModule;
 
 function fakeNode(overrides = {}) {
   return {
@@ -94,6 +96,14 @@ function constructedShopHarness() {
     buyMpPotionButton: eventNode(documentRef),
     shopHpPotionCount: eventNode(documentRef),
     shopMpPotionCount: eventNode(documentRef),
+    inventoryButton: eventNode(documentRef),
+    inventoryOverlay: eventNode(documentRef, { hidden: true }),
+    inventoryCloseButton: eventNode(documentRef),
+    inventoryDoneButton: eventNode(documentRef),
+    inventoryHpPotionCount: eventNode(documentRef),
+    inventoryMpPotionCount: eventNode(documentRef),
+    inventoryHpUseButton: eventNode(documentRef),
+    inventoryMpUseButton: eventNode(documentRef),
     hpPotionSlot: eventNode(documentRef, { dataset: { code: "Digit1" } }),
     mpPotionSlot: eventNode(documentRef, { dataset: { code: "Digit2" } }),
     hpPotionCount: eventNode(documentRef),
@@ -180,6 +190,13 @@ function shopHarness(overrides = {}) {
     buyMpPotionButton: fakeNode(),
     shopHpPotionCount: fakeNode(),
     shopMpPotionCount: fakeNode(),
+    inventoryOverlay: fakeNode({ hidden: true }),
+    inventoryCloseButton: fakeNode(),
+    inventoryDoneButton: fakeNode(),
+    inventoryHpPotionCount: fakeNode(),
+    inventoryMpPotionCount: fakeNode(),
+    inventoryHpUseButton: fakeNode(),
+    inventoryMpUseButton: fakeNode(),
     hpPotionCount: fakeNode(),
     mpPotionCount: fakeNode(),
     hpPotionSlot: fakeNode(),
@@ -193,6 +210,7 @@ function shopHarness(overrides = {}) {
     mpText: fakeNode(),
     hpBar: fakeNode(),
     mpBar: fakeNode(),
+    respawnOverlay: fakeNode({ hidden: true }),
     strongSlot: fakeNode(),
     strongCooldown: fakeNode(),
     playerSubtitle: fakeNode(),
@@ -386,4 +404,177 @@ test("상점이 열려 있으면 공격과 채팅 입력을 시작하지 않는�
 
   assert.equal(game.attackState, null);
   assert.equal(game.openChatInput(), false);
+});
+
+test("I 키와 화면 가방 버튼은 인벤토리를 열고 다시 닫는다", () => {
+  const { game, elements, dispatchWindow, documentRef } = constructedShopHarness();
+  game.running = true;
+  game.inputEnabled = true;
+  game.player.hp = 70;
+  game.player.mp = 50;
+  game.progress = {
+    ...createInitialProgress(),
+    inventory: { hpPotion: 2, mpPotion: 1 },
+  };
+  game.bindEvents();
+
+  let prevented = false;
+  dispatchWindow("keydown", {
+    code: "KeyI",
+    target: {},
+    repeat: false,
+    ctrlKey: false,
+    metaKey: false,
+    altKey: false,
+    preventDefault() { prevented = true; },
+  });
+
+  assert.equal(prevented, true);
+  assert.equal(game.isInventoryOpen?.(), true);
+  assert.strictEqual(documentRef.activeElement, elements.inventoryCloseButton);
+  assert.equal(elements.inventoryHpPotionCount.textContent, "2 / 99");
+  assert.equal(elements.inventoryMpPotionCount.textContent, "1 / 99");
+
+  dispatchWindow("keydown", {
+    code: "KeyI",
+    target: {},
+    repeat: false,
+    ctrlKey: false,
+    metaKey: false,
+    altKey: false,
+    preventDefault() {},
+  });
+  assert.equal(game.isInventoryOpen?.(), false);
+
+  elements.inventoryButton.click();
+  assert.equal(game.isInventoryOpen?.(), true);
+});
+
+test("인벤토리 Tab 포커스는 사용 가능한 내부 버튼만 순환한다", () => {
+  const { game, elements, documentRef } = constructedShopHarness();
+  game.running = true;
+  game.inputEnabled = true;
+  game.player.hp = 70;
+  game.player.mp = 50;
+  game.progress = {
+    ...createInitialProgress(),
+    inventory: { hpPotion: 1, mpPotion: 1 },
+  };
+
+  assert.equal(game.openInventory?.(), true);
+  elements.inventoryOverlay.dispatch("keydown", {
+    code: "Tab",
+    shiftKey: false,
+    preventDefault() {},
+  });
+  assert.strictEqual(documentRef.activeElement, elements.inventoryHpUseButton);
+
+  elements.inventoryCloseButton.focus();
+  elements.inventoryOverlay.dispatch("keydown", {
+    code: "Tab",
+    shiftKey: true,
+    preventDefault() {},
+  });
+  assert.strictEqual(documentRef.activeElement, elements.inventoryDoneButton);
+});
+
+test("인벤토리 사용 버튼은 물약을 소비하고 열린 화면의 수량을 갱신한다", () => {
+  const { game, storage } = shopHarness({ inventory: { hpPotion: 1 } });
+  game.ui.inventoryOverlay.hidden = false;
+
+  assert.equal(game.useInventoryItem?.("hpPotion"), true);
+  assert.equal(game.player.hp, 100);
+  assert.equal(game.progress.inventory.hpPotion, 0);
+  assert.equal(game.ui.inventoryHpPotionCount.textContent, "0 / 99");
+  assert.equal(game.ui.inventoryHpUseButton.disabled, true);
+  assert.equal(game.isInventoryOpen?.(), true);
+  assert.equal(storage.writes.length, 1);
+});
+
+test("체력·마력 물약 사용 버튼은 터치와 클릭을 같은 게임 메서드에 연결한다", () => {
+  const { game, elements } = constructedShopHarness();
+  const usedItems = [];
+  game.useInventoryItem = itemId => {
+    usedItems.push(itemId);
+    return true;
+  };
+
+  elements.inventoryHpUseButton.click();
+  elements.inventoryMpUseButton.click();
+
+  assert.deepEqual(usedItems, ["hpPotion", "mpPotion"]);
+});
+
+test("인벤토리가 열려 있으면 이동·공격·채팅·단축 물약 입력을 차단한다", () => {
+  const { game, storage } = shopHarness({ inventory: { hpPotion: 1 } });
+  game.basicCooldown = 0;
+  game.strongCooldown = 0;
+  game.ui.inventoryOverlay.hidden = false;
+  game.chat = { open() { return true; } };
+
+  game.tryAttack("basic");
+
+  assert.equal(game.isInteractionOpen(), true);
+  assert.equal(game.attackState, null);
+  assert.equal(game.openChatInput(), false);
+  assert.equal(game.useItem("hpPotion"), false);
+  assert.equal(game.progress.inventory.hpPotion, 1);
+  assert.equal(storage.writes.length, 0);
+});
+
+test("Escape 입력은 나가기보다 인벤토리를 먼저 닫는다", () => {
+  assert.equal(gameModule.interactionKeyAction?.({
+    code: "Escape",
+    inventoryOpen: true,
+    shopOpen: false,
+    dialogueOpen: false,
+  }), "close-inventory");
+  assert.equal(gameModule.interactionKeyAction?.({
+    code: "Enter",
+    inventoryOpen: true,
+    shopOpen: false,
+    dialogueOpen: false,
+  }), "block");
+});
+
+test("게임을 나가면 열려 있던 인벤토리도 닫힌다", async () => {
+  const { game } = shopHarness();
+  game.ui.inventoryOverlay.hidden = false;
+  game.ui.playerCount = fakeNode();
+  game.network = null;
+  game.chat = { reset() {} };
+  game.dialogue = { close() {} };
+  game.remotePlayers = new Map();
+  game.switchWorld = () => {};
+  game.resetCombatState = () => {};
+  game.updateNetworkStatus = () => {};
+
+  await game.leave({ silent: true });
+
+  assert.equal(game.isInventoryOpen(), false);
+});
+
+test("인벤토리를 연 채 피격되면 체력 물약 사용 가능 상태를 갱신한다", () => {
+  const { game } = shopHarness({ inventory: { hpPotion: 1 } });
+  game.player.hp = game.player.maxHp;
+  game.ui.inventoryOverlay.hidden = false;
+  game.updateInventoryHud();
+  assert.equal(game.ui.inventoryHpUseButton.disabled, true);
+
+  game.damagePlayer(10, { x: game.player.x - 20, y: game.player.y });
+
+  assert.equal(game.player.hp, 90);
+  assert.equal(game.ui.inventoryHpUseButton.disabled, false);
+});
+
+test("인벤토리를 연 채 쓰러지면 부활 화면을 가리지 않도록 자동으로 닫는다", () => {
+  const { game } = shopHarness({ inventory: { hpPotion: 1 } });
+  game.player.hp = 5;
+  game.ui.inventoryOverlay.hidden = false;
+
+  game.damagePlayer(10, { x: game.player.x - 20, y: game.player.y });
+
+  assert.equal(game.player.respawnTimer > 0, true);
+  assert.equal(game.isInventoryOpen(), false);
+  assert.equal(game.ui.respawnOverlay.hidden, false);
 });
