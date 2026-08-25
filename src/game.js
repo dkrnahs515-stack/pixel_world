@@ -4,12 +4,20 @@ import { ChatController } from "./chat-controller.js";
 import { latestBubblesByUid } from "./chat-state.js";
 import { attackDefinition, directionVector, isTargetInAttackArc } from "./combat.js";
 import { DialogueController } from "./dialogue-controller.js";
-import { createEnemies, damageEnemy, drawEnemy, updateEnemies } from "./enemies.js";
+import { createEnemies, createMagmaChildren, damageEnemy, drawEnemy, updateEnemies } from "./enemies.js";
 import { movementVector } from "./input.js";
 import { createNetworkAdapter } from "./network.js";
 import { getNpcsForWorld } from "./npc-data.js";
 import { drawNpc, findNearbyNpc } from "./npcs.js";
-import { applyPlayerDamage, respawnPlayer, tickPlayerStatus } from "./player-combat.js";
+import {
+  applyPlayerDamage,
+  applyPlayerSlow,
+  clearPlayerCombatStatuses,
+  createCombatStatusEffects,
+  playerMovementMultiplier,
+  respawnPlayer,
+  tickPlayerStatus,
+} from "./player-combat.js";
 import { advancePortalTransition, createPortalTransition } from "./portal-transition.js";
 import { grantHuntingReward, statsForLevel } from "./player-progression.js";
 import { loadProgressWithStatus, saveProgress } from "./progress-storage.js";
@@ -84,6 +92,24 @@ export function loadPlayerProgress(storage, nickname) {
   return { ...loaded, notice };
 }
 
+export function drawPlayerSlowEffect(ctx, player, cameraX, cameraY) {
+  if (!(player.statusEffects?.slow?.remaining > 0)) return;
+  const x = Math.round(player.x - cameraX);
+  const y = Math.round(player.y - cameraY);
+  ctx.save();
+  ctx.fillStyle = "rgba(118,80,143,.75)";
+  for (let index = 0; index < 6; index += 1) {
+    const angle = player.step + index * Math.PI / 3;
+    ctx.fillRect(
+      Math.round(x + Math.cos(angle) * 20) - 2,
+      Math.round(y + Math.sin(angle) * 12) - 2,
+      4,
+      4,
+    );
+  }
+  ctx.restore();
+}
+
 function shopFailureMessage(reason, item) {
   if (reason === "insufficient_gold") return "Gold가 부족합니다.";
   if (reason === "inventory_full") return "물약을 더 이상 보유할 수 없습니다.";
@@ -110,11 +136,15 @@ export class PixelRPG {
       w: 24, h: 31, dir: "down", moving: false, step: 0,
       hp: 100, maxHp: 100, mp: 100, maxMp: 100,
       invulnerable: 0, hitFlash: 0, respawnTimer: 0,
+      statusEffects: createCombatStatusEffects(),
       color: "#4f8e5b", name: "모험가",
     };
     this.camera = { x: 0, y: 0, prevX: 0, prevY: 0 };
     this.remotePlayers = new Map();
     this.enemies = [];
+    this.processedEnemyAttackIds = new Set();
+    this.processedEnemySpawnIds = new Set();
+    this.dynamicEnemySequence = 0;
     this.portalTransition = null;
     this.portalCooldown = 0;
     this.attackState = null;
@@ -401,7 +431,13 @@ export class PixelRPG {
     } else {
       this.updateAttack(dt);
       const isBlocked = (x, y, radius) => isWorldPositionBlocked(this.mapId, x, y, radius);
-      this.enemies = updateEnemies(this.enemies, this.player, dt, isBlocked);
+      const simulation = updateEnemies(this.enemies, this.player, dt, {
+        isBlocked,
+        portals: getWorldDefinition(this.mapId).portals,
+        random: Math.random,
+      });
+      this.enemies = simulation.enemies;
+      this.applyEnemyEvents(simulation.events);
 
       if (this.player.respawnTimer <= 0) {
         this.applyEnemyContactDamage();
@@ -429,9 +465,10 @@ export class PixelRPG {
     this.player.moving = Boolean(dx || dy);
 
     if (!this.player.moving) return;
-    const nextX = this.player.x + dx * C.PLAYER_SPEED * dt;
+    const speed = C.PLAYER_SPEED * playerMovementMultiplier(this.player);
+    const nextX = this.player.x + dx * speed * dt;
     if (!isWorldPositionBlocked(this.mapId, nextX, this.player.y, PLAYER_RADIUS)) this.player.x = nextX;
-    const nextY = this.player.y + dy * C.PLAYER_SPEED * dt;
+    const nextY = this.player.y + dy * speed * dt;
     if (!isWorldPositionBlocked(this.mapId, this.player.x, nextY, PLAYER_RADIUS)) this.player.y = nextY;
     this.player.step += dt * 11;
     if (Math.abs(dx) > Math.abs(dy)) this.player.dir = dx > 0 ? "right" : "left";
@@ -796,10 +833,14 @@ export class PixelRPG {
     this.npcs = getNpcsForWorld(this.mapId);
     this.worldLayer = createWorldLayer(this.mapId);
     this.enemies = createEnemies(this.mapId);
+    this.processedEnemyAttackIds = new Set();
+    this.processedEnemySpawnIds = new Set();
+    this.dynamicEnemySequence = 0;
     this.player.x = targetX;
     this.player.y = targetY;
     this.player.prevX = targetX;
     this.player.prevY = targetY;
+    clearPlayerCombatStatuses(this.player);
     this.remotePlayers.clear();
     this.ui.playerCount.textContent = "1";
 
@@ -850,6 +891,7 @@ export class PixelRPG {
     const killRewards = [];
     for (const enemy of this.enemies) {
       if (enemy.state === "dying") continue;
+      if (enemy.targetable === false) continue;
       if (!isTargetInAttackArc(this.player, this.player.dir, enemy, definition.range, definition.arcDegrees)) continue;
       const result = damageEnemy(enemy, definition.damage, knockbackDirection, definition.knockback);
       if (result.killed) {
@@ -865,13 +907,48 @@ export class PixelRPG {
 
   applyEnemyContactDamage() {
     for (const enemy of this.enemies) {
-      if (enemy.state === "dying" || enemy.contactCooldown > 0) continue;
+      if (enemy.state === "dying" || enemy.targetable === false || enemy.contactMode !== "contact" || enemy.contactCooldown > 0) continue;
       const dx = this.player.x - enemy.x;
       const dy = this.player.y - enemy.y;
       if (Math.hypot(dx, dy) >= enemy.radius + PLAYER_RADIUS) continue;
       const result = this.damagePlayer(enemy.contactDamage, enemy);
-      if (result.applied) enemy.contactCooldown = 1;
+      if (result.applied) enemy.contactCooldown = enemy.contactCooldownDuration;
       if (result.died) break;
+    }
+  }
+
+  applyEnemyEvents(events) {
+    this.processedEnemyAttackIds ||= new Set();
+    this.processedEnemySpawnIds ||= new Set();
+    this.dynamicEnemySequence ||= 0;
+    for (const event of events) {
+      if (event?.type === "apply-player-status") {
+        if (
+          typeof event.enemyId !== "string"
+          || event.enemyId.length === 0
+          || event.status !== "slow"
+          || !Number.isFinite(event.multiplier)
+          || !Number.isFinite(event.duration)
+        ) continue;
+        if (applyPlayerSlow(this.player, event.multiplier, event.duration)) {
+          this.notify("포자에 노출되어 이동속도가 감소했습니다.");
+        }
+        continue;
+      }
+      if (event?.type === "spawn-enemies") {
+        if (this.processedEnemySpawnIds.has(event.enemyId)) continue;
+        this.processedEnemySpawnIds.add(event.enemyId);
+        const children = createMagmaChildren(event, {
+          isBlocked: (x, y, radius) => isWorldPositionBlocked(this.mapId, x, y, radius),
+          createId: () => `${this.mapId}-dynamic-${++this.dynamicEnemySequence}`,
+        });
+        this.enemies.push(...children);
+        continue;
+      }
+      if (event?.type !== "damage-player" || !event.attackId) continue;
+      if (this.processedEnemyAttackIds.has(event.attackId)) continue;
+      this.processedEnemyAttackIds.add(event.attackId);
+      if (this.damagePlayer(event.amount, event.source).died) break;
     }
   }
 
@@ -914,8 +991,12 @@ export class PixelRPG {
   resetCombatState() {
     const world = getWorldDefinition(this.mapId);
     respawnPlayer(this.player, world.spawn);
+    clearPlayerCombatStatuses(this.player);
     this.player.moving = false;
     this.enemies = createEnemies(this.mapId);
+    this.processedEnemyAttackIds = new Set();
+    this.processedEnemySpawnIds = new Set();
+    this.dynamicEnemySequence = 0;
     this.attackState = null;
     this.basicCooldown = 0;
     this.strongCooldown = 0;
@@ -1021,6 +1102,7 @@ export class PixelRPG {
       }
     }
 
+    drawPlayerSlowEffect(ctx, this.player, cameraX, cameraY);
     if (this.attackState) drawAttackEffect(ctx, this.player, this.attackState, cameraX, cameraY, alpha);
     this.drawDamageNumbers(ctx, cameraX, cameraY);
     const bubbles = latestBubblesByUid(this.chatMessages, { mapId: this.mapId, now: Date.now() });
