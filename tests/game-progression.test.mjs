@@ -52,6 +52,8 @@ function enemy(kind, x, hp = 1) {
     deathTime: 0,
     knockbackX: 0,
     knockbackY: 0,
+    generation: 0,
+    targetable: true,
   };
 }
 
@@ -146,6 +148,22 @@ test("a dying slime rewards once and persists quest plus progression together", 
     assert.equal(storage.writes[0].value.exp, 3);
     assert.equal(storage.writes[0].value.gold, 1);
     assert.equal(storage.writes[0].value.quests.adventureStart.progress, 1);
+  });
+});
+
+test("마그마 부모는 한 번만 보상하고 작은 자식은 보상이나 퀘스트 진행을 주지 않는다", async () => {
+  await withMinimumGold(() => {
+    const { game } = gameHarness();
+    const parent = enemy("magma-slime", 30, 10);
+    const child = { ...enemy("magma-slime-small", 40, 3), generation: 1 };
+    game.enemies = [parent, child];
+
+    game.applyAttackHits({ ...lethalAttack, damage: 10 });
+    game.applyAttackHits({ ...lethalAttack, damage: 10 });
+
+    assert.equal(game.progress.exp, 15);
+    assert.equal(game.progress.gold, 10);
+    assert.equal(game.progress.quests.adventureStart.progress, 0);
   });
 });
 

@@ -8,6 +8,7 @@ import {
   isSafeWorld,
   normalizeWorldId,
 } from "../src/world-data.js";
+import { isWorldPositionBlocked } from "../src/world.js";
 
 test("four regions total exactly ten times the original playable area", () => {
   assert.equal(getTotalWorldArea(), 2880 * 1800 * 10);
@@ -24,6 +25,22 @@ test("the village is the only safe region and has no enemy spawns", () => {
   assert.equal(isSafeWorld("volcano"), false);
   assert.equal(isSafeWorld("forest"), false);
   assert.equal(isSafeWorld("coast"), false);
+});
+
+test("new regional spawns are traversable and away from portal centers", () => {
+  const newKinds = new Set([
+    "fang-shark", "pirate-shark", "magma-slime", "flame-imp",
+    "ancient-boar", "moss-troll", "ancient-mushroom-bug",
+  ]);
+  for (const mapId of ["volcano", "forest", "coast"]) {
+    const world = WORLD_DEFINITIONS[mapId];
+    for (const spawn of world.enemySpawns.filter(candidate => newKinds.has(candidate.kind))) {
+      assert.equal(isWorldPositionBlocked(mapId, spawn.x, spawn.y, 0), false);
+      for (const portal of world.portals) {
+        assert.ok(Math.hypot(spawn.x - (portal.x + portal.w / 2), spawn.y - (portal.y + portal.h / 2)) > 180);
+      }
+    }
+  }
 });
 
 test("every portal destination is inside a valid region", () => {

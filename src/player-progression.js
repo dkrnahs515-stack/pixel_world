@@ -11,6 +11,13 @@ export const MONSTER_REWARDS = Object.freeze({
   "water-slime": Object.freeze({ label: "물방울 슬라임", exp: 5, goldMin: 2, goldMax: 5 }),
   boar: Object.freeze({ label: "멧돼지", exp: 7, goldMin: 3, goldMax: 6 }),
   crab: Object.freeze({ label: "게", exp: 8, goldMin: 4, goldMax: 7 }),
+  "fang-shark": Object.freeze({ label: "송곳니 상어", exp: 20, goldMin: 15, goldMax: 15 }),
+  "pirate-shark": Object.freeze({ label: "해적선 상어", exp: 25, goldMin: 20, goldMax: 20 }),
+  "magma-slime": Object.freeze({ label: "마그마 슬라임", exp: 15, goldMin: 10, goldMax: 10 }),
+  "flame-imp": Object.freeze({ label: "불꽃 도깨비", exp: 40, goldMin: 25, goldMax: 25 }),
+  "ancient-boar": Object.freeze({ label: "고대 멧돼지", exp: 30, goldMin: 20, goldMax: 20 }),
+  "moss-troll": Object.freeze({ label: "이끼 트롤", exp: 50, goldMin: 35, goldMax: 35 }),
+  "ancient-mushroom-bug": Object.freeze({ label: "고대 버섯충", exp: 35, goldMin: 25, goldMax: 25 }),
 });
 
 export function nextLevelExp(level) {

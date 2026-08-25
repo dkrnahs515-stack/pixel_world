@@ -2,6 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   applyPlayerDamage,
+  applyPlayerSlow,
+  createCombatStatusEffects,
+  playerMovementMultiplier,
   respawnPlayer,
   tickPlayerStatus,
 } from "../src/player-combat.js";
@@ -49,6 +52,47 @@ test("status timers count down without becoming negative", () => {
   tickPlayerStatus(target, 0.2);
   assert.equal(target.invulnerable, 0.3);
   assert.equal(target.hitFlash, 0);
+});
+
+test("포자 둔화는 0.65 배율로 적용되고 중첩 없이 시간을 갱신한다", () => {
+  const target = player({ statusEffects: createCombatStatusEffects() });
+
+  assert.equal(applyPlayerSlow(target, 0.65, 2.5), true);
+  tickPlayerStatus(target, 1);
+  assert.equal(playerMovementMultiplier(target), 0.65);
+  assert.equal(target.statusEffects.slow.remaining, 1.5);
+
+  assert.equal(applyPlayerSlow(target, 0.8, 2.5), true);
+  assert.equal(target.statusEffects.slow.multiplier, 0.65);
+  assert.equal(target.statusEffects.slow.remaining, 2.5);
+});
+
+test("포자 둔화는 유효하지 않은 값이나 부활 중인 대상에게 적용하지 않는다", () => {
+  const target = player({ statusEffects: createCombatStatusEffects() });
+  const before = structuredClone(target.statusEffects);
+
+  for (const [multiplier, duration] of [[0, 2.5], [1.01, 2.5], [Infinity, 2.5], [0.65, 0], [0.65, Infinity]]) {
+    assert.equal(applyPlayerSlow(target, multiplier, duration), false);
+    assert.deepEqual(target.statusEffects, before);
+  }
+
+  target.respawnTimer = 1;
+  assert.equal(applyPlayerSlow(target, 0.65, 2.5), false);
+  assert.deepEqual(target.statusEffects, before);
+});
+
+test("둔화는 시간이 끝나거나 부활하면 정상 속도로 복원된다", () => {
+  const target = player({ statusEffects: createCombatStatusEffects() });
+
+  applyPlayerSlow(target, 0.65, 0.1);
+  tickPlayerStatus(target, 0.2);
+  assert.equal(playerMovementMultiplier(target), 1);
+  assert.deepEqual(target.statusEffects, createCombatStatusEffects());
+
+  applyPlayerSlow(target, 0.65, 2.5);
+  respawnPlayer(target);
+  assert.equal(playerMovementMultiplier(target), 1);
+  assert.deepEqual(target.statusEffects, createCombatStatusEffects());
 });
 
 test("respawn restores position, HP, MP, and frame history", () => {

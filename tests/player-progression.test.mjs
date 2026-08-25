@@ -49,6 +49,27 @@ test("몬스터별 EXP와 Gold 최솟값·최댓값을 계산한다", () => {
   }
 });
 
+test("신규 부모 몬스터는 난수와 무관한 고정 보상을 지급한다", () => {
+  const fixedCases = [
+    ["fang-shark", 20, 15, "송곳니 상어"],
+    ["pirate-shark", 25, 20, "해적선 상어"],
+    ["magma-slime", 15, 10, "마그마 슬라임"],
+    ["flame-imp", 40, 25, "불꽃 도깨비"],
+    ["ancient-boar", 30, 20, "고대 멧돼지"],
+    ["moss-troll", 50, 35, "이끼 트롤"],
+    ["ancient-mushroom-bug", 35, 25, "고대 버섯충"],
+  ];
+
+  for (const [kind, exp, gold, label] of fixedCases) {
+    for (const random of [() => 0, () => 0.999999]) {
+      assert.deepEqual(progression.getMonsterReward(kind, random), {
+        kind, label, exp, gold,
+      });
+    }
+  }
+  assert.equal(progression.getMonsterReward("magma-slime-small", () => 0), null);
+});
+
 test("종류별 사냥 보상을 진행 데이터에 반영하고 알 수 없는 종류는 거부한다", () => {
   const result = progression.grantHuntingReward(base(), "boar", () => 0);
   assert.equal(result.rewardExp, 7);
