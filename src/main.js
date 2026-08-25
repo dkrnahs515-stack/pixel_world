@@ -1,7 +1,11 @@
 import { PixelRPG, interactionKeyAction } from "./game.js";
 import { chatKeyAction } from "./chat-controller.js";
+import { isQaMode } from "./qa-mode.js";
+
+const qaEnabled = isQaMode(location.search);
 
 const elements = {
+  qaEnabled,
   canvas: document.querySelector("#game"),
   minimap: document.querySelector("#minimap"),
   hpBar: document.querySelector("#hpBar"),
@@ -48,6 +52,12 @@ const elements = {
   inventoryMpPotionCount: document.querySelector("#inventoryMpPotionCount"),
   inventoryHpUseButton: document.querySelector("#inventoryHpUseButton"),
   inventoryMpUseButton: document.querySelector("#inventoryMpUseButton"),
+  qaButton: document.querySelector("#qaButton"),
+  qaOverlay: document.querySelector("#qaOverlay"),
+  qaCloseButton: document.querySelector("#qaCloseButton"),
+  qaDoneButton: document.querySelector("#qaDoneButton"),
+  qaWorldButtons: [...document.querySelectorAll("[data-qa-world]")],
+  qaMonsterButtons: [...document.querySelectorAll("[data-qa-monster]")],
   hpPotionSlot: document.querySelector("#hpPotionSlot"),
   mpPotionSlot: document.querySelector("#mpPotionSlot"),
   hpPotionCount: document.querySelector("#hpPotionCount"),
@@ -58,6 +68,8 @@ const elements = {
   expBar: document.querySelector("#expBar"),
   goldText: document.querySelector("#goldText"),
 };
+
+elements.qaButton.hidden = !qaEnabled;
 
 const game = new PixelRPG(elements);
 const hud = document.querySelector("#hud");
@@ -133,12 +145,14 @@ addEventListener("keydown", event => {
   if (!["Enter", "Escape"].includes(event.code)) return;
   const interactionAction = interactionKeyAction({
     code: event.code,
+    qaOpen: game.isQaOpen(),
     inventoryOpen: game.isInventoryOpen(),
     shopOpen: game.isShopOpen(),
     dialogueOpen: game.isDialogueOpen(),
   });
   if (interactionAction !== null) {
-    if (interactionAction === "close-inventory") game.closeInventory();
+    if (interactionAction === "close-qa") game.closeQaPanel();
+    else if (interactionAction === "close-inventory") game.closeInventory();
     else if (interactionAction === "close-shop") game.closeShop();
     else if (interactionAction === "close-dialogue") game.closeNpcDialogue();
     if (interactionAction !== "block") event.preventDefault();
@@ -177,6 +191,7 @@ function openExitDialog() {
   game.closeNpcDialogue();
   game.closeShop();
   game.closeInventory();
+  game.closeQaPanel();
   game.cancelChatInput();
   game.setInputEnabled(false);
   exitOverlay.hidden = false;

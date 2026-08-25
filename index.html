@@ -63,6 +63,7 @@
         </div>
         <div class="player-actions">
           <span id="networkBadge" class="status offline">오프라인</span>
+          <button id="qaButton" class="qa-button" type="button" aria-label="QA 도구 열기" hidden>QA</button>
           <button id="inventoryButton" class="inventory-button" type="button" aria-label="인벤토리 열기">
             <span aria-hidden="true">🎒</span><kbd>I</kbd>
           </button>
@@ -160,6 +161,41 @@
           </article>
         </div>
         <button id="inventoryDoneButton" class="secondary-button inventory-done" type="button">인벤토리 닫기</button>
+      </div>
+    </section>
+
+    <section id="qaOverlay" class="qa-overlay" hidden>
+      <div class="modal-card qa-card" role="dialog" aria-modal="true" aria-labelledby="qaTitle" aria-describedby="qaDescription">
+        <button id="qaCloseButton" class="dialogue-close" type="button" aria-label="QA 도구 닫기">×</button>
+        <div class="modal-emblem qa" aria-hidden="true">⚙</div>
+        <p class="eyebrow">FIELD QA TOOLS</p>
+        <h2 id="qaTitle">지역·몬스터 점검</h2>
+        <p id="qaDescription" class="qa-description">QA 전투에서 획득한 EXP와 Gold는 현재 닉네임의 진행 데이터에 저장됩니다.</p>
+
+        <section class="qa-section" aria-labelledby="qaRegionTitle">
+          <h3 id="qaRegionTitle">지역 이동</h3>
+          <div class="qa-region-grid">
+            <button type="button" data-qa-world="village">중앙 마을</button>
+            <button type="button" data-qa-world="coast">푸른 해안가</button>
+            <button type="button" data-qa-world="volcano">활화산</button>
+            <button type="button" data-qa-world="forest">태고의 숲</button>
+          </div>
+        </section>
+
+        <section class="qa-section" aria-labelledby="qaMonsterTitle">
+          <h3 id="qaMonsterTitle">신규 몬스터 소환</h3>
+          <div class="qa-monster-grid">
+            <button type="button" data-qa-monster="fang-shark"><span>해안</span>송곳니 상어</button>
+            <button type="button" data-qa-monster="pirate-shark"><span>해안</span>해적선 상어</button>
+            <button type="button" data-qa-monster="magma-slime"><span>화산</span>마그마 슬라임</button>
+            <button type="button" data-qa-monster="flame-imp"><span>화산</span>불꽃 도깨비</button>
+            <button type="button" data-qa-monster="ancient-boar"><span>숲</span>고대 멧돼지</button>
+            <button type="button" data-qa-monster="moss-troll"><span>숲</span>이끼 트롤</button>
+            <button type="button" data-qa-monster="ancient-mushroom-bug"><span>숲</span>고대 버섯충</button>
+          </div>
+        </section>
+
+        <button id="qaDoneButton" class="secondary-button qa-done" type="button">QA 도구 닫기</button>
       </div>
     </section>
 
