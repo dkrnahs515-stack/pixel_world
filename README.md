@@ -93,3 +93,14 @@
 
 Firebase 설정이 없거나 연결에 실패하면 자동으로 오프라인 모드로 실행됩니다.
 오프라인 모드에서는 채팅 입력창이 비활성화되며 이동·전투·포탈·나가기 기능은 계속 사용할 수 있습니다.
+
+## 자동 품질 검사
+
+`main` 대상 Pull Request와 `main` 변경에는 GitHub Actions의 `Verify game` 검사가 자동으로 실행됩니다.
+
+- Node.js 24에서 게임 로직·저장·정적 UI 테스트 전체 실행
+- 모든 `src/*.js` 파일의 JavaScript 문법 검사
+- 현재 자동 테스트 수: 219개(기존 게임 테스트 218개 + Actions 설정 검증 1개)
+- Playwright가 필요한 실제 브라우저 조작 테스트는 포함하지 않으며 Pages 실플레이에서 별도로 확인
+
+검사에 실패한 Pull Request에는 빨간 실패 상태가 표시됩니다. 저장소에서 `Game tests and JavaScript syntax`를 필수 검사로 지정하면 실패한 변경의 `main` 병합을 차단할 수 있습니다.

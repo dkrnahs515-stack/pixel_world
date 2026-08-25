@@ -1,0 +1,39 @@
+name: Verify game
+
+on:
+  pull_request:
+    branches: ["main"]
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-game-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Game tests and JavaScript syntax
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
+      - name: Run game tests
+        run: node --test tests/*.test.mjs tests/*.static.test.cjs
+
+      - name: Check JavaScript syntax
+        shell: bash
+        run: |
+          for file in src/*.js; do
+            node --check "$file"
+          done
