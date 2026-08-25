@@ -4,7 +4,8 @@ import { ChatController } from "./chat-controller.js";
 import { latestBubblesByUid } from "./chat-state.js";
 import { attackDefinition, directionVector, isTargetInAttackArc } from "./combat.js";
 import { DialogueController } from "./dialogue-controller.js";
-import { createEnemies, createMagmaChildren, damageEnemy, drawEnemy, updateEnemies } from "./enemies.js";
+import { createEnemies, createEnemyInstance, createMagmaChildren, damageEnemy, drawEnemy, updateEnemies } from "./enemies.js";
+import { getEnemyDefinition } from "./enemy-definitions.js";
 import { movementVector } from "./input.js";
 import { createNetworkAdapter } from "./network.js";
 import { getNpcsForWorld } from "./npc-data.js";
@@ -21,6 +22,7 @@ import {
 import { advancePortalTransition, createPortalTransition } from "./portal-transition.js";
 import { grantHuntingReward, statsForLevel } from "./player-progression.js";
 import { loadProgressWithStatus, saveProgress } from "./progress-storage.js";
+import { findQaSpawnPosition, getQaMonster } from "./qa-mode.js";
 import { SHOP_ITEMS, buyShopItem, usePotion } from "./shop-state.js";
 import {
   ADVENTURE_QUEST,
@@ -57,7 +59,8 @@ export function dialogueKeyAction(code) {
   return null;
 }
 
-export function interactionKeyAction({ code, inventoryOpen, shopOpen, dialogueOpen }) {
+export function interactionKeyAction({ code, qaOpen, inventoryOpen, shopOpen, dialogueOpen }) {
+  if (qaOpen) return code === "Escape" ? "close-qa" : "block";
   if (inventoryOpen) return code === "Escape" ? "close-inventory" : "block";
   if (shopOpen) return code === "Escape" ? "close-shop" : "block";
   if (dialogueOpen) return code === "Escape" ? "close-dialogue" : "block";
@@ -163,6 +166,7 @@ export class PixelRPG {
     this.messageTimer = 0;
     this.chatMessages = [];
     this.chatInputActive = false;
+    this.qaEnabled = Boolean(elements.qaEnabled);
     this.progress = createInitialProgress();
     this.npcs = getNpcsForWorld(this.mapId);
     this.nearbyNpc = null;
@@ -211,6 +215,26 @@ export class PixelRPG {
       event.preventDefault();
       nextDialogueFocus(controls, document.activeElement, event.shiftKey)?.focus();
     });
+    elements.qaButton?.addEventListener("click", () => this.openQaPanel());
+    elements.qaCloseButton?.addEventListener("click", () => this.closeQaPanel());
+    elements.qaDoneButton?.addEventListener("click", () => this.closeQaPanel());
+    for (const button of elements.qaWorldButtons || []) {
+      button.addEventListener("click", () => this.qaTravel(button.dataset.qaWorld));
+    }
+    for (const button of elements.qaMonsterButtons || []) {
+      button.addEventListener("click", () => this.qaSpawnMonster(button.dataset.qaMonster));
+    }
+    elements.qaOverlay?.addEventListener("keydown", event => {
+      if (event.code !== "Tab") return;
+      const controls = [
+        elements.qaCloseButton,
+        ...(elements.qaWorldButtons || []),
+        ...(elements.qaMonsterButtons || []),
+        elements.qaDoneButton,
+      ].filter(control => control && !control.disabled);
+      event.preventDefault();
+      nextDialogueFocus(controls, document.activeElement, event.shiftKey)?.focus();
+    });
     this.chat = new ChatController({
       panel: elements.chatPanel,
       list: elements.chatMessages,
@@ -254,6 +278,7 @@ export class PixelRPG {
     this.closeNpcDialogue();
     this.closeShop();
     this.closeInventory();
+    this.closeQaPanel();
     this.updateQuestHud();
     this.updateProgressHud();
     this.updateInventoryHud();
@@ -294,6 +319,7 @@ export class PixelRPG {
     this.closeNpcDialogue();
     this.closeShop();
     this.closeInventory();
+    this.closeQaPanel();
     this.nearbyNpc = null;
     this.updateNpcPrompt();
 
@@ -513,8 +539,98 @@ export class PixelRPG {
     return Boolean(this.ui.inventoryOverlay && !this.ui.inventoryOverlay.hidden);
   }
 
+  isQaOpen() {
+    return Boolean(this.qaEnabled && this.ui.qaOverlay && !this.ui.qaOverlay.hidden);
+  }
+
   isInteractionOpen() {
-    return this.isDialogueOpen() || this.isShopOpen() || this.isInventoryOpen();
+    return this.isQaOpen() || this.isDialogueOpen() || this.isShopOpen() || this.isInventoryOpen();
+  }
+
+  openQaPanel() {
+    if (!this.qaEnabled || !this.ui.qaOverlay || !this.running || !this.inputEnabled
+      || this.chatInputActive || this.portalTransition || this.player.respawnTimer > 0
+      || this.isInteractionOpen()) {
+      return false;
+    }
+    this.keys.clear();
+    this.player.moving = false;
+    this.attackState = null;
+    this.inputEnabled = false;
+    this.ui.qaOverlay.hidden = false;
+    this.ui.qaCloseButton?.focus();
+    this.updateNpcPrompt();
+    return true;
+  }
+
+  closeQaPanel() {
+    if (!this.ui.qaOverlay) return false;
+    const wasOpen = this.isQaOpen();
+    this.ui.qaOverlay.hidden = true;
+    if (wasOpen) {
+      this.inputEnabled = this.running && this.player.respawnTimer <= 0;
+      this.canvas.focus();
+    }
+    this.updateNpcPrompt();
+    return wasOpen;
+  }
+
+  qaTravel(mapId) {
+    if (!this.qaEnabled || !this.running) return false;
+    const world = getWorldDefinition(mapId);
+    if (world.id !== mapId) return false;
+
+    this.switchWorld(world.id, world.spawn.x, world.spawn.y);
+    this.portalCooldown = 1;
+    this.closeQaPanel();
+    return true;
+  }
+
+  resolveQaSpawnPosition({ mapId, player, radius, portals }) {
+    return findQaSpawnPosition({
+      player,
+      radius,
+      portals,
+      isBlocked: (x, y, candidateRadius) => isWorldPositionBlocked(mapId, x, y, candidateRadius),
+    });
+  }
+
+  qaSpawnMonster(kind) {
+    if (!this.qaEnabled || !this.running) return null;
+    const catalogEntry = getQaMonster(kind);
+    const definition = getEnemyDefinition(kind);
+    if (!catalogEntry || !definition) return null;
+
+    const world = getWorldDefinition(catalogEntry.mapId);
+    const changesWorld = this.mapId !== world.id;
+    const targetPlayer = changesWorld
+      ? { ...this.player, x: world.spawn.x, y: world.spawn.y }
+      : this.player;
+    const spawn = this.resolveQaSpawnPosition({
+      mapId: world.id,
+      player: targetPlayer,
+      radius: definition.radius,
+      portals: world.portals,
+    });
+    if (!spawn) {
+      this.notify(`${catalogEntry.name}을 소환할 안전한 공간이 없습니다.`);
+      return null;
+    }
+
+    const nextSequence = changesWorld ? 1 : this.dynamicEnemySequence + 1;
+    const id = `${world.id}-qa-${nextSequence}`;
+    const enemy = createEnemyInstance(kind, spawn, id);
+    if (!enemy) return null;
+
+    if (changesWorld) {
+      this.switchWorld(world.id, world.spawn.x, world.spawn.y);
+      this.portalCooldown = 1;
+    }
+    this.dynamicEnemySequence = nextSequence;
+    this.enemies.push(enemy);
+    this.closeQaPanel();
+    this.notify(`${catalogEntry.name}을 소환했습니다.`);
+    return enemy;
   }
 
   openNpcInteraction() {
@@ -971,6 +1087,7 @@ export class PixelRPG {
       this.keys.clear();
       this.attackState = null;
       this.player.moving = false;
+      this.closeQaPanel();
       this.closeInventory();
       this.ui.respawnOverlay.hidden = false;
     } else if (this.isInventoryOpen()) {

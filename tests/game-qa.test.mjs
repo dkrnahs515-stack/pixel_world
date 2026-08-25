@@ -1,0 +1,394 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { PixelRPG, interactionKeyAction } from "../src/game.js";
+import { createCombatStatusEffects } from "../src/player-combat.js";
+import { createInitialProgress } from "../src/quest-state.js";
+
+function fakeNode(overrides = {}) {
+  return {
+    textContent: "",
+    hidden: false,
+    disabled: false,
+    style: {},
+    dataset: {},
+    classList: { add() {}, remove() {}, toggle() {} },
+    focus() {},
+    ...overrides,
+  };
+}
+
+function eventNode(documentRef, overrides = {}) {
+  const listeners = new Map();
+  const node = fakeNode({
+    addEventListener(type, listener) {
+      if (!listeners.has(type)) listeners.set(type, []);
+      listeners.get(type).push(listener);
+    },
+    dispatch(type, event = {}) {
+      for (const listener of listeners.get(type) || []) listener(event);
+    },
+    click() {
+      node.dispatch("click", { target: node });
+    },
+    focus() {
+      if (!node.disabled) documentRef.activeElement = node;
+    },
+    ...overrides,
+  });
+  return node;
+}
+
+function memoryStorage() {
+  const values = new Map();
+  const writes = [];
+  return {
+    writes,
+    getItem(key) {
+      return values.has(key) ? values.get(key) : null;
+    },
+    setItem(key, value) {
+      values.set(key, String(value));
+      writes.push({ key, value: JSON.parse(value) });
+    },
+  };
+}
+
+function installCanvasDocument() {
+  const context = new Proxy({}, {
+    get(target, property) {
+      if (!(property in target)) target[property] = () => ({ addColorStop() {} });
+      return target[property];
+    },
+  });
+  globalThis.document = {
+    createElement() {
+      return { getContext: () => context };
+    },
+  };
+  globalThis.innerWidth = 1280;
+  globalThis.innerHeight = 720;
+}
+
+function constructedQaGame() {
+  const context = new Proxy({}, {
+    get(target, property) {
+      if (!(property in target)) target[property] = () => ({ addColorStop() {} });
+      return target[property];
+    },
+  });
+  const documentRef = {
+    activeElement: null,
+    createDocumentFragment() { return { append() {} }; },
+    createElement(tagName) {
+      return eventNode(documentRef, {
+        append() {},
+        ...(tagName === "canvas" ? { getContext: () => context } : {}),
+      });
+    },
+    querySelectorAll() { return []; },
+  };
+  globalThis.document = documentRef;
+  globalThis.devicePixelRatio = 1;
+  globalThis.HTMLInputElement = class {};
+  globalThis.HTMLTextAreaElement = class {};
+  globalThis.HTMLSelectElement = class {};
+  globalThis.addEventListener = () => {};
+
+  const canvas = eventNode(documentRef, { getContext: () => context });
+  const minimap = eventNode(documentRef, { getContext: () => context });
+  const chatSubmitButton = eventNode(documentRef);
+  const chatForm = eventNode(documentRef, { querySelector: () => chatSubmitButton });
+  const qaWorldButton = eventNode(documentRef, { dataset: { qaWorld: "forest" } });
+  const qaMonsterButton = eventNode(documentRef, { dataset: { qaMonster: "fang-shark" } });
+  const elements = {
+    qaEnabled: true,
+    canvas,
+    minimap,
+    dialogueOverlay: eventNode(documentRef, { hidden: true }),
+    dialogueTitle: eventNode(documentRef),
+    dialogueBody: eventNode(documentRef),
+    dialogueActionButton: eventNode(documentRef),
+    dialogueCloseButton: eventNode(documentRef),
+    shopOverlay: eventNode(documentRef, { hidden: true }),
+    shopCloseButton: eventNode(documentRef),
+    shopDoneButton: eventNode(documentRef),
+    buyHpPotionButton: eventNode(documentRef),
+    buyMpPotionButton: eventNode(documentRef),
+    inventoryButton: eventNode(documentRef),
+    inventoryOverlay: eventNode(documentRef, { hidden: true }),
+    inventoryCloseButton: eventNode(documentRef),
+    inventoryDoneButton: eventNode(documentRef),
+    inventoryHpUseButton: eventNode(documentRef),
+    inventoryMpUseButton: eventNode(documentRef),
+    qaButton: eventNode(documentRef),
+    qaOverlay: eventNode(documentRef, { hidden: true }),
+    qaCloseButton: eventNode(documentRef),
+    qaDoneButton: eventNode(documentRef),
+    qaWorldButtons: [qaWorldButton],
+    qaMonsterButtons: [qaMonsterButton],
+    hpPotionSlot: eventNode(documentRef, { dataset: { code: "Digit1" } }),
+    mpPotionSlot: eventNode(documentRef, { dataset: { code: "Digit2" } }),
+    chatPanel: eventNode(documentRef),
+    chatMessages: eventNode(documentRef, { replaceChildren() {}, scrollHeight: 0, scrollTop: 0 }),
+    chatForm,
+    chatInput: eventNode(documentRef, { value: "" }),
+    chatStatus: eventNode(documentRef),
+    npcPrompt: eventNode(documentRef, { hidden: true }),
+    npcPromptText: eventNode(documentRef),
+  };
+  documentRef.querySelectorAll = selector => selector === ".slot"
+    ? [elements.hpPotionSlot, elements.mpPotionSlot]
+    : [];
+  const game = new PixelRPG(elements);
+  game.running = true;
+  game.inputEnabled = true;
+  game.drawMinimapBase = () => {};
+  game.updateBiome = () => {};
+  game.updateNpcPrompt = () => {};
+  game.notify = () => {};
+  return { game, elements, documentRef, qaWorldButton, qaMonsterButton };
+}
+
+function qaGame() {
+  installCanvasDocument();
+  const game = Object.create(PixelRPG.prototype);
+  game.qaEnabled = true;
+  game.running = true;
+  game.inputEnabled = false;
+  game.chatInputActive = false;
+  game.mapId = "village";
+  game.player = {
+    name: "QA테스터",
+    x: 1440,
+    y: 1110,
+    prevX: 1440,
+    prevY: 1110,
+    dir: "down",
+    moving: false,
+    step: 0,
+    hp: 100,
+    maxHp: 100,
+    mp: 100,
+    maxMp: 100,
+    respawnTimer: 0,
+    statusEffects: createCombatStatusEffects(),
+  };
+  game.keys = new Set();
+  game.attackState = null;
+  game.remotePlayers = new Map();
+  game.enemies = [];
+  game.npcs = [];
+  game.processedEnemyAttackIds = new Set();
+  game.processedEnemySpawnIds = new Set();
+  game.dynamicEnemySequence = 0;
+  game.camera = { x: 0, y: 0, prevX: 0, prevY: 0 };
+  game.progress = createInitialProgress();
+  game.damageNumbers = [];
+  game.strongCooldown = 0;
+  game.messageTimer = 0;
+  game.ui = {
+    qaOverlay: fakeNode({ hidden: false }),
+    qaCloseButton: fakeNode(),
+    dialogueOverlay: fakeNode({ hidden: true }),
+    shopOverlay: fakeNode({ hidden: true }),
+    inventoryOverlay: fakeNode({ hidden: true }),
+    respawnOverlay: fakeNode({ hidden: true }),
+    playerCount: fakeNode(),
+    playerSubtitle: fakeNode(),
+    questProgress: fakeNode(),
+    expText: fakeNode(),
+    expBar: fakeNode(),
+    goldText: fakeNode(),
+    hpText: fakeNode(),
+    mpText: fakeNode(),
+    hpBar: fakeNode(),
+    mpBar: fakeNode(),
+    strongSlot: fakeNode(),
+    strongCooldown: fakeNode(),
+    message: fakeNode(),
+  };
+  game.canvas = fakeNode();
+  game.drawMinimapBase = () => {};
+  game.updateBiome = () => {};
+  game.updateNpcPrompt = () => {};
+  game.notify = message => {
+    game.lastNotice = message;
+  };
+  return game;
+}
+
+test("QA 패널은 활성화된 실행 중 게임에서만 열리고 모든 전투 입력을 멈춘다", () => {
+  const game = qaGame();
+  game.ui.qaOverlay.hidden = true;
+  game.inputEnabled = true;
+  game.keys.add("ArrowRight");
+  game.player.moving = true;
+  game.attackState = { kind: "basic" };
+
+  assert.equal(typeof game.openQaPanel, "function");
+  assert.equal(game.openQaPanel(), true);
+  assert.equal(game.ui.qaOverlay.hidden, false);
+  assert.equal(game.inputEnabled, false);
+  assert.equal(game.keys.size, 0);
+  assert.equal(game.player.moving, false);
+  assert.equal(game.attackState, null);
+  assert.equal(game.isInteractionOpen(), true);
+
+  assert.equal(game.closeQaPanel(), true);
+  assert.equal(game.ui.qaOverlay.hidden, true);
+  assert.equal(game.inputEnabled, true);
+
+  game.qaEnabled = false;
+  assert.equal(game.openQaPanel(), false);
+  assert.equal(game.ui.qaOverlay.hidden, true);
+});
+
+test("실제 QA 버튼과 닫기 버튼은 패널 상태와 포커스를 게임 입력에 연결한다", () => {
+  const { game, elements, documentRef } = constructedQaGame();
+
+  elements.qaButton.click();
+  assert.equal(elements.qaOverlay.hidden, false);
+  assert.equal(game.inputEnabled, false);
+  assert.equal(documentRef.activeElement, elements.qaCloseButton);
+
+  elements.qaCloseButton.click();
+  assert.equal(elements.qaOverlay.hidden, true);
+  assert.equal(game.inputEnabled, true);
+  assert.equal(documentRef.activeElement, elements.canvas);
+});
+
+test("QA 패널의 Tab 포커스는 지역·몬스터·닫기 버튼 안에서만 순환한다", () => {
+  const { elements, documentRef, qaWorldButton, qaMonsterButton } = constructedQaGame();
+  elements.qaButton.click();
+  let prevented = false;
+
+  elements.qaOverlay.dispatch("keydown", {
+    code: "Tab",
+    shiftKey: false,
+    preventDefault() { prevented = true; },
+  });
+  assert.equal(prevented, true);
+  assert.equal(documentRef.activeElement, qaWorldButton);
+
+  elements.qaOverlay.dispatch("keydown", {
+    code: "Tab",
+    shiftKey: false,
+    preventDefault() {},
+  });
+  assert.equal(documentRef.activeElement, qaMonsterButton);
+});
+
+test("QA 지역 이동은 선택한 지역의 안전한 기본 위치와 전체 로스터를 불러온다", () => {
+  const game = qaGame();
+
+  assert.equal(typeof game.qaTravel, "function");
+  assert.equal(game.qaTravel("forest"), true);
+  assert.equal(game.mapId, "forest");
+  assert.deepEqual({ x: game.player.x, y: game.player.y }, { x: 2160, y: 3260 });
+  assert.equal(game.enemies.length, 16);
+  assert.equal(game.ui.qaOverlay.hidden, true);
+  assert.equal(game.inputEnabled, true);
+});
+
+test("QA 몬스터 소환은 고유 지역으로 이동한 뒤 플레이어 앞 안전 위치에 한 마리를 추가한다", () => {
+  const game = qaGame();
+
+  assert.equal(typeof game.qaSpawnMonster, "function");
+  const enemy = game.qaSpawnMonster("fang-shark");
+
+  assert.equal(game.mapId, "coast");
+  assert.equal(game.enemies.length, 15);
+  assert.equal(enemy, game.enemies.at(-1));
+  assert.deepEqual({
+    id: enemy.id,
+    kind: enemy.kind,
+    hp: enemy.hp,
+    maxHp: enemy.maxHp,
+    x: enemy.x,
+    y: enemy.y,
+  }, {
+    id: "coast-qa-1",
+    kind: "fang-shark",
+    hp: 25,
+    maxHp: 25,
+    x: 2160,
+    y: 480,
+  });
+  assert.equal(game.ui.qaOverlay.hidden, true);
+  assert.equal(game.inputEnabled, true);
+});
+
+test("등록되지 않은 QA 지역과 몬스터는 현재 게임 상태를 바꾸지 않는다", () => {
+  const game = qaGame();
+
+  assert.equal(typeof game.qaTravel, "function");
+  assert.equal(typeof game.qaSpawnMonster, "function");
+  assert.equal(game.qaTravel("unknown"), false);
+  assert.equal(game.qaSpawnMonster("magma-slime-small"), null);
+  assert.equal(game.mapId, "village");
+  assert.equal(game.enemies.length, 0);
+  assert.equal(game.ui.qaOverlay.hidden, false);
+});
+
+test("다른 지역 QA 소환의 안전 위치가 없으면 현재 지역과 전투 상태를 보존한다", () => {
+  const game = qaGame();
+  const originalEnemies = [{ id: "village-training-dummy" }];
+  game.enemies = originalEnemies;
+  game.resolveQaSpawnPosition = () => null;
+
+  const enemy = game.qaSpawnMonster("fang-shark");
+
+  assert.equal(enemy, null);
+  assert.equal(game.mapId, "village");
+  assert.deepEqual({ x: game.player.x, y: game.player.y }, { x: 1440, y: 1110 });
+  assert.equal(game.enemies, originalEnemies);
+  assert.equal(game.dynamicEnemySequence, 0);
+  assert.equal(game.ui.qaOverlay.hidden, false);
+});
+
+test("QA 소환 몬스터 처치 보상은 일반 진행 데이터에 지급되고 v3 저장소에 기록된다", () => {
+  const game = qaGame();
+  const storage = memoryStorage();
+  globalThis.localStorage = storage;
+  assert.equal(typeof game.qaSpawnMonster, "function");
+  const enemy = game.qaSpawnMonster("fang-shark");
+  game.enemies = [enemy];
+  game.player.dir = "down";
+
+  game.applyAttackHits({ damage: 100, range: 200, arcDegrees: 180, knockback: 0 });
+
+  assert.equal(game.progress.exp, 20);
+  assert.equal(game.progress.gold, 15);
+  assert.equal(storage.writes.length, 1);
+  assert.equal(storage.writes[0].value.version, 3);
+  assert.equal(storage.writes[0].value.exp, 20);
+  assert.equal(storage.writes[0].value.gold, 15);
+  delete globalThis.localStorage;
+});
+
+test("Escape는 다른 상호작용보다 열린 QA 패널을 먼저 닫는다", () => {
+  assert.equal(interactionKeyAction({
+    code: "Escape",
+    qaOpen: true,
+    inventoryOpen: false,
+    shopOpen: false,
+    dialogueOpen: false,
+  }), "close-qa");
+});
+
+test("QA 패널을 연 채 쓰러지면 패널을 닫고 부활 입력 상태를 유지한다", () => {
+  const game = qaGame();
+  game.inputEnabled = true;
+  game.player.hp = 1;
+  game.player.invulnerable = 0;
+  game.player.hitFlash = 0;
+  game.closeInventory = () => false;
+  game.updateInventoryHud = () => {};
+
+  const result = game.damagePlayer(50, { x: game.player.x - 10, y: game.player.y });
+
+  assert.equal(result.died, true);
+  assert.equal(game.ui.qaOverlay.hidden, true);
+  assert.equal(game.ui.respawnOverlay.hidden, false);
+  assert.equal(game.inputEnabled, false);
+});
