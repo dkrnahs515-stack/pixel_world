@@ -3,6 +3,7 @@ import { layoutChatBubble, worldToScreen } from "./chat-bubble-layout.js";
 import { ChatController } from "./chat-controller.js";
 import { latestBubblesByUid } from "./chat-state.js";
 import { attackDefinition, directionVector, isTargetInAttackArc } from "./combat.js";
+import { advanceHitEffects, createHitEffect, drawHitEffects, hitShakeOffset } from "./combat-effects.js";
 import { DialogueController } from "./dialogue-controller.js";
 import { createEnemies, createEnemyInstance, createMagmaChildren, damageEnemy, drawEnemy, updateEnemies } from "./enemies.js";
 import { getEnemyDefinition } from "./enemy-definitions.js";
@@ -42,6 +43,8 @@ import {
 
 const PLAYER_RADIUS = 14;
 const MAX_MEASURED_FPS = 240;
+
+export { advanceHitEffects, createHitEffect, drawHitEffects, hitShakeOffset } from "./combat-effects.js";
 
 export function createGameCanvasContext(canvas) {
   return canvas.getContext("2d", { alpha: false });
@@ -154,6 +157,7 @@ export class PixelRPG {
     this.basicCooldown = 0;
     this.strongCooldown = 0;
     this.damageNumbers = [];
+    this.hitEffects = [];
     this.network = null;
     this.running = false;
     this.inputEnabled = false;
@@ -472,6 +476,7 @@ export class PixelRPG {
       }
     }
     this.updateDamageNumbers(dt);
+    this.hitEffects = advanceHitEffects(this.hitEffects, dt);
 
     this.updateCamera(dt);
     this.network?.publish(this.player, this.mapId);
@@ -997,12 +1002,12 @@ export class PixelRPG {
     this.attackState.elapsed += dt;
     if (!this.attackState.applied && this.attackState.elapsed >= this.attackState.definition.windup) {
       this.attackState.applied = true;
-      this.applyAttackHits(this.attackState.definition);
+      this.applyAttackHits(this.attackState.definition, this.attackState.kind);
     }
     if (this.attackState.elapsed >= this.attackState.definition.duration) this.attackState = null;
   }
 
-  applyAttackHits(definition) {
+  applyAttackHits(definition, kind = "basic") {
     const knockbackDirection = directionVector(this.player.dir);
     const killRewards = [];
     for (const enemy of this.enemies) {
@@ -1015,7 +1020,9 @@ export class PixelRPG {
         if (reward) killRewards.push(reward);
       }
       if (result.damageNumber) {
-        this.damageNumbers.push({ ...result.damageNumber, age: 0, duration: 0.55 });
+        this.damageNumbers.push({ ...result.damageNumber, kind, age: 0, duration: 0.55 });
+        this.hitEffects ||= [];
+        this.hitEffects.push(createHitEffect({ x: enemy.x, y: enemy.y - enemy.radius * 0.2, kind }));
       }
     }
     this.commitEnemyKillEffects(killRewards);
@@ -1118,6 +1125,7 @@ export class PixelRPG {
     this.basicCooldown = 0;
     this.strongCooldown = 0;
     this.damageNumbers = [];
+    this.hitEffects = [];
     this.ui.respawnOverlay.hidden = true;
     this.updateHud();
   }
@@ -1182,8 +1190,18 @@ export class PixelRPG {
 
   render(alpha) {
     const ctx = this.ctx;
-    const cameraX = lerp(this.camera.prevX, this.camera.x, alpha);
-    const cameraY = lerp(this.camera.prevY, this.camera.y, alpha);
+    const world = getWorldDefinition(this.mapId);
+    const shake = hitShakeOffset(this.hitEffects);
+    const cameraX = clamp(
+      lerp(this.camera.prevX, this.camera.x, alpha) + shake.x,
+      0,
+      Math.max(0, world.width - innerWidth),
+    );
+    const cameraY = clamp(
+      lerp(this.camera.prevY, this.camera.y, alpha) + shake.y,
+      0,
+      Math.max(0, world.height - innerHeight),
+    );
     const viewW = innerWidth;
     const viewH = innerHeight;
 
@@ -1211,7 +1229,7 @@ export class PixelRPG {
     const visiblePlayers = [];
     for (const entity of entities) {
       if (entity.x < cameraX - 60 || entity.x > cameraX + viewW + 60 || entity.y < cameraY - 80 || entity.y > cameraY + viewH + 80) continue;
-      if (entity.entityType === "enemy") drawEnemy(ctx, entity.enemy, cameraX, cameraY, alpha);
+      if (entity.entityType === "enemy") drawEnemy(ctx, entity.enemy, cameraX, cameraY, alpha, { player: this.player });
       else if (entity.entityType === "npc") drawNpc(ctx, entity.npc, cameraX, cameraY);
       else {
         drawPixelCharacter(ctx, entity, cameraX, cameraY, entity.remote ? null : this.attackState);
@@ -1221,6 +1239,7 @@ export class PixelRPG {
 
     drawPlayerSlowEffect(ctx, this.player, cameraX, cameraY);
     if (this.attackState) drawAttackEffect(ctx, this.player, this.attackState, cameraX, cameraY, alpha);
+    drawHitEffects(ctx, this.hitEffects, cameraX, cameraY);
     this.drawDamageNumbers(ctx, cameraX, cameraY);
     const bubbles = latestBubblesByUid(this.chatMessages, { mapId: this.mapId, now: Date.now() });
     for (const entity of visiblePlayers) {
@@ -1233,11 +1252,13 @@ export class PixelRPG {
   drawDamageNumbers(ctx, cameraX, cameraY) {
     ctx.save();
     ctx.textAlign = "center";
-    ctx.font = "900 15px sans-serif";
     for (const number of this.damageNumbers) {
       const progress = number.age / number.duration;
       ctx.globalAlpha = 1 - progress;
       ctx.fillStyle = number.value >= 3 ? "#fde047" : "#ffffff";
+      const startSize = number.kind === "strong" ? 22 : 19;
+      const fontSize = Math.round(15 + (startSize - 15) * Math.max(0, 1 - progress * 2));
+      ctx.font = `900 ${fontSize}px sans-serif`;
       ctx.fillText(`-${number.value}`, Math.round(number.x - cameraX), Math.round(number.y - cameraY));
     }
     ctx.restore();
@@ -1483,9 +1504,10 @@ function drawAttackEffect(ctx, player, attackState, cameraX, cameraY, alpha) {
     const activeProgress = clamp((attackState.elapsed - definition.windup) / Math.max(0.01, definition.duration - definition.windup), 0, 1);
     ctx.globalAlpha = 1 - activeProgress * 0.75;
     ctx.strokeStyle = attackState.kind === "strong" ? "#fde047" : "#e0f2fe";
-    ctx.lineWidth = attackState.kind === "strong" ? 10 : 6;
+    const baseWidth = attackState.kind === "strong" ? 10 : 6;
+    ctx.lineWidth = baseWidth * (1 - activeProgress * 0.25);
     ctx.beginPath();
-    ctx.arc(0, 0, definition.range * (0.72 + activeProgress * 0.28), baseAngle - halfArc, baseAngle + halfArc);
+    ctx.arc(0, 0, definition.range, baseAngle - halfArc, baseAngle + halfArc);
     ctx.stroke();
   }
   ctx.restore();

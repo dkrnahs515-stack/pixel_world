@@ -156,6 +156,23 @@ test("targetable이 false인 적은 플레이어 공격의 대상이 아니다",
   assert.equal(game.enemies[0].state, "idle");
 });
 
+test("실제 명중은 공격 종류가 포함된 충격 효과와 피해 숫자를 만든다", () => {
+  const game = Object.create(PixelRPG.prototype);
+  game.player = { x: 0, y: 0, dir: "right" };
+  game.enemies = [createEnemyInstance("moss-troll", { x: 120, y: 0 }, "troll-hit")];
+  game.hitEffects = [];
+  game.damageNumbers = [];
+  game.recordEnemyKill = () => assert.fail("one point of damage must not kill the troll");
+  game.commitEnemyKillEffects = () => {};
+
+  game.applyAttackHits({ range: 96, arcDegrees: 150, damage: 1, knockback: 0 }, "strong");
+
+  assert.equal(game.enemies[0].hp, 99);
+  assert.equal(game.hitEffects.length, 1);
+  assert.equal(game.hitEffects[0].kind, "strong");
+  assert.equal(game.damageNumbers[0].kind, "strong");
+});
+
 test("분열 이벤트는 지도별 동적 ID로 안전한 위치의 자식만 한 번 추가한다", () => {
   const game = Object.create(PixelRPG.prototype);
   game.mapId = "volcano";

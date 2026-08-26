@@ -5,6 +5,8 @@ import { updateEnemyBehavior } from "./enemy-behaviors.js";
 const AGGRO_DISTANCE = 360;
 const RETURN_DISTANCE = 520;
 const DEATH_DURATION = 0.65;
+const INFO_DISPLAY_DISTANCE = 420;
+const INFO_DISPLAY_AFTER_HIT = 3;
 
 export function createEnemies(mapId) {
   return getWorldDefinition(mapId).enemySpawns
@@ -22,7 +24,7 @@ export function createEnemyInstance(kind, spawn, id, overrides = {}) {
   if (!type) return null;
   const hp = overrides.hp ?? type.hp;
   return {
-    id, kind, name: type.name,
+    id, kind, name: type.name, level: type.level,
     x: spawn.x, y: spawn.y, prevX: spawn.x, prevY: spawn.y,
     homeX: spawn.x, homeY: spawn.y,
     hp, maxHp: overrides.maxHp ?? hp, speed: type.speed,
@@ -30,7 +32,7 @@ export function createEnemyInstance(kind, spawn, id, overrides = {}) {
     color: type.color, accent: type.accent,
     behavior: type.behavior, behaviorState: "idle", behaviorTime: 0,
     cooldownRemaining: 0, attackSequence: 0, attackApplied: false,
-    lastDamagedAgo: Number.POSITIVE_INFINITY,
+    lastDamagedAgo: Number.POSITIVE_INFINITY, infoVisibleRemaining: 0,
     generation: overrides.generation ?? type.generation ?? 0,
     targetable: true, contactMode: type.contactMode,
     contactCooldownDuration: type.contactCooldown ?? 1,
@@ -49,6 +51,7 @@ export function damageEnemy(enemy, damage, direction, knockbackSpeed, random = M
     enemy.opacity = 1;
   }
   enemy.hp = Math.max(0, enemy.hp - damage);
+  enemy.infoVisibleRemaining = INFO_DISPLAY_AFTER_HIT;
   enemy.hitFlash = 0.16;
   enemy.shake = 0.2;
   enemy.knockbackX = direction.x * knockbackSpeed;
@@ -82,6 +85,7 @@ export function updateEnemies(enemies, player, dt, context) {
     enemy.hitFlash = Math.max(0, enemy.hitFlash - dt);
     enemy.shake = Math.max(0, enemy.shake - dt);
     enemy.contactCooldown = Math.max(0, enemy.contactCooldown - dt);
+    enemy.infoVisibleRemaining = Math.max(0, (enemy.infoVisibleRemaining ?? 0) - dt);
 
     const hasKnockback = Math.hypot(enemy.knockbackX, enemy.knockbackY) > 1;
     if (hasKnockback) {
@@ -184,7 +188,16 @@ function cleanCoordinate(value) {
   return Math.abs(value) < 1e-9 ? 0 : value;
 }
 
-export function drawEnemy(ctx, enemy, cameraX, cameraY, alpha = 1) {
+export function shouldShowEnemyInfo(enemy, player) {
+  if (!enemy || !player || enemy.state === "dying" || enemy.targetable === false) return false;
+  if (enemy.camouflaged) return false;
+  if (enemy.kind === "ancient-boar" && enemy.behaviorState === "telegraph") return false;
+  if (enemy.kind === "flame-imp" && enemy.behaviorState === "vanish") return false;
+  return Math.hypot(player.x - enemy.x, player.y - enemy.y) <= INFO_DISPLAY_DISTANCE
+    || (enemy.infoVisibleRemaining ?? 0) > 0;
+}
+
+export function drawEnemy(ctx, enemy, cameraX, cameraY, alpha = 1, { player = null } = {}) {
   const x = Math.round(lerp(enemy.prevX, enemy.x, alpha) - cameraX);
   const y = Math.round(lerp(enemy.prevY, enemy.y, alpha) - cameraY);
   const bob = enemy.state === "dying"
@@ -208,14 +221,31 @@ export function drawEnemy(ctx, enemy, cameraX, cameraY, alpha = 1) {
 
   if (!underground) {
     (ENEMY_DRAWERS[enemy.kind] || drawSlimeBody)(ctx, enemy);
-
-    if (!vanishing && enemy.state !== "dying" && enemy.hp < enemy.maxHp) {
-      ctx.fillStyle = "rgba(4,10,7,.8)";
-      ctx.fillRect(-21, -31, 42, 5);
-      ctx.fillStyle = "#ef4444";
-      ctx.fillRect(-20, -30, 40 * (enemy.hp / enemy.maxHp), 3);
-    }
   }
+  ctx.restore();
+  if (shouldShowEnemyInfo(enemy, player)) drawEnemyInfo(ctx, enemy, x, y + bob);
+}
+
+function drawEnemyInfo(ctx, enemy, x, y) {
+  const width = 104;
+  const top = Math.round(y - Math.max(52, enemy.radius + 34));
+  const hpRatio = Math.max(0, Math.min(1, enemy.hp / enemy.maxHp));
+
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.font = "700 12px Arial, sans-serif";
+  ctx.fillStyle = "rgba(10,16,27,.82)";
+  ctx.fillRect(x - 62, top - 16, 124, 17);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText(`Lv.${enemy.level} ${enemy.name}`, x, top - 4);
+
+  ctx.fillStyle = "rgba(4,10,7,.9)";
+  ctx.fillRect(x - width / 2, top + 4, width, 10);
+  ctx.fillStyle = "#ef4444";
+  ctx.fillRect(x - width / 2, top + 4, width * hpRatio, 10);
+  ctx.font = "700 9px Arial, sans-serif";
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText(`${Math.ceil(enemy.hp)} / ${enemy.maxHp}`, x, top + 13);
   ctx.restore();
 }
 

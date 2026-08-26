@@ -1,11 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { attackDefinition } from "../src/combat.js";
 import { createEnemyInstance, drawEnemy } from "../src/enemies.js";
 import * as gameModule from "../src/game.js";
 
 function recordingContext() {
   const fills = [];
   const arcs = [];
+  const texts = [];
   const scaleCalls = [];
   const alphaCalls = [];
   const stack = [];
@@ -20,6 +22,7 @@ function recordingContext() {
   return {
     fills,
     arcs,
+    texts,
     scaleCalls,
     alphaCalls,
     colors: () => fills.map(fill => fill.color),
@@ -57,7 +60,7 @@ function recordingContext() {
     arc(x, y, radius, start, end) { arcs.push({ x, y, radius, start, end, color: strokeStyle, alpha: globalAlpha }); },
     clearRect() {},
     drawImage() {},
-    fillText() {},
+    fillText(value, x, y) { texts.push({ value, x, y, color: fillStyle, alpha: globalAlpha }); },
     set fillStyle(value) { fillStyle = value; },
     get fillStyle() { return fillStyle; },
     set strokeStyle(value) { strokeStyle = value; },
@@ -117,6 +120,40 @@ test("magma children render at a smaller relative scale than their parent", () =
 
   assert.ok(parent.scaleCalls.some(call => call.x === 1 && call.y === 1));
   assert.ok(child.scaleCalls.some(call => call.x < 1 && call.y < 1));
+});
+
+test("근거리 몬스터는 고정 레벨·이름·현재 체력을 머리 위에 표시한다", () => {
+  const shark = enemy("fang-shark");
+  shark.hp = 18;
+  const ctx = recordingContext();
+
+  drawEnemy(ctx, shark, 0, 0, 1, { player: { x: 100, y: 100 } });
+
+  assert.ok(ctx.texts.some(text => text.value === "Lv.7 송곳니 상어"));
+  assert.ok(ctx.texts.some(text => text.value === "18 / 25"));
+  assert.ok(ctx.fills.some(fill => fill.color === "rgba(4,10,7,.9)" && fill.w === 104));
+  assert.ok(ctx.fills.some(fill => fill.color === "#ef4444" && fill.w > 74 && fill.w < 75));
+  assert.equal(ctx.fills.filter(fill => fill.color === "#ef4444").length, 1);
+});
+
+test("위장하거나 표시 시간이 끝난 원거리 몬스터는 기존 체력 막대로 위치를 노출하지 않는다", () => {
+  const troll = enemy("moss-troll");
+  troll.hp = 80;
+  troll.camouflaged = true;
+  troll.opacity = 0.25;
+  const trollCtx = recordingContext();
+  drawEnemy(trollCtx, troll, 0, 0, 1, { player: { x: 100, y: 100 } });
+
+  const distantShark = enemy("fang-shark");
+  distantShark.hp = 18;
+  distantShark.infoVisibleRemaining = 0;
+  const sharkCtx = recordingContext();
+  drawEnemy(sharkCtx, distantShark, 0, 0, 1, { player: { x: 1000, y: 1000 } });
+
+  assert.equal(trollCtx.fills.some(fill => fill.color === "#ef4444"), false);
+  assert.equal(sharkCtx.fills.some(fill => fill.color === "#ef4444"), false);
+  assert.equal(trollCtx.texts.length, 0);
+  assert.equal(sharkCtx.texts.length, 0);
 });
 
 test("behavior states render charge, bite, teleport, camouflage, and spore telegraphs", () => {
@@ -209,7 +246,6 @@ test("burrowing ancient boar telegraph leaves only its direction and dust cue ab
   assert.ok(normalCtx.fills.some(fill => fill.x === -20 && fill.y === 12 && fill.w === 40 && fill.h === 8 && fill.color === "rgba(0,0,0,.28)"));
   assert.ok(normalCtx.fills.some(fill => fill.x === -23 && fill.y === -13 && fill.w === 37 && fill.h === 27 && fill.color === "#704b32"));
   assert.ok(normalCtx.fills.some(fill => fill.x === 22 && fill.y === 5 && fill.w === 8 && fill.h === 4 && fill.color === "#f4f7ed"));
-  assert.ok(normalCtx.fills.some(fill => fill.x === -21 && fill.y === -31 && fill.w === 42 && fill.h === 5 && fill.color === "rgba(4,10,7,.8)"));
   assert.equal(ctx.depth, 0);
   assert.equal(normalCtx.depth, 0);
 });
@@ -262,12 +298,12 @@ test("vanishing flame imp renders only a fading black afterimage and separate em
   reappear.behaviorState = "reappear";
   reappear.hp = reappear.maxHp - 1;
   const reappearCtx = recordingContext();
-  drawEnemy(reappearCtx, reappear, 0, 0, 1);
+  drawEnemy(reappearCtx, reappear, 0, 0, 1, { player: { x: 100, y: 100 } });
   assert.ok(reappearCtx.colors().includes("#a91f2c"), "reappearing imp should restore the full crimson body");
   assert.ok(reappearCtx.fills.some(fill => fill.x === -20 && fill.y === 12 && fill.w === 40 && fill.h === 8 && fill.color === "rgba(0,0,0,.28)"));
   assert.ok(reappearCtx.fills.some(fill => fill.x === -11 && fill.y === -4 && fill.w === 22 && fill.h === 20 && fill.color === "#a91f2c"));
-  assert.ok(reappearCtx.fills.some(fill => fill.x === -21 && fill.y === -31 && fill.w === 42 && fill.h === 5 && fill.color === "rgba(4,10,7,.8)"), "damaged reappearing imp should restore its HP background");
-  assert.ok(reappearCtx.fills.some(fill => fill.x === -20 && fill.y === -30 && fill.h === 3 && fill.w > 0 && fill.w < 40 && fill.color === "#ef4444"), "damaged reappearing imp should restore its red HP fill");
+  assert.ok(reappearCtx.fills.some(fill => fill.w === 104 && fill.h === 10 && fill.color === "rgba(4,10,7,.9)"), "damaged reappearing imp should restore its HP background");
+  assert.ok(reappearCtx.fills.some(fill => fill.h === 10 && fill.w > 100 && fill.w < 104 && fill.color === "#ef4444"), "damaged reappearing imp should restore its red HP fill");
   assert.ok(reappearCtx.arcs.some(arc => arc.x === 0 && arc.y === 8 && arc.radius === 24 && arc.color === "#ffc857"), "reappearing imp should restore its ring");
   assert.equal(vanishCtx.depth, 0);
   assert.equal(reappearCtx.depth, 0);
@@ -364,4 +400,38 @@ test("the game render places active slow particles in the playfield before HUD w
   assert.equal(purple.length, 6);
   assert.ok(ctx.fills.indexOf(purple[0]) > 0, "slow particles should render inside the playfield after its background");
   assert.equal(ctx.depth, 0);
+});
+
+test("명중 판정이 적용되는 첫 프레임부터 검 궤적은 전체 유효 사거리를 표시한다", () => {
+  const renderAttack = kind => {
+    const ctx = recordingContext();
+    const definition = attackDefinition(kind);
+    const game = Object.create(gameModule.PixelRPG.prototype);
+    game.ctx = ctx;
+    game.camera = { x: 0, y: 0, prevX: 0, prevY: 0 };
+    game.worldLayer = {};
+    game.remotePlayers = new Map();
+    game.enemies = [];
+    game.npcs = [];
+    game.player = {
+      x: 100, y: 100, prevX: 100, prevY: 100, moving: false, step: 0,
+      dir: "right", color: "#4f8e5b", statusEffects: { slow: { remaining: 0 } },
+    };
+    game.attackState = { kind, elapsed: definition.windup, definition };
+    game.hitEffects = [];
+    game.damageNumbers = [];
+    game.chatMessages = [];
+    game.mapId = "village";
+    game.renderMinimap = () => {};
+
+    globalThis.innerWidth = 320;
+    globalThis.innerHeight = 240;
+    game.render(1);
+    return ctx;
+  };
+
+  const basicArc = renderAttack("basic").arcs.find(arc => arc.color === "#e0f2fe");
+  const strongArc = renderAttack("strong").arcs.find(arc => arc.color === "#fde047");
+  assert.equal(basicArc.radius, 64);
+  assert.equal(strongArc.radius, 96);
 });
