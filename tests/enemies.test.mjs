@@ -1,6 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createEnemies, createEnemyInstance, createMagmaChildren, damageEnemy, updateEnemies } from "../src/enemies.js";
+import {
+  applyEnemyHitStun,
+  createEnemies,
+  createEnemyInstance,
+  createMagmaChildren,
+  damageEnemy,
+  updateEnemies,
+} from "../src/enemies.js";
 
 test("the safe village never creates enemies", () => {
   assert.deepEqual(createEnemies("village"), []);
@@ -77,6 +84,32 @@ test("치명타가 아닌 적은 기존 넉백 이동을 유지한다", () => {
   assert.equal(enemy.x, 120);
   assert.equal(enemy.y, 100);
   assert.ok(enemy.knockbackX > 0);
+});
+
+test("피격 경직은 AI 추적을 멈추지만 기존 넉백 이동은 유지한다", () => {
+  const enemy = createEnemyInstance("crab", { x: 100, y: 100 }, "stunned-crab");
+  damageEnemy(enemy, 1, { x: 1, y: 0 }, 200);
+  applyEnemyHitStun(enemy, 0.1);
+
+  updateEnemies([enemy], { x: 140, y: 100 }, 0.05, { isBlocked: () => false });
+
+  assert.equal(enemy.x, 110);
+  assert.equal(enemy.y, 100);
+  assert.equal(enemy.moving, false);
+  assert.ok(Math.abs(enemy.hitStunRemaining - 0.05) < 1e-9);
+});
+
+test("더 짧은 재피격과 잘못된 지속시간은 남은 경직을 줄이지 않는다", () => {
+  const enemy = createEnemyInstance("crab", { x: 100, y: 100 }, "stunned-crab");
+
+  assert.equal(applyEnemyHitStun(enemy, 0.18), true);
+  assert.equal(applyEnemyHitStun(enemy, 0.1), true);
+  assert.equal(applyEnemyHitStun(enemy, 0), false);
+  assert.equal(enemy.hitStunRemaining, 0.18);
+
+  damageEnemy(enemy, enemy.hp, { x: 1, y: 0 }, 0);
+  assert.equal(applyEnemyHitStun(enemy, 0.18), false);
+  assert.equal(enemy.hitStunRemaining, 0.18);
 });
 
 test("blocked terrain prevents enemy knockback", () => {

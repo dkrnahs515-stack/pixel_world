@@ -8,6 +8,8 @@ const ATTACK_DEFINITIONS = Object.freeze({
     duration: 0.18,
     mpCost: 0,
     knockback: 230,
+    hitStun: 0.1,
+    hitStop: 0.035,
   }),
   strong: Object.freeze({
     damage: 3,
@@ -18,6 +20,8 @@ const ATTACK_DEFINITIONS = Object.freeze({
     duration: 0.4,
     mpCost: 20,
     knockback: 520,
+    hitStun: 0.18,
+    hitStop: 0.065,
   }),
 });
 

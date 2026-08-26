@@ -64,7 +64,7 @@ test("인스턴스 팩터리는 정의 기반 전투 상태와 지정 재정의�
     generation: 1, targetable: true, contactMode: "contact", contactCooldownDuration: 1,
     state: "idle", moving: false, step: 1.7,
     hitFlash: 0, shake: 0, deathTime: 0, opacity: 1, scale: 1,
-    knockbackX: 0, knockbackY: 0, contactCooldown: 0,
+    knockbackX: 0, knockbackY: 0, contactCooldown: 0, hitStunRemaining: 0,
   });
   assert.equal(createEnemyInstance("unknown", { x: 0, y: 0 }, "none"), null);
   assert.equal(createEnemyInstance("toString", { x: 0, y: 0 }, "none"), null);

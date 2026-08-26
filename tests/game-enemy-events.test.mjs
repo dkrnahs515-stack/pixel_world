@@ -39,6 +39,7 @@ test("둔화된 플레이어의 ArrowRight 1초 이동은 속도 배율을 사�
 test("세계 전환은 플레이어 둔화를 제거한다", () => {
   const game = statusGame();
   applyPlayerSlow(game.player, 0.65, 2.5);
+  game.hitStopRemaining = 0.065;
   game.remotePlayers = new Map();
   game.ui = { playerCount: { textContent: "" } };
   game.camera = { x: 0, y: 0, prevX: 0, prevY: 0 };
@@ -64,6 +65,7 @@ test("세계 전환은 플레이어 둔화를 제거한다", () => {
 
   assert.equal(playerMovementMultiplier(game.player), 1);
   assert.deepEqual(game.player.statusEffects, createCombatStatusEffects());
+  assert.equal(game.hitStopRemaining, 0);
 });
 
 test("같은 공격 ID의 상어 피해 이벤트는 플레이어 HP를 한 번만 낮춘다", () => {
@@ -143,6 +145,21 @@ test("사라진 불꽃 도깨비는 기존 접촉 피해 경로에서도 피해�
   assert.equal(game.enemies[0].contactCooldown, 0);
 });
 
+test("피격 경직 중인 몬스터는 플레이어와 겹쳐도 접촉 피해를 주지 않는다", () => {
+  const game = Object.create(PixelRPG.prototype);
+  game.player = { x: 0, y: 0 };
+  game.enemies = [{
+    x: 0, y: 0, radius: 20, state: "idle", targetable: true,
+    contactMode: "contact", contactCooldown: 0, contactDamage: 12,
+    contactCooldownDuration: 1, hitStunRemaining: 0.1,
+  }];
+  game.damagePlayer = () => assert.fail("stunned enemy must not use contact damage");
+
+  game.applyEnemyContactDamage();
+
+  assert.equal(game.enemies[0].contactCooldown, 0);
+});
+
 test("targetable이 false인 적은 플레이어 공격의 대상이 아니다", () => {
   const game = Object.create(PixelRPG.prototype);
   game.player = { x: 0, y: 0, dir: "right" };
@@ -162,15 +179,47 @@ test("실제 명중은 공격 종류가 포함된 충격 효과와 피해 숫자
   game.enemies = [createEnemyInstance("moss-troll", { x: 120, y: 0 }, "troll-hit")];
   game.hitEffects = [];
   game.damageNumbers = [];
+  game.hitStopRemaining = 0;
   game.recordEnemyKill = () => assert.fail("one point of damage must not kill the troll");
   game.commitEnemyKillEffects = () => {};
 
-  game.applyAttackHits({ range: 96, arcDegrees: 150, damage: 1, knockback: 0 }, "strong");
+  game.applyAttackHits({
+    range: 96, arcDegrees: 150, damage: 1, knockback: 0,
+    hitStun: 0.18, hitStop: 0.065,
+  }, "strong");
 
   assert.equal(game.enemies[0].hp, 99);
   assert.equal(game.hitEffects.length, 1);
   assert.equal(game.hitEffects[0].kind, "strong");
   assert.equal(game.damageNumbers[0].kind, "strong");
+  assert.equal(game.enemies[0].hitStunRemaining, 0.18);
+  assert.equal(game.hitStopRemaining, 0.065);
+});
+
+test("빗나간 공격은 히트 스톱을 만들지 않고 치명타와 다중 명중은 한 번의 길이만 유지한다", () => {
+  const game = Object.create(PixelRPG.prototype);
+  game.player = { x: 0, y: 0, dir: "right" };
+  game.hitEffects = [];
+  game.damageNumbers = [];
+  game.hitStopRemaining = 0;
+  game.recordEnemyKill = () => null;
+  game.commitEnemyKillEffects = () => {};
+  const definition = {
+    range: 96, arcDegrees: 150, damage: 10, knockback: 0,
+    hitStun: 0.18, hitStop: 0.065,
+  };
+
+  game.enemies = [createEnemyInstance("moss-troll", { x: 500, y: 0 }, "miss")];
+  game.applyAttackHits(definition, "strong");
+  assert.equal(game.hitStopRemaining, 0);
+
+  game.enemies = [
+    createEnemyInstance("fire-slime", { x: 60, y: -10 }, "lethal-1"),
+    createEnemyInstance("fire-slime", { x: 60, y: 10 }, "lethal-2"),
+  ];
+  game.applyAttackHits(definition, "strong");
+  assert.equal(game.enemies.every(enemy => enemy.state === "dying"), true);
+  assert.equal(game.hitStopRemaining, 0.065);
 });
 
 test("분열 이벤트는 지도별 동적 ID로 안전한 위치의 자식만 한 번 추가한다", () => {
