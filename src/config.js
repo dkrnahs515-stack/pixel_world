@@ -2,7 +2,7 @@ import { FIREBASE_CONFIG } from "./firebase-config.js";
 
 export const GAME_CONFIG = Object.freeze({
   TILE: 32,
-  SIMULATION_HZ: 144,
+  SIMULATION_HZ: 60,
   PLAYER_SPEED: 245,
   CAMERA_LERP: 13,
   MAX_DPR: 1.5,

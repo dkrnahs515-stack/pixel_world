@@ -29,6 +29,8 @@ test("기본 공격은 확정된 64픽셀·120도 범위를 제공한다", () =>
     duration: 0.18,
     mpCost: 0,
     knockback: 230,
+    hitStun: 0.1,
+    hitStop: 0.035,
   });
 });
 
@@ -80,5 +82,7 @@ test("strong attack exposes the approved combat behavior", () => {
     duration: 0.4,
     mpCost: 20,
     knockback: 520,
+    hitStun: 0.18,
+    hitStop: 0.065,
   });
 });

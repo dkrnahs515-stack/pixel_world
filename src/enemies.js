@@ -39,7 +39,15 @@ export function createEnemyInstance(kind, spawn, id, overrides = {}) {
     state: "idle", moving: false, step: overrides.step ?? 0,
     hitFlash: 0, shake: 0, deathTime: 0, opacity: 1, scale: 1,
     knockbackX: 0, knockbackY: 0, contactCooldown: 0,
+    hitStunRemaining: 0,
   };
+}
+
+export function applyEnemyHitStun(enemy, duration) {
+  if (!enemy || enemy.state === "dying" || !(duration > 0)) return false;
+  enemy.hitStunRemaining = Math.max(enemy.hitStunRemaining ?? 0, duration);
+  enemy.moving = false;
+  return true;
 }
 
 export function damageEnemy(enemy, damage, direction, knockbackSpeed, random = Math.random) {
@@ -86,6 +94,8 @@ export function updateEnemies(enemies, player, dt, context) {
     enemy.shake = Math.max(0, enemy.shake - dt);
     enemy.contactCooldown = Math.max(0, enemy.contactCooldown - dt);
     enemy.infoVisibleRemaining = Math.max(0, (enemy.infoVisibleRemaining ?? 0) - dt);
+    const wasHitStunned = (enemy.hitStunRemaining ?? 0) > 0;
+    enemy.hitStunRemaining = Math.max(0, (enemy.hitStunRemaining ?? 0) - dt);
 
     const hasKnockback = Math.hypot(enemy.knockbackX, enemy.knockbackY) > 1;
     if (hasKnockback) {
@@ -119,6 +129,11 @@ export function updateEnemies(enemies, player, dt, context) {
           origin: { x: enemy.x, y: enemy.y },
         });
       }
+      continue;
+    }
+
+    if (wasHitStunned) {
+      enemy.moving = false;
       continue;
     }
 

@@ -5,7 +5,15 @@ import { latestBubblesByUid } from "./chat-state.js";
 import { attackDefinition, directionVector, isTargetInAttackArc } from "./combat.js";
 import { advanceHitEffects, createHitEffect, drawHitEffects, hitShakeOffset } from "./combat-effects.js";
 import { DialogueController } from "./dialogue-controller.js";
-import { createEnemies, createEnemyInstance, createMagmaChildren, damageEnemy, drawEnemy, updateEnemies } from "./enemies.js";
+import {
+  applyEnemyHitStun,
+  createEnemies,
+  createEnemyInstance,
+  createMagmaChildren,
+  damageEnemy,
+  drawEnemy,
+  updateEnemies,
+} from "./enemies.js";
 import { getEnemyDefinition } from "./enemy-definitions.js";
 import { movementVector } from "./input.js";
 import { createNetworkAdapter } from "./network.js";
@@ -43,6 +51,7 @@ import {
 
 const PLAYER_RADIUS = 14;
 const MAX_MEASURED_FPS = 240;
+const MINIMAP_FRAME_MS = 100;
 
 export { advanceHitEffects, createHitEffect, drawHitEffects, hitShakeOffset } from "./combat-effects.js";
 
@@ -54,6 +63,31 @@ export function fpsSampleFromFrameSeconds(frameSeconds) {
   if (frameSeconds <= 0) return null;
   const fps = 1 / frameSeconds;
   return fps <= MAX_MEASURED_FPS ? fps : null;
+}
+
+export function averageFpsFromFrameSeconds(samples) {
+  const validSamples = (samples ?? []).filter(sample => fpsSampleFromFrameSeconds(sample) !== null);
+  const totalSeconds = validSamples.reduce((total, sample) => total + sample, 0);
+  return totalSeconds > 0 ? validSamples.length / totalSeconds : 0;
+}
+
+function setTextIfChanged(element, value) {
+  if (element.textContent !== value) element.textContent = value;
+}
+
+function setStyleIfChanged(element, property, value) {
+  if (element.style[property] !== value) element.style[property] = value;
+}
+
+function setPropertyIfChanged(element, property, value) {
+  if (element[property] !== value) element[property] = value;
+}
+
+function toggleClassIfChanged(element, className, enabled) {
+  if (typeof element.classList.contains !== "function"
+    || element.classList.contains(className) !== enabled) {
+    element.classList.toggle(className, enabled);
+  }
 }
 
 export function dialogueKeyAction(code) {
@@ -132,6 +166,8 @@ export class PixelRPG {
     this.ctx = createGameCanvasContext(this.canvas);
     this.minimap = elements.minimap;
     this.minimapCtx = this.minimap.getContext("2d");
+    this.minimapBaseImage = null;
+    this.lastMinimapRender = Number.NEGATIVE_INFINITY;
     this.ui = elements;
     this.keys = new Set();
     this.mapId = "village";
@@ -158,6 +194,7 @@ export class PixelRPG {
     this.strongCooldown = 0;
     this.damageNumbers = [];
     this.hitEffects = [];
+    this.hitStopRemaining = 0;
     this.network = null;
     this.running = false;
     this.inputEnabled = false;
@@ -300,6 +337,7 @@ export class PixelRPG {
     this.running = true;
     this.lastFrame = 0;
     this.accumulator = 0;
+    this.resetPerformanceMeasurement();
     this.notify(loadedProgress.notice);
     requestAnimationFrame(timestamp => this.loop(timestamp));
   }
@@ -427,20 +465,43 @@ export class PixelRPG {
     if (!this.lastFrame) this.lastFrame = timestamp;
     const frameSeconds = Math.min((timestamp - this.lastFrame) / 1000, 0.1);
     this.lastFrame = timestamp;
-    this.accumulator += frameSeconds;
+    this.runSimulationFrame(frameSeconds);
 
+    const alpha = this.accumulator / this.fixedDt;
+    this.render(alpha, timestamp);
+    this.measurePerformance(timestamp, frameSeconds);
+    requestAnimationFrame(nextTimestamp => this.loop(nextTimestamp));
+  }
+
+  runSimulationFrame(frameSeconds) {
+    let simulationSeconds = frameSeconds;
+    if (this.hitStopRemaining > 0) {
+      const consumed = Math.min(this.hitStopRemaining, simulationSeconds);
+      this.hitStopRemaining = Math.max(0, this.hitStopRemaining - consumed);
+      simulationSeconds -= consumed;
+      this.accumulator = 0;
+      if (simulationSeconds <= 0) return 0;
+    }
+
+    this.accumulator += simulationSeconds;
     let steps = 0;
-    while (this.accumulator >= this.fixedDt && steps < 10) {
+    while (this.accumulator >= this.fixedDt && steps < 5) {
       this.fixedUpdate(this.fixedDt);
       this.accumulator -= this.fixedDt;
       steps++;
+      if (this.hitStopRemaining > 0) {
+        this.accumulator = 0;
+        break;
+      }
     }
-    if (steps === 10) this.accumulator = 0;
+    if (steps === 5) this.accumulator = 0;
+    return steps;
+  }
 
-    const alpha = this.accumulator / this.fixedDt;
-    this.render(alpha);
-    this.measurePerformance(timestamp, frameSeconds);
-    requestAnimationFrame(nextTimestamp => this.loop(nextTimestamp));
+  requestHitStop(duration) {
+    if (!(duration > 0)) return false;
+    this.hitStopRemaining = Math.max(this.hitStopRemaining ?? 0, duration);
+    return true;
   }
 
   fixedUpdate(dt) {
@@ -460,6 +521,7 @@ export class PixelRPG {
       this.updatePortalTransition(dt);
     } else {
       this.updateAttack(dt);
+      if (this.hitStopRemaining > 0) return;
       const isBlocked = (x, y, radius) => isWorldPositionBlocked(this.mapId, x, y, radius);
       const simulation = updateEnemies(this.enemies, this.player, dt, {
         isBlocked,
@@ -888,11 +950,11 @@ export class PixelRPG {
       && !this.portalTransition
       && this.player.respawnTimer <= 0;
     this.nearbyNpc = eligible ? findNearbyNpc(this.npcs, this.player) : null;
-    this.ui.npcPrompt.hidden = !this.nearbyNpc;
+    setPropertyIfChanged(this.ui.npcPrompt, "hidden", !this.nearbyNpc);
     if (this.nearbyNpc && this.ui.npcPromptText) {
-      this.ui.npcPromptText.textContent = this.nearbyNpc.role === "shop"
+      setTextIfChanged(this.ui.npcPromptText, this.nearbyNpc.role === "shop"
         ? "연금술사 미아의 상점 이용하기"
-        : "현자 아렌과 대화하기";
+        : "현자 아렌과 대화하기");
     }
   }
 
@@ -957,6 +1019,7 @@ export class PixelRPG {
     this.processedEnemyAttackIds = new Set();
     this.processedEnemySpawnIds = new Set();
     this.dynamicEnemySequence = 0;
+    this.hitStopRemaining = 0;
     this.player.x = targetX;
     this.player.y = targetY;
     this.player.prevX = targetX;
@@ -1010,27 +1073,32 @@ export class PixelRPG {
   applyAttackHits(definition, kind = "basic") {
     const knockbackDirection = directionVector(this.player.dir);
     const killRewards = [];
+    let hit = false;
     for (const enemy of this.enemies) {
       if (enemy.state === "dying") continue;
       if (enemy.targetable === false) continue;
       if (!isTargetInAttackArc(this.player, this.player.dir, enemy, definition.range, definition.arcDegrees)) continue;
       const result = damageEnemy(enemy, definition.damage, knockbackDirection, definition.knockback);
+      if (!result.killed) applyEnemyHitStun(enemy, definition.hitStun);
       if (result.killed) {
         const reward = this.recordEnemyKill(enemy.kind, { deferEffects: true });
         if (reward) killRewards.push(reward);
       }
       if (result.damageNumber) {
+        hit = true;
         this.damageNumbers.push({ ...result.damageNumber, kind, age: 0, duration: 0.55 });
         this.hitEffects ||= [];
         this.hitEffects.push(createHitEffect({ x: enemy.x, y: enemy.y - enemy.radius * 0.2, kind }));
       }
     }
+    if (hit) this.requestHitStop(definition.hitStop);
     this.commitEnemyKillEffects(killRewards);
   }
 
   applyEnemyContactDamage() {
     for (const enemy of this.enemies) {
-      if (enemy.state === "dying" || enemy.targetable === false || enemy.contactMode !== "contact" || enemy.contactCooldown > 0) continue;
+      if (enemy.state === "dying" || enemy.targetable === false || enemy.contactMode !== "contact"
+        || enemy.contactCooldown > 0 || enemy.hitStunRemaining > 0) continue;
       const dx = this.player.x - enemy.x;
       const dy = this.player.y - enemy.y;
       if (Math.hypot(dx, dy) >= enemy.radius + PLAYER_RADIUS) continue;
@@ -1126,6 +1194,7 @@ export class PixelRPG {
     this.strongCooldown = 0;
     this.damageNumbers = [];
     this.hitEffects = [];
+    this.hitStopRemaining = 0;
     this.ui.respawnOverlay.hidden = true;
     this.updateHud();
   }
@@ -1178,17 +1247,17 @@ export class PixelRPG {
   }
 
   updateHud() {
-    this.ui.hpText.textContent = `${Math.ceil(this.player.hp)} / ${this.player.maxHp}`;
-    this.ui.mpText.textContent = `${Math.ceil(this.player.mp)} / ${this.player.maxMp}`;
-    this.ui.hpBar.style.transform = `scaleX(${this.player.hp / this.player.maxHp})`;
-    this.ui.mpBar.style.transform = `scaleX(${this.player.mp / this.player.maxMp})`;
+    setTextIfChanged(this.ui.hpText, `${Math.ceil(this.player.hp)} / ${this.player.maxHp}`);
+    setTextIfChanged(this.ui.mpText, `${Math.ceil(this.player.mp)} / ${this.player.maxMp}`);
+    setStyleIfChanged(this.ui.hpBar, "transform", `scaleX(${this.player.hp / this.player.maxHp})`);
+    setStyleIfChanged(this.ui.mpBar, "transform", `scaleX(${this.player.mp / this.player.maxMp})`);
 
     const unavailable = this.strongCooldown > 0 || this.player.mp < 20 || this.player.respawnTimer > 0;
-    this.ui.strongSlot.classList.toggle("unavailable", unavailable);
-    this.ui.strongCooldown.textContent = this.strongCooldown > 0 ? this.strongCooldown.toFixed(1) : "";
+    toggleClassIfChanged(this.ui.strongSlot, "unavailable", unavailable);
+    setTextIfChanged(this.ui.strongCooldown, this.strongCooldown > 0 ? this.strongCooldown.toFixed(1) : "");
   }
 
-  render(alpha) {
+  render(alpha, timestamp = performance.now()) {
     const ctx = this.ctx;
     const world = getWorldDefinition(this.mapId);
     const shake = hitShakeOffset(this.hitEffects);
@@ -1246,7 +1315,7 @@ export class PixelRPG {
       const message = bubbles.get(entity.uid);
       if (message) drawChatBubble(ctx, entity, message, cameraX, cameraY, viewW, viewH);
     }
-    this.renderMinimap();
+    this.renderMinimap(timestamp);
   }
 
   drawDamageNumbers(ctx, cameraX, cameraY) {
@@ -1325,29 +1394,47 @@ export class PixelRPG {
   }
 
   measurePerformance(timestamp, frameSeconds) {
+    if (this.lastFpsUpdate === 0) {
+      this.lastFpsUpdate = timestamp;
+      this.fpsSamples = [];
+      return;
+    }
     const fpsSample = fpsSampleFromFrameSeconds(frameSeconds);
-    if (fpsSample !== null) this.fpsSamples.push(fpsSample);
+    if (fpsSample !== null) this.fpsSamples.push(frameSeconds);
     if (this.fpsSamples.length > 120) this.fpsSamples.shift();
-    if (timestamp - this.lastFpsUpdate < 500) return;
+    const elapsedSeconds = (timestamp - this.lastFpsUpdate) / 1000;
+    if (elapsedSeconds < 0.5) return;
     this.lastFpsUpdate = timestamp;
-    const fps = this.fpsSamples.length ? this.fpsSamples.reduce((a, b) => a + b, 0) / this.fpsSamples.length : 0;
+    const fps = averageFpsFromFrameSeconds(this.fpsSamples);
+    this.fpsSamples = [];
+    if (fps === 0) return;
     this.ui.fpsText.textContent = String(Math.round(fps));
 
-    if (fps < 82) { this.lowFpsSeconds += 0.5; this.highFpsSeconds = 0; }
-    else if (fps > 125) { this.highFpsSeconds += 0.5; this.lowFpsSeconds = 0; }
-    else { this.lowFpsSeconds = Math.max(0, this.lowFpsSeconds - 0.25); this.highFpsSeconds = 0; }
+    if (fps < 45) { this.lowFpsSeconds += elapsedSeconds; this.highFpsSeconds = 0; }
+    else if (fps > 57) { this.highFpsSeconds += elapsedSeconds; this.lowFpsSeconds = 0; }
+    else {
+      this.lowFpsSeconds = Math.max(0, this.lowFpsSeconds - elapsedSeconds / 2);
+      this.highFpsSeconds = 0;
+    }
 
-    if (this.lowFpsSeconds >= 3 && this.renderScale > C.MIN_RENDER_SCALE) {
+    if (this.lowFpsSeconds >= 2 && this.renderScale > C.MIN_RENDER_SCALE) {
       this.renderScale = Math.max(C.MIN_RENDER_SCALE, this.renderScale - 0.25);
       this.lowFpsSeconds = 0;
       this.ui.qualityText.textContent = "성능 우선";
       this.resize();
-    } else if (this.highFpsSeconds >= 5 && this.renderScale < Math.min(devicePixelRatio || 1, C.MAX_DPR)) {
+    } else if (this.highFpsSeconds >= 8 && this.renderScale < Math.min(devicePixelRatio || 1, C.MAX_DPR)) {
       this.renderScale = Math.min(Math.min(devicePixelRatio || 1, C.MAX_DPR), this.renderScale + 0.25);
       this.highFpsSeconds = 0;
       this.ui.qualityText.textContent = "고화질";
       this.resize();
     }
+  }
+
+  resetPerformanceMeasurement() {
+    this.fpsSamples = [];
+    this.lastFpsUpdate = 0;
+    this.lowFpsSeconds = 0;
+    this.highFpsSeconds = 0;
   }
 
   drawMinimapBase() {
@@ -1356,14 +1443,29 @@ export class PixelRPG {
     context.imageSmoothingEnabled = false;
     context.clearRect(0, 0, this.minimap.width, this.minimap.height);
     context.drawImage(this.worldLayer, 0, 0, world.width, world.height, 0, 0, this.minimap.width, this.minimap.height);
+    this.minimapBaseImage = null;
+    if (typeof context.getImageData === "function") {
+      try {
+        this.minimapBaseImage = context.getImageData(0, 0, this.minimap.width, this.minimap.height);
+      } catch {
+        this.minimapBaseImage = null;
+      }
+    }
+    this.lastMinimapRender = Number.NEGATIVE_INFINITY;
   }
 
-  renderMinimap() {
+  renderMinimap(timestamp = performance.now()) {
+    if (timestamp - this.lastMinimapRender < MINIMAP_FRAME_MS) return;
+    this.lastMinimapRender = timestamp;
     const world = getWorldDefinition(this.mapId);
     const context = this.minimapCtx;
     const width = this.minimap.width, height = this.minimap.height;
-    context.clearRect(0, 0, width, height);
-    context.drawImage(this.worldLayer, 0, 0, world.width, world.height, 0, 0, width, height);
+    if (this.minimapBaseImage && typeof context.putImageData === "function") {
+      context.putImageData(this.minimapBaseImage, 0, 0);
+    } else {
+      context.clearRect(0, 0, width, height);
+      context.drawImage(this.worldLayer, 0, 0, world.width, world.height, 0, 0, width, height);
+    }
     const drawDot = (x, y, color, size) => {
       context.fillStyle = color;
       context.fillRect(Math.round(x / world.width * width - size / 2), Math.round(y / world.height * height - size / 2), size, size);
