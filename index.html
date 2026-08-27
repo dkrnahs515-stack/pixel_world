@@ -79,10 +79,13 @@
       <div class="gold-line"><span>GOLD</span><b id="goldText">0 G</b></div>
     </section>
 
-    <section class="performance-panel glass">
-      <span><b id="fpsText">0</b> FPS</span>
-      <span><b id="playerCount">1</b>명 접속</span>
-      <span id="qualityText">고화질</span>
+    <section class="performance-panel glass" aria-label="성능 측정">
+      <span class="performance-stat"><small>현재</small><b id="fpsText">0</b> FPS</span>
+      <span class="performance-stat"><small>평균</small><b id="averageFpsText">0</b> FPS</span>
+      <span class="performance-stat"><small>최저</small><b id="minFpsText">0</b> FPS</span>
+      <span class="performance-stat" title="45 FPS 미만 진입 시 1회 기록"><small>급락</small><b id="frameDropCount">0</b>회</span>
+      <span class="performance-meta"><b id="playerCount">1</b>명 접속</span>
+      <span id="qualityText" class="performance-meta">고화질</span>
     </section>
 
     <div id="message" class="message">대륙을 탐험해 보세요.</div>

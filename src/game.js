@@ -31,6 +31,12 @@ import {
 import { advancePortalTransition, createPortalTransition } from "./portal-transition.js";
 import { grantHuntingReward, statsForLevel } from "./player-progression.js";
 import { loadProgressWithStatus, saveProgress } from "./progress-storage.js";
+import {
+  createPerformanceMetrics,
+  isPerformanceTrackingGap,
+  recordPerformanceFrame,
+  trackedFpsFromFrameSeconds,
+} from "./performance-metrics.js";
 import { findQaSpawnPosition, getQaMonster } from "./qa-mode.js";
 import { SHOP_ITEMS, buyShopItem, usePotion } from "./shop-state.js";
 import {
@@ -44,13 +50,14 @@ import { arenDialogueModel } from "./aren-dialogue.js";
 import { getWorldDefinition, normalizeWorldId } from "./world-data.js";
 import {
   createWorldLayer,
+  drawWorldLayerViewport,
   findActivePortal,
   getBiome,
   isWorldPositionBlocked,
+  prewarmWorldLayers,
 } from "./world.js";
 
 const PLAYER_RADIUS = 14;
-const MAX_MEASURED_FPS = 240;
 const MINIMAP_FRAME_MS = 100;
 
 export { advanceHitEffects, createHitEffect, drawHitEffects, hitShakeOffset } from "./combat-effects.js";
@@ -60,9 +67,7 @@ export function createGameCanvasContext(canvas) {
 }
 
 export function fpsSampleFromFrameSeconds(frameSeconds) {
-  if (frameSeconds <= 0) return null;
-  const fps = 1 / frameSeconds;
-  return fps <= MAX_MEASURED_FPS ? fps : null;
+  return trackedFpsFromFrameSeconds(frameSeconds);
 }
 
 export function averageFpsFromFrameSeconds(samples) {
@@ -204,6 +209,7 @@ export class PixelRPG {
     this.fixedDt = 1 / C.SIMULATION_HZ;
     this.fpsSamples = [];
     this.lastFpsUpdate = 0;
+    this.performanceMetrics = createPerformanceMetrics();
     this.messageTimer = 0;
     this.chatMessages = [];
     this.chatInputActive = false;
@@ -311,6 +317,7 @@ export class PixelRPG {
     this.ui.playerName.textContent = this.player.name;
     this.ui.playerCount.textContent = "1";
     this.remotePlayers.clear();
+    await prewarmWorldLayers();
     this.switchWorld("village", getWorldDefinition("village").spawn.x, getWorldDefinition("village").spawn.y, false);
     this.resetCombatState();
     this.inputEnabled = true;
@@ -463,13 +470,14 @@ export class PixelRPG {
   loop(timestamp) {
     if (!this.running) return;
     if (!this.lastFrame) this.lastFrame = timestamp;
-    const frameSeconds = Math.min((timestamp - this.lastFrame) / 1000, 0.1);
+    const rawFrameSeconds = (timestamp - this.lastFrame) / 1000;
+    const frameSeconds = Math.min(rawFrameSeconds, 0.1);
     this.lastFrame = timestamp;
     this.runSimulationFrame(frameSeconds);
 
     const alpha = this.accumulator / this.fixedDt;
     this.render(alpha, timestamp);
-    this.measurePerformance(timestamp, frameSeconds);
+    this.measurePerformance(timestamp, rawFrameSeconds);
     requestAnimationFrame(nextTimestamp => this.loop(nextTimestamp));
   }
 
@@ -1275,11 +1283,12 @@ export class PixelRPG {
     const viewH = innerHeight;
 
     ctx.clearRect(0, 0, viewW, viewH);
-    ctx.drawImage(
-      this.worldLayer,
-      Math.floor(cameraX), Math.floor(cameraY), viewW, viewH,
-      0, 0, viewW, viewH,
-    );
+    drawWorldLayerViewport(ctx, this.worldLayer, this.mapId, {
+      cameraX: Math.floor(cameraX),
+      cameraY: Math.floor(cameraY),
+      width: viewW,
+      height: viewH,
+    });
 
     const entities = [];
     this.remotePlayers.forEach(remote => entities.push({ ...remote, entityType: "player", remote: true }));
@@ -1394,6 +1403,15 @@ export class PixelRPG {
   }
 
   measurePerformance(timestamp, frameSeconds) {
+    this.performanceMetrics ??= createPerformanceMetrics();
+    const session = recordPerformanceFrame(this.performanceMetrics, frameSeconds);
+    if (isPerformanceTrackingGap(frameSeconds)) {
+      this.fpsSamples = [];
+      this.lastFpsUpdate = timestamp;
+      this.lowFpsSeconds = 0;
+      this.highFpsSeconds = 0;
+      return;
+    }
     if (this.lastFpsUpdate === 0) {
       this.lastFpsUpdate = timestamp;
       this.fpsSamples = [];
@@ -1408,7 +1426,10 @@ export class PixelRPG {
     const fps = averageFpsFromFrameSeconds(this.fpsSamples);
     this.fpsSamples = [];
     if (fps === 0) return;
-    this.ui.fpsText.textContent = String(Math.round(fps));
+    setTextIfChanged(this.ui.fpsText, String(Math.round(fps)));
+    if (this.ui.averageFpsText) setTextIfChanged(this.ui.averageFpsText, String(Math.round(session.averageFps)));
+    if (this.ui.minFpsText) setTextIfChanged(this.ui.minFpsText, String(Math.round(session.minFps)));
+    if (this.ui.frameDropCount) setTextIfChanged(this.ui.frameDropCount, String(session.frameDropCount));
 
     if (fps < 45) { this.lowFpsSeconds += elapsedSeconds; this.highFpsSeconds = 0; }
     else if (fps > 57) { this.highFpsSeconds += elapsedSeconds; this.lowFpsSeconds = 0; }
@@ -1435,6 +1456,11 @@ export class PixelRPG {
     this.lastFpsUpdate = 0;
     this.lowFpsSeconds = 0;
     this.highFpsSeconds = 0;
+    this.performanceMetrics = createPerformanceMetrics();
+    if (this.ui.fpsText) setTextIfChanged(this.ui.fpsText, "0");
+    if (this.ui.averageFpsText) setTextIfChanged(this.ui.averageFpsText, "0");
+    if (this.ui.minFpsText) setTextIfChanged(this.ui.minFpsText, "0");
+    if (this.ui.frameDropCount) setTextIfChanged(this.ui.frameDropCount, "0");
   }
 
   drawMinimapBase() {
@@ -1442,7 +1468,17 @@ export class PixelRPG {
     const context = this.minimapCtx;
     context.imageSmoothingEnabled = false;
     context.clearRect(0, 0, this.minimap.width, this.minimap.height);
-    context.drawImage(this.worldLayer, 0, 0, world.width, world.height, 0, 0, this.minimap.width, this.minimap.height);
+    context.drawImage(
+      this.worldLayer,
+      0,
+      0,
+      this.worldLayer.width,
+      this.worldLayer.height,
+      0,
+      0,
+      this.minimap.width,
+      this.minimap.height,
+    );
     this.minimapBaseImage = null;
     if (typeof context.getImageData === "function") {
       try {
@@ -1464,7 +1500,17 @@ export class PixelRPG {
       context.putImageData(this.minimapBaseImage, 0, 0);
     } else {
       context.clearRect(0, 0, width, height);
-      context.drawImage(this.worldLayer, 0, 0, world.width, world.height, 0, 0, width, height);
+      context.drawImage(
+        this.worldLayer,
+        0,
+        0,
+        this.worldLayer.width,
+        this.worldLayer.height,
+        0,
+        0,
+        width,
+        height,
+      );
     }
     const drawDot = (x, y, color, size) => {
       context.fillStyle = color;

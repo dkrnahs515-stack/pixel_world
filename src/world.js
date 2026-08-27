@@ -1,13 +1,20 @@
 import { pointInRect } from "./collision.js";
-import { getWorldDefinition, normalizeWorldId } from "./world-data.js";
+import { WORLD_IDS, getWorldDefinition, normalizeWorldId } from "./world-data.js";
+
+const WORLD_LAYER_SCALE = 0.5;
+const worldLayerCache = new Map();
 
 export function createWorldLayer(mapId = "village") {
   const world = getWorldDefinition(mapId);
+  const cached = worldLayerCache.get(world.id);
+  if (cached) return cached;
+
   const layer = document.createElement("canvas");
-  layer.width = world.width;
-  layer.height = world.height;
+  layer.width = Math.ceil(world.width * WORLD_LAYER_SCALE);
+  layer.height = Math.ceil(world.height * WORLD_LAYER_SCALE);
   const context = layer.getContext("2d", { alpha: false });
   context.imageSmoothingEnabled = false;
+  context.scale(WORLD_LAYER_SCALE, WORLD_LAYER_SCALE);
 
   const renderer = {
     village: drawVillage,
@@ -17,7 +24,44 @@ export function createWorldLayer(mapId = "village") {
   }[world.id];
   renderer(context, world);
   drawPortals(context, world.portals);
+  worldLayerCache.set(world.id, layer);
   return layer;
+}
+
+export async function prewarmWorldLayers({ yieldControl = yieldToMainThread } = {}) {
+  const layers = new Map();
+  for (const mapId of WORLD_IDS) {
+    if (!worldLayerCache.has(mapId)) await yieldControl();
+    layers.set(mapId, createWorldLayer(mapId));
+  }
+  return layers;
+}
+
+export function drawWorldLayerViewport(context, layer, mapId, viewport) {
+  const world = getWorldDefinition(mapId);
+  const scaleX = layer.width / world.width;
+  const scaleY = layer.height / world.height;
+  context.drawImage(
+    layer,
+    viewport.cameraX * scaleX,
+    viewport.cameraY * scaleY,
+    viewport.width * scaleX,
+    viewport.height * scaleY,
+    0,
+    0,
+    viewport.width,
+    viewport.height,
+  );
+}
+
+function yieldToMainThread() {
+  return new Promise(resolve => {
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => resolve());
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
 }
 
 export function getBiome(mapId = "village") {
