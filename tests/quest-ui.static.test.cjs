@@ -16,7 +16,7 @@ test("첫 퀘스트 UI와 F 조작 안내가 연결된다", () => {
 
 test("HUD는 레벨 진행 EXP 막대와 Gold를 표시한다", () => {
   const html = readFileSync(path.join(__dirname, "../index.html"), "utf8");
-  const main = readFileSync(path.join(__dirname, "../src/main.js"), "utf8");
+  const main = readFileSync(path.join(__dirname, "../src/main-20260827-2.js"), "utf8");
   const css = readFileSync(path.join(__dirname, "../styles.css"), "utf8");
 
   assert.match(html, /id="expText">0 \/ 100/);
