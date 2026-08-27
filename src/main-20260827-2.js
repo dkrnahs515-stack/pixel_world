@@ -1,4 +1,4 @@
-import { PixelRPG, interactionKeyAction } from "./game.js";
+import { PixelRPG, interactionKeyAction } from "./game-20260827-2.js";
 import { chatKeyAction } from "./chat-controller.js";
 import { isQaMode } from "./qa-mode.js";
 

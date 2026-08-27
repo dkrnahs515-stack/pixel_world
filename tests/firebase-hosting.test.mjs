@@ -22,4 +22,12 @@ test("진입 HTML은 CSS와 JavaScript의 실제 파일명으로 기존 배포 �
   assert.equal(moduleVersion, stylesheetVersion);
   assert.ok(modulePath);
   assert.ok(existsSync(new URL(`..\/${modulePath}`, import.meta.url)));
+
+  const entry = readFileSync(new URL(`..\/${modulePath}`, import.meta.url), "utf8");
+  const gameModulePath = entry.match(/from "(\.\/game-([^"]+?)\.js)"/)?.[1];
+  const gameModuleVersion = entry.match(/from "\.\/game-([^"]+?)\.js"/)?.[1];
+
+  assert.equal(gameModuleVersion, stylesheetVersion);
+  assert.ok(gameModulePath);
+  assert.ok(existsSync(new URL(`..\/src\/${gameModulePath}`, import.meta.url)));
 });

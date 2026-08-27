@@ -4,7 +4,7 @@ import {
   PixelRPG,
   interactionKeyAction,
   npcInteractionKeyAction,
-} from "../src/game.js";
+} from "../src/game-20260827-2.js";
 import { getNpcsForWorld } from "../src/npc-data.js";
 import { createInitialProgress } from "../src/quest-state.js";
 
