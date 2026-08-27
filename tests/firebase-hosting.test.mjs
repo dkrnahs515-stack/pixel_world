@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 const firebase = JSON.parse(readFileSync(new URL("../firebase.json", import.meta.url), "utf8"));
 const index = readFileSync(new URL("../index.html", import.meta.url), "utf8");
@@ -13,10 +13,13 @@ test("Firebase의 고정 URL JavaScript와 CSS는 새 배포마다 재검증한�
   assert.doesNotMatch(cacheControl ?? "", /max-age=[1-9]\d*/);
 });
 
-test("진입 HTML은 CSS와 JavaScript에 같은 버전으로 기존 배포 캐시를 우회한다", () => {
+test("진입 HTML은 CSS와 JavaScript의 실제 파일명으로 기존 배포 캐시를 우회한다", () => {
   const stylesheetVersion = index.match(/href="\.\/styles\.css\?v=([^"]+)"/)?.[1];
-  const moduleVersion = index.match(/src="\.\/src\/main\.js\?v=([^"]+)"/)?.[1];
+  const modulePath = index.match(/src="(\.\/src\/main-([^"]+?)\.js)"/)?.[1];
+  const moduleVersion = index.match(/src="\.\/src\/main-([^"]+?)\.js"/)?.[1];
 
   assert.ok(stylesheetVersion);
   assert.equal(moduleVersion, stylesheetVersion);
+  assert.ok(modulePath);
+  assert.ok(existsSync(new URL(`..\/${modulePath}`, import.meta.url)));
 });

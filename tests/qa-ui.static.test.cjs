@@ -4,7 +4,7 @@ const { readFileSync } = require("node:fs");
 const path = require("node:path");
 
 const html = readFileSync(path.join(__dirname, "../index.html"), "utf8");
-const main = readFileSync(path.join(__dirname, "../src/main.js"), "utf8");
+const main = readFileSync(path.join(__dirname, "../src/main-20260827-2.js"), "utf8");
 const css = readFileSync(path.join(__dirname, "../styles.css"), "utf8");
 
 test("QA 도구는 기본 문서에서 숨겨진 버튼과 모달로 제공된다", () => {
