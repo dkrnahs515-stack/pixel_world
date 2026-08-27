@@ -240,6 +240,9 @@ kbd { min-width: 23px; padding: 2px 5px; border: 1px solid rgba(255,255,255,.35)
   .player-panel { width: 310px; }
   .chat-panel { width: min(330px,calc(100vw - 28px)); height: min(205px,30vh); }
 }
+@media (max-width: 760px) {
+  .blacksmith-items { grid-template-columns: 1fr; }
+}
 @media (max-width: 620px) {
   .performance-panel { display: none; }
   .quest-tracker { top: var(--player-panel-stack-top); left: 14px; right: auto; width: calc(100% - 28px); }

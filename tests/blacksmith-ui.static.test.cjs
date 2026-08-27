@@ -88,3 +88,10 @@ test("대장간은 QA 아래·HUD 위, 판매 확인은 최상단이며 모바�
   assert.match(css, /@media \(max-width:\s*520px\)[\s\S]*?\.blacksmith-items \{[^}]*grid-template-columns:\s*1fr/);
   assert.match(css, /\.weapon-preview \{[^}]*image-rendering:\s*pixelated/);
 });
+
+test("대장간은 800px 폭을 유지하고 760px 이하에서 양쪽 거래 목록을 한 열로 접는다", () => {
+  assert.match(css, /\.blacksmith-card \{[^}]*width:\s*min\(100%,800px\)/);
+  assert.match(css, /@media \(max-width:\s*760px\)[\s\S]*?\.blacksmith-items \{[^}]*grid-template-columns:\s*1fr/);
+  assert.match(css, /@media \(max-width:\s*520px\)[\s\S]*?\.blacksmith-item,\s*\.blacksmith-item\.buy-weapon \{[^}]*grid-template-columns:\s*1fr/);
+  assert.match(css, /@media \(max-width:\s*520px\)[\s\S]*?\.blacksmith-item > button \{[^}]*width:\s*100%/);
+});
