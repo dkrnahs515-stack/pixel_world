@@ -141,6 +141,7 @@ button, input { font: inherit; }
 .qa-description { margin: 7px 0 16px; padding: 10px 12px; border: 1px solid rgba(251,191,36,.3); border-radius: 10px; background: rgba(120,53,15,.18); color: #fde68a; font-size: 12px; line-height: 1.45; }
 .qa-section + .qa-section { margin-top: 16px; }
 .qa-section h3 { margin: 0 0 8px; color: #ddd6fe; font-size: 12px; letter-spacing: .04em; }
+.qa-weapon-actions { display: grid; gap: 8px; }
 .qa-region-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; }
 .qa-monster-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
 .qa-region-grid button, .qa-monster-grid button { min-width: 0; padding: 10px 11px; border: 1px solid rgba(196,181,253,.32); border-radius: 10px; background: linear-gradient(145deg,rgba(76,29,149,.56),rgba(30,41,59,.82)); color: #f5f3ff; cursor: pointer; font-size: 12px; font-weight: 900; text-align: left; }

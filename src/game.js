@@ -357,6 +357,7 @@ export class PixelRPG {
     elements.qaCloseButton?.addEventListener("click", () => this.closeQaPanel());
     elements.qaDoneButton?.addEventListener("click", () => this.closeQaPanel());
     elements.qaWeaponButton?.addEventListener("click", () => this.qaPrepareWeaponShop());
+    elements.qaBlacksmithButton?.addEventListener("click", () => this.qaTravelToBlacksmith());
     for (const button of elements.qaWorldButtons || []) {
       button.addEventListener("click", () => this.qaTravel(button.dataset.qaWorld));
     }
@@ -370,6 +371,7 @@ export class PixelRPG {
         ...(elements.qaWorldButtons || []),
         ...(elements.qaMonsterButtons || []),
         elements.qaWeaponButton,
+        elements.qaBlacksmithButton,
         elements.qaDoneButton,
       ].filter(control => control && !control.disabled);
       event.preventDefault();
@@ -789,6 +791,22 @@ export class PixelRPG {
     this.persistProgress("장비 점검 상태를 저장할 수 없습니다.");
     this.closeQaPanel();
     this.notify("장비 점검 준비 완료 · Lv.30 · 5000 G");
+    return true;
+  }
+
+  qaTravelToBlacksmith() {
+    if (!this.qaEnabled || !this.running || !this.isQaOpen()) return false;
+    const blacksmith = getNpcsForWorld("village").find(npc => npc.role === "blacksmith");
+    if (!blacksmith) return false;
+
+    const targetX = blacksmith.x;
+    const targetY = blacksmith.y + Math.min(60, blacksmith.interactionRadius - 1);
+    if (isWorldPositionBlocked("village", targetX, targetY, PLAYER_RADIUS)) return false;
+
+    this.switchWorld("village", targetX, targetY);
+    this.portalCooldown = 1;
+    this.closeQaPanel();
+    this.notify("브란 앞으로 이동했습니다 · F로 대장간 열기");
     return true;
   }
 

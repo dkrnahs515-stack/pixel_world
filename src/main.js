@@ -84,6 +84,7 @@ const elements = {
   qaWorldButtons: [...document.querySelectorAll("[data-qa-world]")],
   qaMonsterButtons: [...document.querySelectorAll("[data-qa-monster]")],
   qaWeaponButton: document.querySelector("[data-qa-weapons='prepare']"),
+  qaBlacksmithButton: document.querySelector("[data-qa-blacksmith='travel']"),
   hpPotionSlot: document.querySelector("#hpPotionSlot"),
   mpPotionSlot: document.querySelector("#mpPotionSlot"),
   hpPotionCount: document.querySelector("#hpPotionCount"),
