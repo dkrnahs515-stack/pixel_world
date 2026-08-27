@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import * as gameModule from "../src/game.js";
+import * as gameModule from "../src/game-20260827-2.js";
 import { getNpcsForWorld } from "../src/npc-data.js";
 import { createInitialProgress } from "../src/quest-state.js";
 

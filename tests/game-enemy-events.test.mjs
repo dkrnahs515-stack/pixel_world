@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { GAME_CONFIG as C } from "../src/config.js";
-import { PixelRPG } from "../src/game.js";
+import { PixelRPG } from "../src/game-20260827-2.js";
 import { createEnemyInstance } from "../src/enemies.js";
 import { applyPlayerSlow, createCombatStatusEffects, playerMovementMultiplier } from "../src/player-combat.js";
 
