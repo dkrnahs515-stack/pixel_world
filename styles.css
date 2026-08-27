@@ -80,7 +80,7 @@ button, input { font: inherit; }
 .shop-item button:disabled { cursor: not-allowed; filter: grayscale(.7); opacity: .48; }
 .shop-done { width: 100%; }
 .blacksmith-overlay { pointer-events: auto; position: absolute; inset: 0; z-index: 37; display: grid; place-items: center; padding: 20px; background: rgba(5,9,17,.84); backdrop-filter: blur(5px); }
-.blacksmith-card { position: relative; width: min(100%,800px); max-height: calc(100vh - 40px); overflow: hidden; text-align: left; }
+.modal-card.blacksmith-card { position: relative; width: min(100%,800px); max-height: calc(100vh - 40px); overflow: hidden; text-align: left; }
 .blacksmith-card .modal-emblem { margin-left: 0; }
 .modal-emblem.blacksmith { border-color: rgba(251,191,36,.52); background: linear-gradient(145deg,rgba(120,53,15,.62),rgba(51,65,85,.72)); }
 .blacksmith-description { margin: 7px 0 12px; color: var(--muted); font-size: 12px; line-height: 1.45; }
