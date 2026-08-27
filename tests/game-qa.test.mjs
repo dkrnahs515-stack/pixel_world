@@ -100,6 +100,7 @@ function constructedQaGame() {
   const chatForm = eventNode(documentRef, { querySelector: () => chatSubmitButton });
   const qaWorldButton = eventNode(documentRef, { dataset: { qaWorld: "forest" } });
   const qaMonsterButton = eventNode(documentRef, { dataset: { qaMonster: "fang-shark" } });
+  const qaWeaponButton = eventNode(documentRef, { dataset: { qaWeapons: "prepare" } });
   const elements = {
     qaEnabled: true,
     canvas,
@@ -126,6 +127,7 @@ function constructedQaGame() {
     qaDoneButton: eventNode(documentRef),
     qaWorldButtons: [qaWorldButton],
     qaMonsterButtons: [qaMonsterButton],
+    qaWeaponButton,
     hpPotionSlot: eventNode(documentRef, { dataset: { code: "Digit1" } }),
     mpPotionSlot: eventNode(documentRef, { dataset: { code: "Digit2" } }),
     chatPanel: eventNode(documentRef),
@@ -146,7 +148,7 @@ function constructedQaGame() {
   game.updateBiome = () => {};
   game.updateNpcPrompt = () => {};
   game.notify = () => {};
-  return { game, elements, documentRef, qaWorldButton, qaMonsterButton };
+  return { game, elements, documentRef, qaWorldButton, qaMonsterButton, qaWeaponButton };
 }
 
 function qaGame() {
@@ -189,6 +191,7 @@ function qaGame() {
   game.ui = {
     qaOverlay: fakeNode({ hidden: false }),
     qaCloseButton: fakeNode(),
+    qaWeaponButton: fakeNode({ dataset: { qaWeapons: "prepare" } }),
     dialogueOverlay: fakeNode({ hidden: true }),
     shopOverlay: fakeNode({ hidden: true }),
     inventoryOverlay: fakeNode({ hidden: true }),
@@ -258,7 +261,7 @@ test("실제 QA 버튼과 닫기 버튼은 패널 상태와 포커스를 게임 
 });
 
 test("QA 패널의 Tab 포커스는 지역·몬스터·닫기 버튼 안에서만 순환한다", () => {
-  const { elements, documentRef, qaWorldButton, qaMonsterButton } = constructedQaGame();
+  const { elements, documentRef, qaWorldButton, qaMonsterButton, qaWeaponButton } = constructedQaGame();
   elements.qaButton.click();
   let prevented = false;
 
@@ -276,6 +279,63 @@ test("QA 패널의 Tab 포커스는 지역·몬스터·닫기 버튼 안에서�
     preventDefault() {},
   });
   assert.equal(documentRef.activeElement, qaMonsterButton);
+
+  elements.qaOverlay.dispatch("keydown", {
+    code: "Tab",
+    shiftKey: false,
+    preventDefault() {},
+  });
+  assert.equal(documentRef.activeElement, qaWeaponButton);
+});
+
+test("QA 장비 준비는 Lv.30·5000G와 최대 HP·MP를 반영하고 한 번 저장한 뒤 닫힌다", () => {
+  const game = qaGame();
+  const storage = memoryStorage();
+  globalThis.localStorage = storage;
+  game.progress.inventory = { hpPotion: 2, mpPotion: 3 };
+  game.progress.equipment = {
+    ownedWeaponIds: ["starter-sword", "katana"],
+    equippedWeaponId: "katana",
+  };
+  game.player.equippedWeaponId = "katana";
+
+  assert.equal(game.qaPrepareWeaponShop(), true);
+  assert.equal(game.progress.level, 30);
+  assert.equal(game.progress.exp, 0);
+  assert.equal(game.progress.nextLevelExp, 3000);
+  assert.equal(game.progress.gold, 5000);
+  assert.deepEqual(game.progress.inventory, { hpPotion: 2, mpPotion: 3 });
+  assert.deepEqual(game.progress.equipment, {
+    ownedWeaponIds: ["starter-sword", "katana"],
+    equippedWeaponId: "katana",
+  });
+  assert.equal(game.player.maxHp, 390);
+  assert.equal(game.player.maxMp, 245);
+  assert.equal(game.player.hp, 390);
+  assert.equal(game.player.mp, 245);
+  assert.equal(game.ui.expText.textContent, "0 / 3000");
+  assert.equal(game.ui.goldText.textContent, "5000 G");
+  assert.equal(game.ui.qaOverlay.hidden, true);
+  assert.equal(storage.writes.length, 1);
+  assert.equal(storage.writes[0].value.version, 4);
+  assert.equal(game.lastNotice, "장비 점검 준비 완료 · Lv.30 · 5000 G");
+  delete globalThis.localStorage;
+});
+
+test("QA가 비활성화됐거나 패널이 닫혀 있으면 장비 준비가 진행·저장을 바꾸지 않는다", () => {
+  const game = qaGame();
+  const storage = memoryStorage();
+  globalThis.localStorage = storage;
+  const before = structuredClone(game.progress);
+
+  game.qaEnabled = false;
+  assert.equal(game.qaPrepareWeaponShop(), false);
+  game.qaEnabled = true;
+  game.ui.qaOverlay.hidden = true;
+  assert.equal(game.qaPrepareWeaponShop(), false);
+  assert.deepEqual(game.progress, before);
+  assert.equal(storage.writes.length, 0);
+  delete globalThis.localStorage;
 });
 
 test("QA 지역 이동은 선택한 지역의 안전한 기본 위치와 전체 로스터를 불러온다", () => {
@@ -346,7 +406,7 @@ test("다른 지역 QA 소환의 안전 위치가 없으면 현재 지역과 전
   assert.equal(game.ui.qaOverlay.hidden, false);
 });
 
-test("QA 소환 몬스터 처치 보상은 일반 진행 데이터에 지급되고 v3 저장소에 기록된다", () => {
+test("QA 소환 몬스터 처치 보상은 일반 진행 데이터에 지급되고 v4 저장소에 기록된다", () => {
   const game = qaGame();
   const storage = memoryStorage();
   globalThis.localStorage = storage;
@@ -360,7 +420,7 @@ test("QA 소환 몬스터 처치 보상은 일반 진행 데이터에 지급되�
   assert.equal(game.progress.exp, 20);
   assert.equal(game.progress.gold, 15);
   assert.equal(storage.writes.length, 1);
-  assert.equal(storage.writes[0].value.version, 3);
+  assert.equal(storage.writes[0].value.version, 4);
   assert.equal(storage.writes[0].value.exp, 20);
   assert.equal(storage.writes[0].value.gold, 15);
   delete globalThis.localStorage;

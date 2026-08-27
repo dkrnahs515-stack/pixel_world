@@ -1,3 +1,5 @@
+import { STARTER_WEAPON_ID, resolveWeaponDefinition } from "./weapon-data.js";
+
 const ATTACK_DEFINITIONS = Object.freeze({
   basic: Object.freeze({
     damage: 1,
@@ -34,8 +36,11 @@ export function directionVector(direction) {
   }[direction] || { x: 0, y: 1 };
 }
 
-export function attackDefinition(kind) {
-  return ATTACK_DEFINITIONS[kind] || ATTACK_DEFINITIONS.basic;
+export function attackDefinition(kind, weaponId = STARTER_WEAPON_ID) {
+  const base = ATTACK_DEFINITIONS[kind] || ATTACK_DEFINITIONS.basic;
+  const weapon = resolveWeaponDefinition(weaponId);
+  if (kind === "strong") return { ...base, cooldown: weapon.strongCooldown };
+  return { ...base, damage: weapon.damage, range: weapon.range };
 }
 
 export function isTargetInAttackArc(origin, direction, target, range, arcDegrees) {

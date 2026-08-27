@@ -22,6 +22,13 @@ export function drawNpc(ctx, npc, cameraX = 0, cameraY = 0) {
   ctx.save();
   ctx.fillStyle = "rgba(0,0,0,.28)";
   ctx.fillRect(x - 13, y + 14, 26, 7);
+  if (npc.role === "blacksmith") drawBlacksmith(ctx, npc, x, y);
+  else drawGenericNpc(ctx, npc, x, y);
+  drawLabel(ctx, npc.name, x, y - 38);
+  ctx.restore();
+}
+
+function drawGenericNpc(ctx, npc, x, y) {
   ctx.fillStyle = "#51372a";
   ctx.fillRect(x - 10, y + 7, 8, 14);
   ctx.fillRect(x + 2, y + 7, 8, 14);
@@ -31,8 +38,26 @@ export function drawNpc(ctx, npc, cameraX = 0, cameraY = 0) {
   ctx.fillRect(x - 8, y - 25, 16, 14);
   ctx.fillStyle = "#4a3328";
   ctx.fillRect(x - 9, y - 29, 18, 6);
-  drawLabel(ctx, npc.name, x, y - 38);
-  ctx.restore();
+}
+
+function drawBlacksmith(ctx, npc, x, y) {
+  const appearance = npc.appearance;
+  ctx.fillStyle = "#302820";
+  ctx.fillRect(x - 10, y + 7, 8, 14);
+  ctx.fillRect(x + 2, y + 7, 8, 14);
+  ctx.fillStyle = "#4b5563";
+  ctx.fillRect(x - 13, y - 12, 26, 21);
+  ctx.fillStyle = appearance.apronColor;
+  ctx.fillRect(x - 11, y - 8, 22, 20);
+  ctx.fillRect(x - 4, y + 9, 8, 7);
+  ctx.fillStyle = "#e8b78c";
+  ctx.fillRect(x - 8, y - 25, 16, 14);
+  ctx.fillStyle = appearance.hairColor;
+  ctx.fillRect(x - 9, y - 29, 18, 7);
+  ctx.fillRect(x - 9, y - 23, 4, 7);
+  ctx.fillStyle = appearance.eyeColor;
+  ctx.fillRect(x - 5, y - 19, 2, 2);
+  ctx.fillRect(x + 3, y - 19, 2, 2);
 }
 
 function drawLabel(ctx, text, x, y) {

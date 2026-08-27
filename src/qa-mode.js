@@ -1,3 +1,5 @@
+import { nextLevelExp } from "./player-progression.js";
+
 const QA_MONSTERS = Object.freeze({
   "fang-shark": Object.freeze({ kind: "fang-shark", name: "송곳니 상어", mapId: "coast" }),
   "pirate-shark": Object.freeze({ kind: "pirate-shark", name: "해적선 상어", mapId: "coast" }),
@@ -23,6 +25,25 @@ export function getQaMonster(kind) {
   return Object.prototype.hasOwnProperty.call(QA_MONSTERS, kind)
     ? QA_MONSTERS[kind]
     : null;
+}
+
+export function prepareWeaponQaProgress(progress) {
+  return {
+    ...progress,
+    inventory: { ...progress.inventory },
+    equipment: {
+      ...progress.equipment,
+      ownedWeaponIds: [...progress.equipment.ownedWeaponIds],
+    },
+    completedQuests: [...progress.completedQuests],
+    quests: Object.fromEntries(
+      Object.entries(progress.quests).map(([questId, quest]) => [questId, { ...quest }]),
+    ),
+    level: 30,
+    exp: 0,
+    nextLevelExp: nextLevelExp(30),
+    gold: Math.max(progress.gold, 5000),
+  };
 }
 
 function overlapsPortal(x, y, radius, portals) {

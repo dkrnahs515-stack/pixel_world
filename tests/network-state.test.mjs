@@ -16,6 +16,7 @@ test("serialized player state keeps existing fields and adds the active region",
       color: "#fff",
       name: "별",
       mapId: "forest",
+      equippedWeaponId: "starter-sword",
     },
   );
 });
@@ -30,6 +31,7 @@ test("only valid remote players in the active region are visible", () => {
   const players = filterPlayersForMap(raw, "own", "forest");
   assert.deepEqual([...players.keys()], ["same"]);
   assert.equal(players.get("same").name, "숲");
+  assert.equal(players.get("same").equippedWeaponId, "starter-sword");
 });
 
 test("legacy snapshots without a region remain visible in the village", () => {
@@ -49,4 +51,27 @@ test("unknown active region values safely fall back to the village", () => {
     "unknown",
   );
   assert.equal(players.has("villagePlayer"), true);
+});
+
+test("장착 무기 ID는 직렬화되고 잘못되거나 누락된 원격 ID는 시작 검으로 복구된다", () => {
+  const serialized = serializePlayerState({
+    x: 10,
+    y: 20,
+    dir: "left",
+    moving: false,
+    color: "#fff",
+    name: "별",
+    equippedWeaponId: "elite-katana",
+  }, "village");
+  assert.equal(serialized.equippedWeaponId, "elite-katana");
+
+  const players = filterPlayersForMap({
+    valid: { ...serialized, equippedWeaponId: "masterwork-katana" },
+    invalid: { ...serialized, equippedWeaponId: "unknown" },
+    legacy: { ...serialized, equippedWeaponId: undefined },
+  }, "own", "village");
+  assert.equal(players.get("valid").equippedWeaponId, "masterwork-katana");
+  assert.equal(players.get("invalid").equippedWeaponId, "starter-sword");
+  assert.equal(players.get("legacy").equippedWeaponId, "starter-sword");
+  assert.equal(serializePlayerState({ ...serialized, equippedWeaponId: "unknown" }, "village").equippedWeaponId, "starter-sword");
 });

@@ -111,10 +111,10 @@ function drawVillage(context, world) {
   drawBuilding(context, 1120, 180, 640, 250, "#74513b", "#d6b576", "마을 회관");
   drawFarm(context, 240, 650, 690, 430);
   drawShopBlock(context, 2020, 610, 560, 350);
+  drawForgeDetails(context, 2460, 890);
   drawTradePost(context, 1080, 1320, 720, 240);
   drawNpc(context, 760, 1160, "농부", "#5f8a3e");
   drawNpc(context, 2200, 1110, "상인", "#ca7b38");
-  drawNpc(context, 2440, 1080, "대장장이", "#53677d");
 
   for (let index = 0; index < 44; index++) {
     const x = 80 + (index * 239) % 2700;
@@ -252,6 +252,36 @@ function drawShopBlock(context, x, y, w, h) {
   pixelRect(context, x + 110, y + 190, 90, 160, "#422e27");
   pixelRect(context, x + 360, y + 190, 90, 160, "#422e27");
   drawLabel(context, "상점 · 대장간", x + w / 2, y + 42);
+}
+
+export function drawForgeDetails(context, x, y) {
+  context.fillStyle = "#4b5563";
+  context.fillRect(x - 100, y + 28, 44, 10);
+  context.fillStyle = "#374151";
+  context.fillRect(x - 92, y + 38, 28, 18);
+  context.fillRect(x - 104, y + 25, 52, 5);
+
+  context.fillStyle = "#6b3f2a";
+  context.fillRect(x - 38, y + 4, 54, 52);
+  context.fillStyle = "#dc2626";
+  context.fillRect(x - 28, y + 16, 34, 30);
+  context.fillStyle = "#f97316";
+  context.fillRect(x - 22, y + 21, 22, 22);
+  context.fillStyle = "#facc15";
+  context.fillRect(x - 15, y + 27, 9, 14);
+
+  context.fillStyle = "#6b442b";
+  context.fillRect(x + 42, y + 4, 8, 54);
+  context.fillRect(x + 96, y + 4, 8, 54);
+  context.fillRect(x + 38, y + 10, 70, 7);
+  for (let index = 0; index < 3; index += 1) {
+    const bladeX = x + 54 + index * 18;
+    context.fillStyle = "#dceeff";
+    context.fillRect(bladeX, y + 18, 4, 29);
+    context.fillStyle = "#1f2937";
+    context.fillRect(bladeX - 3, y + 45, 10, 4);
+    context.fillRect(bladeX, y + 49, 4, 8);
+  }
 }
 
 function drawTradePost(context, x, y, w, h) {
