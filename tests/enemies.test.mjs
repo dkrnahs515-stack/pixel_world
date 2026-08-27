@@ -6,6 +6,7 @@ import {
   createEnemyInstance,
   createMagmaChildren,
   damageEnemy,
+  formatHealthValue,
   updateEnemies,
 } from "../src/enemies.js";
 
@@ -63,6 +64,27 @@ test("damage applies hit feedback and death fade to every species", () => {
   assert.equal(enemy.state, "dying");
   assert.equal(enemy.knockbackX, 0);
   assert.equal(updateEnemies([enemy], { x: 0, y: 0 }, 0.66, { isBlocked: () => false }).enemies.length, 0);
+});
+
+test("소수 피해는 한 자리로 정규화하고 0 이하에서 처치한다", () => {
+  const enemy = createEnemyInstance("fire-slime", { x: 0, y: 0 }, "fraction", { hp: 3 });
+  const first = damageEnemy(enemy, 1.3, { x: 1, y: 0 }, 0);
+  assert.equal(enemy.hp, 1.7);
+  assert.equal(first.damageNumber.value, 1.3);
+  const lethal = damageEnemy(enemy, 2.2, { x: 1, y: 0 }, 0);
+  assert.equal(enemy.hp, 0);
+  assert.equal(enemy.state, "dying");
+  assert.equal(lethal.killed, true);
+  assert.equal(formatHealthValue(8), "8");
+  assert.equal(formatHealthValue(8.7), "8.7");
+  assert.equal(formatHealthValue(8.76), "8.8");
+  assert.equal(formatHealthValue(-0.1), "0");
+});
+
+test("연속 소수 피해에 부동소수점 오차가 누적되지 않는다", () => {
+  const enemy = createEnemyInstance("magma-slime", { x: 0, y: 0 }, "decimal", { hp: 10 });
+  for (let hit = 0; hit < 3; hit += 1) damageEnemy(enemy, 1.3, { x: 1, y: 0 }, 0);
+  assert.equal(enemy.hp, 6.1);
 });
 
 test("치명타를 받은 마그마 슬라임 시체는 사망 연출과 분열까지 죽은 위치에 고정된다", () => {

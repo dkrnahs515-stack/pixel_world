@@ -86,3 +86,46 @@ test("strong attack exposes the approved combat behavior", () => {
     hitStop: 0.065,
   });
 });
+
+test("장착 무기는 기본 공격 피해·사거리와 강공격 쿨다운만 바꾼다", () => {
+  const basic = attackDefinition("basic", "reinforced-masterwork-katana");
+  assert.deepEqual(
+    {
+      damage: basic.damage,
+      range: basic.range,
+      cooldown: basic.cooldown,
+      arcDegrees: basic.arcDegrees,
+      hitStun: basic.hitStun,
+      hitStop: basic.hitStop,
+    },
+    {
+      damage: 2.5,
+      range: 78,
+      cooldown: 0.5,
+      arcDegrees: 120,
+      hitStun: 0.1,
+      hitStop: 0.035,
+    },
+  );
+  const strong = attackDefinition("strong", "reinforced-katana");
+  assert.deepEqual(
+    {
+      damage: strong.damage,
+      range: strong.range,
+      cooldown: strong.cooldown,
+      mpCost: strong.mpCost,
+      hitStun: strong.hitStun,
+      hitStop: strong.hitStop,
+    },
+    {
+      damage: 3,
+      range: 96,
+      cooldown: 3.8,
+      mpCost: 20,
+      hitStun: 0.18,
+      hitStop: 0.065,
+    },
+  );
+  assert.equal(attackDefinition("basic", "unknown").range, 64);
+  assert.equal(attackDefinition("strong", "unknown").cooldown, 4);
+});

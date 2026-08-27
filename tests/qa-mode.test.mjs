@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createInitialProgress } from "../src/quest-state.js";
 
 async function qaModule() {
   try {
@@ -72,4 +73,41 @@ test("QA 소환 후보가 모두 막히면 위치를 만들지 않는다", async
     portals: [],
     isBlocked: () => true,
   }), null);
+});
+
+test("장비 QA 준비는 진행 컬렉션을 보존하고 Lv.30과 충분한 Gold를 설정한다", async () => {
+  const { prepareWeaponQaProgress } = await qaModule();
+  const original = createInitialProgress();
+  const source = {
+    ...original,
+    gold: 120,
+    inventory: { hpPotion: 2, mpPotion: 3 },
+    equipment: {
+      ownedWeaponIds: ["starter-sword", "katana"],
+      equippedWeaponId: "katana",
+    },
+    completedQuests: ["oldQuest"],
+    quests: {
+      ...original.quests,
+      sideQuest: { status: "active", progress: 2 },
+    },
+  };
+  const before = structuredClone(source);
+
+  assert.equal(typeof prepareWeaponQaProgress, "function");
+  const prepared = prepareWeaponQaProgress(source);
+  assert.equal(prepared.level, 30);
+  assert.equal(prepared.exp, 0);
+  assert.equal(prepared.nextLevelExp, 3000);
+  assert.equal(prepared.gold, 5000);
+  assert.deepEqual(prepared.inventory, source.inventory);
+  assert.deepEqual(prepared.equipment, source.equipment);
+  assert.deepEqual(prepared.completedQuests, source.completedQuests);
+  assert.deepEqual(prepared.quests, source.quests);
+  assert.notEqual(prepared.inventory, source.inventory);
+  assert.notEqual(prepared.equipment, source.equipment);
+  assert.notEqual(prepared.equipment.ownedWeaponIds, source.equipment.ownedWeaponIds);
+  assert.deepEqual(source, before);
+
+  assert.equal(prepareWeaponQaProgress({ ...source, gold: 7000 }).gold, 7000);
 });

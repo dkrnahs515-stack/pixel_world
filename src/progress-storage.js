@@ -6,9 +6,15 @@ import {
   grantProgressReward,
   nextLevelExp,
 } from "./player-progression.js";
+import {
+  createInitialEquipment,
+  normalizeEquipment,
+} from "./equipment-state.js";
 
-const STORAGE_VERSION = 3;
-const STORAGE_PREFIX = "pixel-world.progress.v3:";
+const STORAGE_VERSION = 4;
+const STORAGE_PREFIX = "pixel-world.progress.v4:";
+const V3_STORAGE_PREFIX = "pixel-world.progress.v3:";
+const V3_STORAGE_VERSION = 3;
 const V2_STORAGE_PREFIX = "pixel-world.progress.v2:";
 const V2_STORAGE_VERSION = 2;
 const LEGACY_STORAGE_PREFIX = "pixel-world.progress.v1:";
@@ -98,7 +104,7 @@ function isValidLegacyProgress(progress) {
     && isReachableQuest(progress.quests[ADVENTURE_QUEST.id]);
 }
 
-function toProgress(value) {
+function toBaseAndInventoryProgress(value) {
   return {
     level: value.level,
     exp: value.exp,
@@ -118,6 +124,24 @@ function toProgress(value) {
   };
 }
 
+function toProgress(value) {
+  const equipment = normalizeEquipment(value.equipment);
+  return {
+    ...toBaseAndInventoryProgress(value),
+    equipment: {
+      ownedWeaponIds: [...equipment.ownedWeaponIds],
+      equippedWeaponId: equipment.equippedWeaponId,
+    },
+  };
+}
+
+function migrateV3Progress(value) {
+  return {
+    ...toBaseAndInventoryProgress(value),
+    equipment: createInitialEquipment(),
+  };
+}
+
 function migrateV2Progress(value) {
   return {
     level: value.level,
@@ -125,6 +149,7 @@ function migrateV2Progress(value) {
     nextLevelExp: value.nextLevelExp,
     gold: value.gold,
     inventory: { hpPotion: 0, mpPotion: 0 },
+    equipment: createInitialEquipment(),
     completedQuests: [...value.completedQuests],
     quests: {
       [ADVENTURE_QUEST.id]: {
@@ -150,6 +175,10 @@ export function progressStorageKey(nickname) {
   return `${STORAGE_PREFIX}${encodeURIComponent(normalizeNickname(nickname))}`;
 }
 
+export function v3ProgressStorageKey(nickname) {
+  return `${V3_STORAGE_PREFIX}${encodeURIComponent(normalizeNickname(nickname))}`;
+}
+
 export function legacyProgressStorageKey(nickname) {
   return `${LEGACY_STORAGE_PREFIX}${encodeURIComponent(normalizeNickname(nickname))}`;
 }
@@ -169,11 +198,21 @@ function parseStoredValue(raw) {
 
 export function loadProgressWithStatus(storage, nickname) {
   try {
-    const v3 = parseStoredValue(storage?.getItem(progressStorageKey(nickname)));
-    if (v3?.version === STORAGE_VERSION && isValidProgress(v3)) {
+    const v4 = parseStoredValue(storage?.getItem(progressStorageKey(nickname)));
+    if (v4?.version === STORAGE_VERSION && isValidProgress(v4)) {
       return {
-        progress: toProgress(v3),
+        progress: toProgress(v4),
         migrationWriteFailed: false,
+      };
+    }
+
+    const v3 = parseStoredValue(storage?.getItem(v3ProgressStorageKey(nickname)));
+    if (v3?.version === V3_STORAGE_VERSION && isValidProgress(v3)) {
+      const migrated = migrateV3Progress(v3);
+      const migrationSave = saveProgress(storage, nickname, migrated);
+      return {
+        progress: migrated,
+        migrationWriteFailed: !migrationSave.ok,
       };
     }
 

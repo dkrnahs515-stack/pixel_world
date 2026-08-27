@@ -136,33 +136,148 @@
       </div>
     </section>
 
+    <section id="blacksmithOverlay" class="blacksmith-overlay" hidden>
+      <div class="modal-card blacksmith-card" role="dialog" aria-modal="true" aria-labelledby="blacksmithTitle" aria-describedby="blacksmithDescription">
+        <button id="blacksmithCloseButton" class="dialogue-close" type="button" aria-label="대장간 닫기">×</button>
+        <div class="modal-emblem blacksmith" aria-hidden="true">⚒</div>
+        <p class="eyebrow">BRANN'S FORGE</p>
+        <h2 id="blacksmithTitle">대장장이 브란의 대장간</h2>
+        <p id="blacksmithDescription" class="blacksmith-description">요구 레벨을 달성한 무기를 구매하거나 보유 무기를 판매할 수 있습니다. 구매 후 인벤토리에서 직접 장착하세요.</p>
+        <div class="blacksmith-status-row">
+          <div class="blacksmith-gold"><span>보유 Gold</span><b id="blacksmithGoldText">0 G</b></div>
+          <div class="blacksmith-equipped"><span>현재 장착</span><b id="blacksmithEquippedWeaponText">시작 검</b></div>
+        </div>
+        <div class="blacksmith-tabs" role="tablist" aria-label="대장간 거래 종류">
+          <button id="blacksmithBuyTab" role="tab" aria-selected="true" aria-controls="blacksmithBuyPanel" type="button">구매</button>
+          <button id="blacksmithSellTab" role="tab" aria-selected="false" aria-controls="blacksmithSellPanel" type="button">판매</button>
+        </div>
+
+        <section id="blacksmithBuyPanel" role="tabpanel" aria-labelledby="blacksmithBuyTab">
+          <div class="blacksmith-items">
+            <article class="blacksmith-item buy-weapon" data-buy-weapon-card="katana">
+              <canvas class="weapon-preview" width="54" height="32" data-weapon-preview="katana" aria-label="카타나 외형 미리보기"></canvas>
+              <div><strong>카타나</strong><small>Lv.5 · 80 G</small><p>피해 1 · 사거리 76px · 강공격 4.0초</p><b data-buy-weapon-status="katana">Lv.5 필요</b></div>
+              <button type="button" data-buy-weapon="katana">80 G 구매</button>
+            </article>
+            <article class="blacksmith-item buy-weapon" data-buy-weapon-card="reinforced-katana">
+              <canvas class="weapon-preview" width="54" height="32" data-weapon-preview="reinforced-katana" aria-label="강화 카타나 외형 미리보기"></canvas>
+              <div><strong>강화 카타나</strong><small>Lv.10 · 180 G</small><p>피해 1.3 · 사거리 76px · 강공격 3.8초</p><b data-buy-weapon-status="reinforced-katana">Lv.10 필요</b></div>
+              <button type="button" data-buy-weapon="reinforced-katana">180 G 구매</button>
+            </article>
+            <article class="blacksmith-item buy-weapon" data-buy-weapon-card="superior-katana">
+              <canvas class="weapon-preview" width="54" height="32" data-weapon-preview="superior-katana" aria-label="상급 카타나 외형 미리보기"></canvas>
+              <div><strong>상급 카타나</strong><small>Lv.15 · 350 G</small><p>피해 1.5 · 사거리 76px · 강공격 3.5초</p><b data-buy-weapon-status="superior-katana">Lv.15 필요</b></div>
+              <button type="button" data-buy-weapon="superior-katana">350 G 구매</button>
+            </article>
+            <article class="blacksmith-item buy-weapon" data-buy-weapon-card="elite-katana">
+              <canvas class="weapon-preview" width="54" height="32" data-weapon-preview="elite-katana" aria-label="정예 카타나 외형 미리보기"></canvas>
+              <div><strong>정예 카타나</strong><small>Lv.20 · 600 G</small><p>피해 2 · 사거리 77px · 강공격 3.3초</p><b data-buy-weapon-status="elite-katana">Lv.20 필요</b></div>
+              <button type="button" data-buy-weapon="elite-katana">600 G 구매</button>
+            </article>
+            <article class="blacksmith-item buy-weapon masterwork" data-buy-weapon-card="masterwork-katana">
+              <canvas class="weapon-preview" width="54" height="32" data-weapon-preview="masterwork-katana" aria-label="명검 외형 미리보기"></canvas>
+              <div><strong>명검</strong><small>Lv.25 · 900 G</small><p>피해 2.2 · 사거리 77px · 강공격 3.3초</p><b data-buy-weapon-status="masterwork-katana">Lv.25 필요</b></div>
+              <button type="button" data-buy-weapon="masterwork-katana">900 G 구매</button>
+            </article>
+            <article class="blacksmith-item buy-weapon masterwork" data-buy-weapon-card="reinforced-masterwork-katana">
+              <canvas class="weapon-preview" width="54" height="32" data-weapon-preview="reinforced-masterwork-katana" aria-label="강화 명검 외형 미리보기"></canvas>
+              <div><strong>강화 명검</strong><small>Lv.30 · 1300 G</small><p>피해 2.5 · 사거리 78px · 강공격 3.1초</p><b data-buy-weapon-status="reinforced-masterwork-katana">Lv.30 필요</b></div>
+              <button type="button" data-buy-weapon="reinforced-masterwork-katana">1300 G 구매</button>
+            </article>
+          </div>
+        </section>
+
+        <section id="blacksmithSellPanel" role="tabpanel" aria-labelledby="blacksmithSellTab" hidden>
+          <p class="blacksmith-sale-note">판매가는 구매가의 50%입니다. 어떤 무기를 판매해도 시작 검으로 교체됩니다.</p>
+          <div class="blacksmith-items">
+            <article class="blacksmith-item" data-sell-weapon-card="katana" hidden><div><strong>카타나</strong><small>판매가 40 G</small><b data-sell-weapon-status="katana">보유 중</b></div><button type="button" data-sell-weapon="katana">40 G 판매</button></article>
+            <article class="blacksmith-item" data-sell-weapon-card="reinforced-katana" hidden><div><strong>강화 카타나</strong><small>판매가 90 G</small><b data-sell-weapon-status="reinforced-katana">보유 중</b></div><button type="button" data-sell-weapon="reinforced-katana">90 G 판매</button></article>
+            <article class="blacksmith-item" data-sell-weapon-card="superior-katana" hidden><div><strong>상급 카타나</strong><small>판매가 175 G</small><b data-sell-weapon-status="superior-katana">보유 중</b></div><button type="button" data-sell-weapon="superior-katana">175 G 판매</button></article>
+            <article class="blacksmith-item" data-sell-weapon-card="elite-katana" hidden><div><strong>정예 카타나</strong><small>판매가 300 G</small><b data-sell-weapon-status="elite-katana">보유 중</b></div><button type="button" data-sell-weapon="elite-katana">300 G 판매</button></article>
+            <article class="blacksmith-item masterwork" data-sell-weapon-card="masterwork-katana" hidden><div><strong>명검</strong><small>판매가 450 G</small><b data-sell-weapon-status="masterwork-katana">보유 중</b></div><button type="button" data-sell-weapon="masterwork-katana">450 G 판매</button></article>
+            <article class="blacksmith-item masterwork" data-sell-weapon-card="reinforced-masterwork-katana" hidden><div><strong>강화 명검</strong><small>판매가 650 G</small><b data-sell-weapon-status="reinforced-masterwork-katana">보유 중</b></div><button type="button" data-sell-weapon="reinforced-masterwork-katana">650 G 판매</button></article>
+          </div>
+          <p id="blacksmithEmptySaleText" class="blacksmith-empty-sale">판매할 수 있는 무기가 없습니다.</p>
+        </section>
+      </div>
+    </section>
+
+    <section id="weaponSaleConfirmOverlay" class="weapon-sale-confirm-overlay" hidden>
+      <div class="modal-card confirm-card" role="dialog" aria-modal="true" aria-labelledby="weaponSaleConfirmTitle" aria-describedby="weaponSaleConfirmText">
+        <div class="modal-emblem danger" aria-hidden="true">⚠</div>
+        <h2 id="weaponSaleConfirmTitle">무기를 판매할까요?</h2>
+        <p id="weaponSaleConfirmText" class="modal-description"></p>
+        <div class="confirm-actions">
+          <button id="weaponSaleCancelButton" class="secondary-button" type="button">취소</button>
+          <button id="weaponSaleConfirmButton" class="danger-button" type="button">판매 확정</button>
+        </div>
+      </div>
+    </section>
+
     <section id="inventoryOverlay" class="inventory-overlay" hidden>
       <div class="modal-card inventory-card" role="dialog" aria-modal="true" aria-labelledby="inventoryTitle" aria-describedby="inventoryDescription">
         <button id="inventoryCloseButton" class="dialogue-close" type="button" aria-label="인벤토리 닫기">×</button>
         <div class="modal-emblem inventory" aria-hidden="true">🎒</div>
         <p class="eyebrow">ADVENTURER BAG</p>
         <h2 id="inventoryTitle">인벤토리</h2>
-        <p id="inventoryDescription" class="inventory-description">보유한 물약을 확인하고 바로 사용할 수 있습니다.</p>
-        <div class="inventory-items">
-          <article class="inventory-item hp-potion">
-            <div class="inventory-item-icon" aria-hidden="true">♥</div>
-            <div class="inventory-item-copy">
-              <strong>작은 체력 물약</strong>
-              <b id="inventoryHpPotionCount" class="inventory-count" aria-live="polite">0 / 99</b>
-              <p>붉은 약초로 만든 물약입니다. HP를 30 회복합니다.</p>
-            </div>
-            <button id="inventoryHpUseButton" type="button" disabled>사용</button>
-          </article>
-          <article class="inventory-item mp-potion">
-            <div class="inventory-item-icon" aria-hidden="true">✦</div>
-            <div class="inventory-item-copy">
-              <strong>작은 마력 물약</strong>
-              <b id="inventoryMpPotionCount" class="inventory-count" aria-live="polite">0 / 99</b>
-              <p>마력을 머금은 물약입니다. MP를 25 회복합니다.</p>
-            </div>
-            <button id="inventoryMpUseButton" type="button" disabled>사용</button>
-          </article>
-        </div>
+        <p id="inventoryDescription" class="inventory-description">물약을 사용하거나 보유한 무기를 직접 장착할 수 있습니다.</p>
+        <section class="inventory-section" aria-labelledby="inventoryPotionTitle">
+          <h3 id="inventoryPotionTitle">물약</h3>
+          <div class="inventory-items">
+            <article class="inventory-item hp-potion">
+              <div class="inventory-item-icon" aria-hidden="true">♥</div>
+              <div class="inventory-item-copy">
+                <strong>작은 체력 물약</strong>
+                <b id="inventoryHpPotionCount" class="inventory-count" aria-live="polite">0 / 99</b>
+                <p>붉은 약초로 만든 물약입니다. HP를 30 회복합니다.</p>
+              </div>
+              <button id="inventoryHpUseButton" type="button" disabled>사용</button>
+            </article>
+            <article class="inventory-item mp-potion">
+              <div class="inventory-item-icon" aria-hidden="true">✦</div>
+              <div class="inventory-item-copy">
+                <strong>작은 마력 물약</strong>
+                <b id="inventoryMpPotionCount" class="inventory-count" aria-live="polite">0 / 99</b>
+                <p>마력을 머금은 물약입니다. MP를 25 회복합니다.</p>
+              </div>
+              <button id="inventoryMpUseButton" type="button" disabled>사용</button>
+            </article>
+          </div>
+        </section>
+
+        <section class="inventory-section" aria-labelledby="inventoryEquipmentTitle">
+          <h3 id="inventoryEquipmentTitle">장비</h3>
+          <div class="inventory-equipment-items">
+            <article class="inventory-equipment-item" data-inventory-weapon="starter-sword">
+              <div><strong>시작 검</strong><small>Lv.1 · 피해 1.0 · 사거리 64px · 강공격 4.0초</small></div>
+              <button type="button" data-equip-weapon="starter-sword" disabled>장착 중</button>
+            </article>
+            <article class="inventory-equipment-item" data-inventory-weapon="katana" hidden>
+              <div><strong>카타나</strong><small>Lv.5 · 피해 1.0 · 사거리 76px · 강공격 4.0초</small></div>
+              <button type="button" data-equip-weapon="katana">장착</button>
+            </article>
+            <article class="inventory-equipment-item" data-inventory-weapon="reinforced-katana" hidden>
+              <div><strong>강화 카타나</strong><small>Lv.10 · 피해 1.3 · 사거리 76px · 강공격 3.8초</small></div>
+              <button type="button" data-equip-weapon="reinforced-katana">장착</button>
+            </article>
+            <article class="inventory-equipment-item" data-inventory-weapon="superior-katana" hidden>
+              <div><strong>상급 카타나</strong><small>Lv.15 · 피해 1.5 · 사거리 76px · 강공격 3.5초</small></div>
+              <button type="button" data-equip-weapon="superior-katana">장착</button>
+            </article>
+            <article class="inventory-equipment-item" data-inventory-weapon="elite-katana" hidden>
+              <div><strong>정예 카타나</strong><small>Lv.20 · 피해 2.0 · 사거리 77px · 강공격 3.3초</small></div>
+              <button type="button" data-equip-weapon="elite-katana">장착</button>
+            </article>
+            <article class="inventory-equipment-item masterwork" data-inventory-weapon="masterwork-katana" hidden>
+              <div><strong>명검</strong><small>Lv.25 · 피해 2.2 · 사거리 77px · 강공격 3.3초</small></div>
+              <button type="button" data-equip-weapon="masterwork-katana">장착</button>
+            </article>
+            <article class="inventory-equipment-item masterwork" data-inventory-weapon="reinforced-masterwork-katana" hidden>
+              <div><strong>강화 명검</strong><small>Lv.30 · 피해 2.5 · 사거리 78px · 강공격 3.1초</small></div>
+              <button type="button" data-equip-weapon="reinforced-masterwork-katana">장착</button>
+            </article>
+          </div>
+        </section>
         <button id="inventoryDoneButton" class="secondary-button inventory-done" type="button">인벤토리 닫기</button>
       </div>
     </section>
@@ -196,6 +311,14 @@
             <button type="button" data-qa-monster="moss-troll"><span>숲</span>이끼 트롤</button>
             <button type="button" data-qa-monster="ancient-mushroom-bug"><span>숲</span>고대 버섯충</button>
           </div>
+        </section>
+
+        <section class="qa-section" aria-labelledby="qaWeaponTitle">
+          <h3 id="qaWeaponTitle">장비 상점 점검</h3>
+          <button class="qa-weapon-action" type="button" data-qa-weapons="prepare">
+            <span>대장간 구매·장착·판매 검증</span>
+            Lv.30 · 5000 G 준비
+          </button>
         </section>
 
         <button id="qaDoneButton" class="secondary-button qa-done" type="button">QA 도구 닫기</button>

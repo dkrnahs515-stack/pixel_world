@@ -47,6 +47,26 @@ const elements = {
   buyMpPotionButton: document.querySelector("#buyMpPotionButton"),
   shopHpPotionCount: document.querySelector("#shopHpPotionCount"),
   shopMpPotionCount: document.querySelector("#shopMpPotionCount"),
+  blacksmithOverlay: document.querySelector("#blacksmithOverlay"),
+  blacksmithGoldText: document.querySelector("#blacksmithGoldText"),
+  blacksmithEquippedWeaponText: document.querySelector("#blacksmithEquippedWeaponText"),
+  blacksmithCloseButton: document.querySelector("#blacksmithCloseButton"),
+  blacksmithBuyTab: document.querySelector("#blacksmithBuyTab"),
+  blacksmithSellTab: document.querySelector("#blacksmithSellTab"),
+  blacksmithBuyPanel: document.querySelector("#blacksmithBuyPanel"),
+  blacksmithSellPanel: document.querySelector("#blacksmithSellPanel"),
+  buyWeaponButtons: [...document.querySelectorAll("[data-buy-weapon]")],
+  sellWeaponButtons: [...document.querySelectorAll("[data-sell-weapon]")],
+  buyWeaponCards: [...document.querySelectorAll("[data-buy-weapon-card]")],
+  sellWeaponCards: [...document.querySelectorAll("[data-sell-weapon-card]")],
+  buyWeaponStatuses: [...document.querySelectorAll("[data-buy-weapon-status]")],
+  sellWeaponStatuses: [...document.querySelectorAll("[data-sell-weapon-status]")],
+  weaponPreviewCanvases: [...document.querySelectorAll("[data-weapon-preview]")],
+  blacksmithEmptySaleText: document.querySelector("#blacksmithEmptySaleText"),
+  weaponSaleConfirmOverlay: document.querySelector("#weaponSaleConfirmOverlay"),
+  weaponSaleConfirmText: document.querySelector("#weaponSaleConfirmText"),
+  weaponSaleCancelButton: document.querySelector("#weaponSaleCancelButton"),
+  weaponSaleConfirmButton: document.querySelector("#weaponSaleConfirmButton"),
   inventoryButton: document.querySelector("#inventoryButton"),
   inventoryOverlay: document.querySelector("#inventoryOverlay"),
   inventoryCloseButton: document.querySelector("#inventoryCloseButton"),
@@ -55,12 +75,15 @@ const elements = {
   inventoryMpPotionCount: document.querySelector("#inventoryMpPotionCount"),
   inventoryHpUseButton: document.querySelector("#inventoryHpUseButton"),
   inventoryMpUseButton: document.querySelector("#inventoryMpUseButton"),
+  inventoryWeaponCards: [...document.querySelectorAll("[data-inventory-weapon]")],
+  equipWeaponButtons: [...document.querySelectorAll("[data-equip-weapon]")],
   qaButton: document.querySelector("#qaButton"),
   qaOverlay: document.querySelector("#qaOverlay"),
   qaCloseButton: document.querySelector("#qaCloseButton"),
   qaDoneButton: document.querySelector("#qaDoneButton"),
   qaWorldButtons: [...document.querySelectorAll("[data-qa-world]")],
   qaMonsterButtons: [...document.querySelectorAll("[data-qa-monster]")],
+  qaWeaponButton: document.querySelector("[data-qa-weapons='prepare']"),
   hpPotionSlot: document.querySelector("#hpPotionSlot"),
   mpPotionSlot: document.querySelector("#mpPotionSlot"),
   hpPotionCount: document.querySelector("#hpPotionCount"),
@@ -149,12 +172,16 @@ addEventListener("keydown", event => {
   const interactionAction = interactionKeyAction({
     code: event.code,
     qaOpen: game.isQaOpen(),
+    saleConfirmOpen: game.isSaleConfirmOpen(),
+    blacksmithOpen: game.isBlacksmithOpen(),
     inventoryOpen: game.isInventoryOpen(),
     shopOpen: game.isShopOpen(),
     dialogueOpen: game.isDialogueOpen(),
   });
   if (interactionAction !== null) {
-    if (interactionAction === "close-qa") game.closeQaPanel();
+    if (interactionAction === "close-sale-confirm") game.cancelWeaponSale();
+    else if (interactionAction === "close-blacksmith") game.closeBlacksmith();
+    else if (interactionAction === "close-qa") game.closeQaPanel();
     else if (interactionAction === "close-inventory") game.closeInventory();
     else if (interactionAction === "close-shop") game.closeShop();
     else if (interactionAction === "close-dialogue") game.closeNpcDialogue();
@@ -193,6 +220,7 @@ function openExitDialog() {
   if (!game.isRunning()) return;
   game.closeNpcDialogue();
   game.closeShop();
+  game.closeBlacksmith();
   game.closeInventory();
   game.closeQaPanel();
   game.cancelChatInput();

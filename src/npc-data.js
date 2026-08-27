@@ -20,8 +20,23 @@ const MIA = Object.freeze({
   coatColor: "#0f9f8f",
 });
 
+const BRANN = Object.freeze({
+  id: "brann",
+  role: "blacksmith",
+  name: "대장장이 브란",
+  mapId: "village",
+  x: 2460,
+  y: 1000,
+  interactionRadius: 80,
+  appearance: Object.freeze({
+    hairColor: "#6b442b",
+    eyeColor: "#4ea5d9",
+    apronColor: "#8a5a3b",
+  }),
+});
+
 const NPCS_BY_WORLD = Object.freeze({
-  village: Object.freeze([AREN, MIA]),
+  village: Object.freeze([AREN, MIA, BRANN]),
 });
 
 export function getNpcsForWorld(mapId = "village") {

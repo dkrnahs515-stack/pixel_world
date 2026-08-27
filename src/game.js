@@ -37,8 +37,28 @@ import {
   recordPerformanceFrame,
   trackedFpsFromFrameSeconds,
 } from "./performance-metrics.js";
-import { findQaSpawnPosition, getQaMonster } from "./qa-mode.js";
+import {
+  findQaSpawnPosition,
+  getQaMonster,
+  prepareWeaponQaProgress,
+} from "./qa-mode.js";
 import { SHOP_ITEMS, buyShopItem, usePotion } from "./shop-state.js";
+import {
+  buyWeapon,
+  equipWeapon,
+  normalizeEquipment,
+  sellWeapon,
+} from "./equipment-state.js";
+import {
+  STARTER_WEAPON_ID,
+  getWeaponDefinition,
+  resolveWeaponDefinition,
+} from "./weapon-data.js";
+import {
+  drawScabbard,
+  drawWeapon,
+  drawWeaponPreview,
+} from "./weapon-rendering.js";
 import {
   ADVENTURE_QUEST,
   acceptAdventureQuest,
@@ -95,18 +115,57 @@ function toggleClassIfChanged(element, className, enabled) {
   }
 }
 
+function findByDataset(elements, key, value) {
+  return (elements || []).find(element => element.dataset?.[key] === value) || null;
+}
+
+function withObjectParticle(value) {
+  const text = String(value || "");
+  const lastCode = text.codePointAt(text.length - 1);
+  const hasFinalConsonant = Number.isInteger(lastCode)
+    && lastCode >= 0xac00
+    && lastCode <= 0xd7a3
+    && (lastCode - 0xac00) % 28 !== 0;
+  return `${text}${hasFinalConsonant ? "을" : "를"}`;
+}
+
 export function dialogueKeyAction(code) {
   if (code === "Escape") return "close";
   if (code === "Enter") return "allow-action";
   return null;
 }
 
-export function interactionKeyAction({ code, qaOpen, inventoryOpen, shopOpen, dialogueOpen }) {
+export function interactionKeyAction({
+  code,
+  saleConfirmOpen,
+  blacksmithOpen,
+  qaOpen,
+  inventoryOpen,
+  shopOpen,
+  dialogueOpen,
+}) {
+  if (saleConfirmOpen) return code === "Escape" ? "close-sale-confirm" : "block";
+  if (blacksmithOpen) return code === "Escape" ? "close-blacksmith" : "block";
   if (qaOpen) return code === "Escape" ? "close-qa" : "block";
   if (inventoryOpen) return code === "Escape" ? "close-inventory" : "block";
   if (shopOpen) return code === "Escape" ? "close-shop" : "block";
   if (dialogueOpen) return code === "Escape" ? "close-dialogue" : "block";
   return null;
+}
+
+export function npcInteractionKeyAction({
+  saleConfirmOpen,
+  blacksmithOpen,
+  qaOpen,
+  inventoryOpen,
+  shopOpen,
+  dialogueOpen,
+}) {
+  if (saleConfirmOpen || qaOpen || inventoryOpen) return "block";
+  if (blacksmithOpen) return "close-blacksmith";
+  if (shopOpen) return "close-shop";
+  if (dialogueOpen) return "close-dialogue";
+  return "open-npc";
 }
 
 export function nextDialogueFocus(controls, activeElement, reverse = false) {
@@ -165,6 +224,15 @@ function shopFailureMessage(reason, item) {
   return "아이템을 사용할 수 없습니다.";
 }
 
+function blacksmithFailureMessage(reason, weapon) {
+  if (reason === "level_locked") return `Lv.${weapon?.requiredLevel || "?"}부터 구매할 수 있습니다.`;
+  if (reason === "insufficient_gold") return "Gold가 부족합니다.";
+  if (reason === "already_owned") return "이미 보유 중인 무기입니다.";
+  if (reason === "starter_weapon") return "시작 검은 거래할 수 없습니다.";
+  if (reason === "not_owned") return "보유하지 않은 무기입니다.";
+  return "무기 정보를 찾을 수 없습니다.";
+}
+
 export class PixelRPG {
   constructor(elements) {
     this.canvas = elements.canvas;
@@ -185,6 +253,7 @@ export class PixelRPG {
       invulnerable: 0, hitFlash: 0, respawnTimer: 0,
       statusEffects: createCombatStatusEffects(),
       color: "#4f8e5b", name: "모험가",
+      equippedWeaponId: STARTER_WEAPON_ID,
     };
     this.camera = { x: 0, y: 0, prevX: 0, prevY: 0 };
     this.remotePlayers = new Map();
@@ -217,6 +286,11 @@ export class PixelRPG {
     this.progress = createInitialProgress();
     this.npcs = getNpcsForWorld(this.mapId);
     this.nearbyNpc = null;
+    this.blacksmithTab = "buy";
+    this.pendingWeaponSaleId = null;
+    for (const preview of elements.weaponPreviewCanvases || []) {
+      drawWeaponPreview(preview, preview.dataset.weaponPreview);
+    }
     this.dialogue = new DialogueController({
       overlay: elements.dialogueOverlay,
       title: elements.dialogueTitle,
@@ -246,25 +320,43 @@ export class PixelRPG {
       event.preventDefault();
       nextDialogueFocus(controls, document.activeElement, event.shiftKey)?.focus();
     });
+    elements.blacksmithCloseButton?.addEventListener("click", () => this.closeBlacksmith());
+    elements.blacksmithBuyTab?.addEventListener("click", () => this.selectBlacksmithTab("buy"));
+    elements.blacksmithSellTab?.addEventListener("click", () => this.selectBlacksmithTab("sell"));
+    for (const button of elements.buyWeaponButtons || []) {
+      button.addEventListener("click", () => this.buyBlacksmithWeapon(button.dataset.buyWeapon));
+    }
+    for (const button of elements.sellWeaponButtons || []) {
+      button.addEventListener("click", () => this.requestWeaponSale(button.dataset.sellWeapon));
+    }
+    elements.weaponSaleCancelButton?.addEventListener("click", () => this.cancelWeaponSale());
+    elements.weaponSaleConfirmButton?.addEventListener("click", () => this.confirmWeaponSale());
+    const trapBlacksmithFocus = event => {
+      if (event.code !== "Tab") return;
+      const controls = this.activeBlacksmithFocusControls();
+      event.preventDefault();
+      nextDialogueFocus(controls, document.activeElement, event.shiftKey)?.focus();
+    };
+    elements.blacksmithOverlay?.addEventListener("keydown", trapBlacksmithFocus);
+    elements.weaponSaleConfirmOverlay?.addEventListener("keydown", trapBlacksmithFocus);
     elements.inventoryButton?.addEventListener("click", () => this.openInventory());
     elements.inventoryCloseButton?.addEventListener("click", () => this.closeInventory());
     elements.inventoryDoneButton?.addEventListener("click", () => this.closeInventory());
     elements.inventoryHpUseButton?.addEventListener("click", () => this.useInventoryItem("hpPotion"));
     elements.inventoryMpUseButton?.addEventListener("click", () => this.useInventoryItem("mpPotion"));
+    for (const button of elements.equipWeaponButtons || []) {
+      button.addEventListener("click", () => this.equipInventoryWeapon(button.dataset.equipWeapon));
+    }
     elements.inventoryOverlay?.addEventListener("keydown", event => {
       if (event.code !== "Tab") return;
-      const controls = [
-        elements.inventoryCloseButton,
-        elements.inventoryHpUseButton,
-        elements.inventoryMpUseButton,
-        elements.inventoryDoneButton,
-      ].filter(control => control && !control.disabled);
+      const controls = this.activeInventoryFocusControls();
       event.preventDefault();
       nextDialogueFocus(controls, document.activeElement, event.shiftKey)?.focus();
     });
     elements.qaButton?.addEventListener("click", () => this.openQaPanel());
     elements.qaCloseButton?.addEventListener("click", () => this.closeQaPanel());
     elements.qaDoneButton?.addEventListener("click", () => this.closeQaPanel());
+    elements.qaWeaponButton?.addEventListener("click", () => this.qaPrepareWeaponShop());
     for (const button of elements.qaWorldButtons || []) {
       button.addEventListener("click", () => this.qaTravel(button.dataset.qaWorld));
     }
@@ -277,6 +369,7 @@ export class PixelRPG {
         elements.qaCloseButton,
         ...(elements.qaWorldButtons || []),
         ...(elements.qaMonsterButtons || []),
+        elements.qaWeaponButton,
         elements.qaDoneButton,
       ].filter(control => control && !control.disabled);
       event.preventDefault();
@@ -313,6 +406,7 @@ export class PixelRPG {
     const progressStorage = browserStorage();
     const loadedProgress = loadPlayerProgress(progressStorage, this.player.name);
     this.progress = loadedProgress.progress;
+    this.syncEquippedWeapon();
     this.applyProgressionStats(true);
     this.ui.playerName.textContent = this.player.name;
     this.ui.playerCount.textContent = "1";
@@ -325,6 +419,7 @@ export class PixelRPG {
     this.drawMinimapBase();
     this.closeNpcDialogue();
     this.closeShop();
+    this.closeBlacksmith();
     this.closeInventory();
     this.closeQaPanel();
     this.updateQuestHud();
@@ -367,6 +462,7 @@ export class PixelRPG {
     this.chatInputActive = false;
     this.closeNpcDialogue();
     this.closeShop();
+    this.closeBlacksmith();
     this.closeInventory();
     this.closeQaPanel();
     this.nearbyNpc = null;
@@ -409,9 +505,18 @@ export class PixelRPG {
       }
 
       if (event.code === "KeyF" && !event.repeat && !event.ctrlKey && !event.metaKey && !event.altKey) {
-        if (this.isDialogueOpen()) this.closeNpcDialogue();
-        else if (this.isShopOpen()) this.closeShop();
-        else if (this.inputEnabled) this.openNpcInteraction();
+        const action = npcInteractionKeyAction({
+          saleConfirmOpen: this.isSaleConfirmOpen(),
+          blacksmithOpen: this.isBlacksmithOpen(),
+          qaOpen: this.isQaOpen(),
+          inventoryOpen: this.isInventoryOpen(),
+          shopOpen: this.isShopOpen(),
+          dialogueOpen: this.isDialogueOpen(),
+        });
+        if (action === "close-dialogue") this.closeNpcDialogue();
+        else if (action === "close-shop") this.closeShop();
+        else if (action === "close-blacksmith") this.closeBlacksmith();
+        else if (action === "open-npc" && this.inputEnabled) this.openNpcInteraction();
         event.preventDefault();
         return;
       }
@@ -610,6 +715,14 @@ export class PixelRPG {
     return Boolean(this.ui.shopOverlay && !this.ui.shopOverlay.hidden);
   }
 
+  isBlacksmithOpen() {
+    return Boolean(this.ui.blacksmithOverlay && !this.ui.blacksmithOverlay.hidden);
+  }
+
+  isSaleConfirmOpen() {
+    return Boolean(this.ui.weaponSaleConfirmOverlay && !this.ui.weaponSaleConfirmOverlay.hidden);
+  }
+
   isInventoryOpen() {
     return Boolean(this.ui.inventoryOverlay && !this.ui.inventoryOverlay.hidden);
   }
@@ -619,7 +732,8 @@ export class PixelRPG {
   }
 
   isInteractionOpen() {
-    return this.isQaOpen() || this.isDialogueOpen() || this.isShopOpen() || this.isInventoryOpen();
+    return this.isSaleConfirmOpen() || this.isBlacksmithOpen()
+      || this.isQaOpen() || this.isDialogueOpen() || this.isShopOpen() || this.isInventoryOpen();
   }
 
   openQaPanel() {
@@ -658,6 +772,23 @@ export class PixelRPG {
     this.switchWorld(world.id, world.spawn.x, world.spawn.y);
     this.portalCooldown = 1;
     this.closeQaPanel();
+    return true;
+  }
+
+  qaPrepareWeaponShop() {
+    if (!this.qaEnabled || !this.running || !this.isQaOpen()) return false;
+    this.progress = prepareWeaponQaProgress(this.progress);
+    this.syncEquippedWeapon();
+    this.applyProgressionStats(true);
+    this.updateQuestHud();
+    this.updateProgressHud();
+    this.updateInventoryHud();
+    this.updateBlacksmithHud();
+    this.updateHud();
+    this.updateBiome();
+    this.persistProgress("장비 점검 상태를 저장할 수 없습니다.");
+    this.closeQaPanel();
+    this.notify("장비 점검 준비 완료 · Lv.30 · 5000 G");
     return true;
   }
 
@@ -713,6 +844,7 @@ export class PixelRPG {
     if (this.mapId !== "village") return false;
     const npc = findNearbyNpc(this.npcs, this.player);
     if (!npc) return false;
+    if (npc.role === "blacksmith") return this.openBlacksmith(npc);
     if (npc.role === "shop") return this.openShop(npc);
     if (npc.role === "quest") return this.openNpcDialogue(npc);
     return false;
@@ -760,6 +892,63 @@ export class PixelRPG {
     return wasOpen;
   }
 
+  openBlacksmith(npc = findNearbyNpc(this.npcs, this.player)) {
+    if (!this.ui.blacksmithOverlay || !npc || npc.role !== "blacksmith") return false;
+    this.keys.clear();
+    this.player.moving = false;
+    this.attackState = null;
+    this.nearbyNpc = npc;
+    this.pendingWeaponSaleId = null;
+    this.ui.weaponSaleConfirmOverlay.hidden = true;
+    this.ui.blacksmithOverlay.hidden = false;
+    this.updateBlacksmithHud();
+    this.selectBlacksmithTab("buy");
+    this.updateNpcPrompt();
+    return true;
+  }
+
+  closeBlacksmith() {
+    if (!this.ui.blacksmithOverlay) return false;
+    const wasOpen = this.isBlacksmithOpen();
+    this.pendingWeaponSaleId = null;
+    this.ui.weaponSaleConfirmOverlay.hidden = true;
+    this.ui.blacksmithOverlay.hidden = true;
+    if (wasOpen) this.canvas.focus();
+    this.updateNpcPrompt();
+    return wasOpen;
+  }
+
+  selectBlacksmithTab(tab) {
+    if (!this.isBlacksmithOpen() || !["buy", "sell"].includes(tab)) return false;
+    this.blacksmithTab = tab;
+    const buying = tab === "buy";
+    this.ui.blacksmithBuyPanel.hidden = !buying;
+    this.ui.blacksmithSellPanel.hidden = buying;
+    this.ui.blacksmithBuyTab.setAttribute("aria-selected", String(buying));
+    this.ui.blacksmithSellTab.setAttribute("aria-selected", String(!buying));
+    const buttons = buying ? this.ui.buyWeaponButtons : this.ui.sellWeaponButtons;
+    const firstEnabled = (buttons || []).find(button => !button.hidden && !button.disabled);
+    (firstEnabled || (buying ? this.ui.blacksmithBuyTab : this.ui.blacksmithSellTab))?.focus();
+    return true;
+  }
+
+  activeBlacksmithFocusControls() {
+    if (this.isSaleConfirmOpen()) {
+      return [this.ui.weaponSaleCancelButton, this.ui.weaponSaleConfirmButton]
+        .filter(control => control && !control.disabled && !control.hidden);
+    }
+    if (!this.isBlacksmithOpen()) return [];
+    const tradeButtons = this.blacksmithTab === "sell"
+      ? this.ui.sellWeaponButtons
+      : this.ui.buyWeaponButtons;
+    return [
+      this.ui.blacksmithCloseButton,
+      this.ui.blacksmithBuyTab,
+      this.ui.blacksmithSellTab,
+      ...(tradeButtons || []),
+    ].filter(control => control && !control.disabled && !control.hidden);
+  }
+
   openInventory() {
     if (!this.ui.inventoryOverlay || !this.running || !this.inputEnabled || this.chatInputActive
       || this.portalTransition || this.player.respawnTimer > 0 || this.isInteractionOpen()) {
@@ -782,6 +971,17 @@ export class PixelRPG {
     if (wasOpen) this.canvas.focus();
     this.updateNpcPrompt();
     return wasOpen;
+  }
+
+  activeInventoryFocusControls() {
+    if (!this.isInventoryOpen()) return [];
+    return [
+      this.ui.inventoryCloseButton,
+      this.ui.inventoryHpUseButton,
+      this.ui.inventoryMpUseButton,
+      ...(this.ui.equipWeaponButtons || []),
+      this.ui.inventoryDoneButton,
+    ].filter(control => control && !control.disabled && !control.hidden);
   }
 
   handleDialogueAction(action) {
@@ -890,6 +1090,43 @@ export class PixelRPG {
     if (this.ui.inventoryMpUseButton) {
       this.ui.inventoryMpUseButton.disabled = inventory.mpPotion === 0 || this.player.mp >= this.player.maxMp;
     }
+    const equipment = normalizeEquipment(this.progress.equipment);
+    const owned = new Set(equipment.ownedWeaponIds);
+    for (const button of this.ui.equipWeaponButtons || []) {
+      const weapon = getWeaponDefinition(button.dataset.equipWeapon);
+      if (!weapon) continue;
+      const isOwned = owned.has(weapon.id);
+      const isEquipped = equipment.equippedWeaponId === weapon.id;
+      const card = findByDataset(this.ui.inventoryWeaponCards, "inventoryWeapon", weapon.id);
+      button.hidden = !isOwned;
+      button.disabled = !isOwned || isEquipped;
+      button.textContent = isEquipped ? "장착 중" : "장착";
+      if (card) card.hidden = !isOwned;
+    }
+  }
+
+  syncEquippedWeapon() {
+    const equipment = normalizeEquipment(this.progress.equipment);
+    this.progress.equipment = {
+      ...equipment,
+      ownedWeaponIds: [...equipment.ownedWeaponIds],
+    };
+    const weapon = resolveWeaponDefinition(equipment.equippedWeaponId);
+    this.player.equippedWeaponId = weapon.id;
+    return weapon;
+  }
+
+  equipInventoryWeapon(weaponId) {
+    if (!this.isInventoryOpen()) return false;
+    const result = equipWeapon(this.progress, weaponId);
+    if (!result.ok) return false;
+    this.progress = result.progress;
+    const weapon = this.syncEquippedWeapon();
+    this.updateInventoryHud();
+    this.updateBlacksmithHud();
+    this.notify(`${withObjectParticle(weapon.name)} 장착했습니다.`);
+    this.persistProgress("장착했지만 진행 상황을 저장할 수 없습니다.");
+    return true;
   }
 
   updateShopHud() {
@@ -902,6 +1139,125 @@ export class PixelRPG {
       || inventory.hpPotion >= SHOP_ITEMS.hpPotion.maxQuantity;
     this.ui.buyMpPotionButton.disabled = this.progress.gold < SHOP_ITEMS.mpPotion.price
       || inventory.mpPotion >= SHOP_ITEMS.mpPotion.maxQuantity;
+  }
+
+  updateBlacksmithHud() {
+    if (!this.ui.blacksmithOverlay) return;
+    this.ui.blacksmithGoldText.textContent = `${this.progress.gold} G`;
+    if (this.ui.blacksmithEquippedWeaponText) {
+      this.ui.blacksmithEquippedWeaponText.textContent = resolveWeaponDefinition(
+        this.progress.equipment.equippedWeaponId,
+      ).name;
+    }
+    const owned = new Set(this.progress.equipment.ownedWeaponIds);
+    for (const button of this.ui.buyWeaponButtons || []) {
+      const weapon = getWeaponDefinition(button.dataset.buyWeapon);
+      if (!weapon) continue;
+      const isOwned = owned.has(weapon.id);
+      const locked = this.progress.level < weapon.requiredLevel;
+      const poor = this.progress.gold < weapon.price;
+      const status = findByDataset(this.ui.buyWeaponStatuses, "buyWeaponStatus", weapon.id);
+      const card = findByDataset(this.ui.buyWeaponCards, "buyWeaponCard", weapon.id);
+      button.disabled = isOwned || locked || poor;
+      button.textContent = isOwned
+        ? "보유 중"
+        : locked
+          ? `Lv.${weapon.requiredLevel} 필요`
+          : poor
+            ? "Gold 부족"
+            : `${weapon.price} G 구매`;
+      if (status) status.textContent = isOwned
+        ? "보유 중"
+        : locked
+          ? `Lv.${weapon.requiredLevel} 필요`
+          : poor
+            ? "Gold 부족"
+            : "구매 가능";
+      card?.classList.toggle("locked", locked);
+      card?.classList.toggle("owned", isOwned);
+    }
+
+    let sellableCount = 0;
+    for (const button of this.ui.sellWeaponButtons || []) {
+      const weapon = getWeaponDefinition(button.dataset.sellWeapon);
+      if (!weapon) continue;
+      const isOwned = owned.has(weapon.id);
+      const equipped = this.progress.equipment.equippedWeaponId === weapon.id;
+      const status = findByDataset(this.ui.sellWeaponStatuses, "sellWeaponStatus", weapon.id);
+      const card = findByDataset(this.ui.sellWeaponCards, "sellWeaponCard", weapon.id);
+      button.hidden = !isOwned;
+      button.disabled = !isOwned;
+      button.textContent = `${weapon.sellPrice} G 판매`;
+      if (card) card.hidden = !isOwned;
+      if (status) status.textContent = equipped ? "장착 중" : "보유 중";
+      if (isOwned) sellableCount += 1;
+    }
+    if (this.ui.blacksmithEmptySaleText) this.ui.blacksmithEmptySaleText.hidden = sellableCount > 0;
+  }
+
+  buyBlacksmithWeapon(weaponId) {
+    if (!this.isBlacksmithOpen()) return false;
+    const result = buyWeapon(this.progress, weaponId);
+    if (!result.ok) {
+      this.notify(blacksmithFailureMessage(result.reason, result.weapon));
+      return false;
+    }
+    this.progress = result.progress;
+    this.updateProgressHud();
+    this.updateInventoryHud();
+    this.updateBlacksmithHud();
+    this.notify(`${withObjectParticle(result.weapon.name)} 구매했습니다. Gold -${result.weapon.price}`);
+    this.persistProgress("구매했지만 진행 상황을 저장할 수 없습니다.");
+    return true;
+  }
+
+  requestWeaponSale(weaponId) {
+    if (!this.isBlacksmithOpen() || this.isSaleConfirmOpen()) return false;
+    const result = sellWeapon(this.progress, weaponId);
+    if (!result.ok) {
+      this.notify(blacksmithFailureMessage(result.reason, result.weapon));
+      return false;
+    }
+    this.pendingWeaponSaleId = result.weapon.id;
+    this.ui.weaponSaleConfirmText.textContent = `${withObjectParticle(result.weapon.name)} ${result.weapon.sellPrice} G에 판매할까요?`;
+    this.ui.weaponSaleConfirmOverlay.hidden = false;
+    this.ui.weaponSaleCancelButton?.focus();
+    return true;
+  }
+
+  cancelWeaponSale() {
+    if (!this.ui.weaponSaleConfirmOverlay) return false;
+    const wasOpen = this.isSaleConfirmOpen();
+    const weaponId = this.pendingWeaponSaleId;
+    this.pendingWeaponSaleId = null;
+    this.ui.weaponSaleConfirmOverlay.hidden = true;
+    if (wasOpen && this.isBlacksmithOpen()) {
+      const button = findByDataset(this.ui.sellWeaponButtons, "sellWeapon", weaponId);
+      (button && !button.disabled && !button.hidden ? button : this.ui.blacksmithSellTab)?.focus();
+    }
+    return wasOpen;
+  }
+
+  confirmWeaponSale() {
+    if (!this.isSaleConfirmOpen() || !this.pendingWeaponSaleId) return false;
+    const weaponId = this.pendingWeaponSaleId;
+    const result = sellWeapon(this.progress, weaponId);
+    if (!result.ok) {
+      this.cancelWeaponSale();
+      this.notify(blacksmithFailureMessage(result.reason, result.weapon));
+      return false;
+    }
+    this.pendingWeaponSaleId = null;
+    this.ui.weaponSaleConfirmOverlay.hidden = true;
+    this.progress = result.progress;
+    this.syncEquippedWeapon();
+    this.updateProgressHud();
+    this.updateInventoryHud();
+    this.updateBlacksmithHud();
+    this.notify(`${withObjectParticle(result.weapon.name)} 판매했습니다. Gold +${result.weapon.sellPrice}`);
+    this.persistProgress("판매했지만 진행 상황을 저장할 수 없습니다.");
+    this.ui.blacksmithSellTab?.focus();
+    return true;
   }
 
   buyItem(itemId) {
@@ -960,9 +1316,12 @@ export class PixelRPG {
     this.nearbyNpc = eligible ? findNearbyNpc(this.npcs, this.player) : null;
     setPropertyIfChanged(this.ui.npcPrompt, "hidden", !this.nearbyNpc);
     if (this.nearbyNpc && this.ui.npcPromptText) {
-      setTextIfChanged(this.ui.npcPromptText, this.nearbyNpc.role === "shop"
-        ? "연금술사 미아의 상점 이용하기"
-        : "현자 아렌과 대화하기");
+      const prompt = {
+        shop: "연금술사 미아의 상점 이용하기",
+        blacksmith: "대장장이 브란의 대장간 이용하기",
+        quest: "현자 아렌과 대화하기",
+      }[this.nearbyNpc.role] || `${this.nearbyNpc.name}와 대화하기`;
+      setTextIfChanged(this.ui.npcPromptText, prompt);
     }
   }
 
@@ -1049,7 +1408,7 @@ export class PixelRPG {
 
   tryAttack(kind) {
     if (!this.running || !this.inputEnabled || this.isInteractionOpen() || this.player.respawnTimer > 0 || this.attackState) return;
-    const definition = attackDefinition(kind);
+    const definition = attackDefinition(kind, this.player.equippedWeaponId);
     const cooldown = kind === "strong" ? this.strongCooldown : this.basicCooldown;
     if (cooldown > 0) {
       if (kind === "strong") this.notify(`강한 공격 재사용까지 ${cooldown.toFixed(1)}초`);
@@ -1171,6 +1530,7 @@ export class PixelRPG {
       this.attackState = null;
       this.player.moving = false;
       this.closeQaPanel();
+      this.closeBlacksmith();
       this.closeInventory();
       this.ui.respawnOverlay.hidden = false;
     } else if (this.isInventoryOpen()) {
@@ -1361,6 +1721,7 @@ export class PixelRPG {
         moving: Boolean(data.moving),
         color: data.color || "#7585d8",
         name: sanitizeName(data.name),
+        equippedWeaponId: resolveWeaponDefinition(data.equippedWeaponId).id,
         step: current?.step || 0,
       });
     });
@@ -1573,7 +1934,7 @@ function drawChatBubble(ctx, player, message, cameraX, cameraY, viewportWidth, v
   ctx.restore();
 }
 
-function drawPixelCharacter(ctx, player, cameraX, cameraY, attackState = null) {
+export function drawPixelCharacter(ctx, player, cameraX, cameraY, attackState = null) {
   const x = Math.round(player.x - cameraX);
   const y = Math.round(player.y - cameraY);
   const bob = player.moving ? Math.sin(player.step) * 1.6 : 0;
@@ -1582,6 +1943,7 @@ function drawPixelCharacter(ctx, player, cameraX, cameraY, attackState = null) {
 
   ctx.fillStyle = "rgba(0,0,0,.28)";
   ctx.fillRect(-13, 14, 26, 7);
+  drawScabbard(ctx, { direction: player.dir, weaponId: player.equippedWeaponId });
   ctx.fillStyle = "#5b3b2a";
   ctx.fillRect(-9, 6, 7, 12);
   ctx.fillRect(2, 6, 7, 12);
@@ -1600,7 +1962,11 @@ function drawPixelCharacter(ctx, player, cameraX, cameraY, attackState = null) {
   if (player.dir === "left") ctx.fillRect(-7, -18, 2, 2);
   else if (player.dir === "right") ctx.fillRect(5, -18, 2, 2);
   else { ctx.fillRect(-5, -18, 2, 2); ctx.fillRect(3, -18, 2, 2); }
-  drawSword(ctx, player.dir, attackState);
+  drawWeapon(ctx, {
+    direction: player.dir,
+    attackState,
+    weaponId: player.equippedWeaponId,
+  });
 
   if (player.remote) {
     const name = sanitizeName(player.name);
@@ -1612,22 +1978,6 @@ function drawPixelCharacter(ctx, player, cameraX, cameraY, attackState = null) {
     ctx.textAlign = "center";
     ctx.fillText(name, 0, -33);
   }
-  ctx.restore();
-}
-
-function drawSword(ctx, direction, attackState) {
-  const baseAngle = { right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 }[direction] || 0;
-  const progress = attackState ? clamp(attackState.elapsed / attackState.definition.duration, 0, 1) : 0.5;
-  const swingSize = attackState?.kind === "strong" ? 2.2 : 1.45;
-  const swing = attackState ? -swingSize / 2 + progress * swingSize : 0.55;
-  ctx.save();
-  ctx.rotate(baseAngle + swing);
-  ctx.fillStyle = "#6b4b2f";
-  ctx.fillRect(7, -4, 9, 8);
-  ctx.fillStyle = attackState?.kind === "strong" ? "#fde68a" : "#dceeff";
-  ctx.fillRect(14, -2, attackState?.kind === "strong" ? 27 : 21, 4);
-  ctx.fillStyle = "#f8fafc";
-  ctx.fillRect(18, -1, attackState?.kind === "strong" ? 20 : 15, 2);
   ctx.restore();
 }
 

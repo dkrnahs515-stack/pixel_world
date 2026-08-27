@@ -50,6 +50,11 @@ export function applyEnemyHitStun(enemy, duration) {
   return true;
 }
 
+export function formatHealthValue(value) {
+  const rounded = Math.round(Math.max(0, value) * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
 export function damageEnemy(enemy, damage, direction, knockbackSpeed, random = Math.random) {
   if (enemy.state === "dying") return { killed: false, damageNumber: null };
 
@@ -58,7 +63,7 @@ export function damageEnemy(enemy, damage, direction, knockbackSpeed, random = M
     enemy.camouflaged = false;
     enemy.opacity = 1;
   }
-  enemy.hp = Math.max(0, enemy.hp - damage);
+  enemy.hp = Math.max(0, Math.round((enemy.hp - damage) * 10) / 10);
   enemy.infoVisibleRemaining = INFO_DISPLAY_AFTER_HIT;
   enemy.hitFlash = 0.16;
   enemy.shake = 0.2;
@@ -260,7 +265,7 @@ function drawEnemyInfo(ctx, enemy, x, y) {
   ctx.fillRect(x - width / 2, top + 4, width * hpRatio, 10);
   ctx.font = "700 9px Arial, sans-serif";
   ctx.fillStyle = "#ffffff";
-  ctx.fillText(`${Math.ceil(enemy.hp)} / ${enemy.maxHp}`, x, top + 13);
+  ctx.fillText(`${formatHealthValue(enemy.hp)} / ${formatHealthValue(enemy.maxHp)}`, x, top + 13);
   ctx.restore();
 }
 

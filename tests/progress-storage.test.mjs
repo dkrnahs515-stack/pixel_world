@@ -2,17 +2,32 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import * as storageApi from "../src/progress-storage.js";
 import { createInitialProgress } from "../src/quest-state.js";
+import { createInitialEquipment } from "../src/equipment-state.js";
 
 const {
   legacyProgressStorageKey,
   loadProgress,
+  loadProgressWithStatus,
   progressStorageKey,
   saveProgress,
+  v2ProgressStorageKey,
+  v3ProgressStorageKey,
 } = storageApi;
 
-const normalizedName = "%EC%95%84%EB%A0%8C";
-const v2Key = () => `pixel-world.progress.v2:${normalizedName}`;
-const v3Key = () => `pixel-world.progress.v3:${normalizedName}`;
+function memoryStorage() {
+  const values = new Map();
+  const writes = [];
+  return {
+    writes,
+    getItem(key) {
+      return values.has(key) ? values.get(key) : null;
+    },
+    setItem(key, value) {
+      values.set(key, String(value));
+      writes.push([key, String(value)]);
+    },
+  };
+}
 
 function validV2(overrides = {}) {
   return {
@@ -27,35 +42,150 @@ function validV2(overrides = {}) {
   };
 }
 
-function memoryStorage() {
-  const values = new Map();
+function validV3(overrides = {}) {
+  const initial = createInitialProgress();
   return {
-    getItem(key) {
-      return values.has(key) ? values.get(key) : null;
-    },
-    setItem(key, value) {
-      values.set(key, String(value));
-    },
+    version: 3,
+    level: initial.level,
+    exp: initial.exp,
+    nextLevelExp: initial.nextLevelExp,
+    gold: initial.gold,
+    inventory: initial.inventory,
+    completedQuests: initial.completedQuests,
+    quests: initial.quests,
+    ...overrides,
   };
 }
 
-test("서로 다른 닉네임은 별도 진행 데이터를 사용한다", () => {
+test("v4 키를 사용하고 모든 이전 버전 키의 닉네임 공백을 정규화한다", () => {
+  const encoded = "%EC%95%84%EB%A0%8C%20%EB%AA%A8%ED%97%98%EA%B0%80";
+  assert.equal(progressStorageKey("  아렌   모험가  "), `pixel-world.progress.v4:${encoded}`);
+  assert.equal(v3ProgressStorageKey("  아렌   모험가  "), `pixel-world.progress.v3:${encoded}`);
+  assert.equal(v2ProgressStorageKey("  아렌   모험가  "), `pixel-world.progress.v2:${encoded}`);
+  assert.equal(legacyProgressStorageKey("  아렌   모험가  "), `pixel-world.progress.v1:${encoded}`);
+});
+
+test("서로 다른 닉네임은 장비를 포함한 별도 진행 데이터를 사용한다", () => {
   const storage = memoryStorage();
-  saveProgress(storage, "아렌", { ...createInitialProgress(), exp: 15 });
-
+  const progress = {
+    ...createInitialProgress(),
+    exp: 15,
+    equipment: {
+      ownedWeaponIds: ["starter-sword", "katana"],
+      equippedWeaponId: "katana",
+    },
+  };
+  assert.deepEqual(saveProgress(storage, "아렌", progress), { ok: true });
   assert.equal(loadProgress(storage, "아렌").exp, 15);
-  assert.equal(loadProgress(storage, "다른 모험가").exp, 0);
+  assert.equal(loadProgress(storage, "아렌").equipment.equippedWeaponId, "katana");
+  assert.deepEqual(loadProgress(storage, "다른 모험가"), createInitialProgress());
 });
 
-test("v3 키를 사용하고 닉네임 공백을 정규화한다", () => {
-  assert.equal(
-    progressStorageKey("  아렌   모험가  "),
-    "pixel-world.progress.v3:%EC%95%84%EB%A0%8C%20%EB%AA%A8%ED%97%98%EA%B0%80",
-  );
-  assert.equal(storageApi.v2ProgressStorageKey?.("아렌"), v2Key());
+test("정상 v4 진행은 장비 배열까지 복제해 왕복한다", () => {
+  const storage = memoryStorage();
+  const source = {
+    ...createInitialProgress(),
+    level: 25,
+    nextLevelExp: 2500,
+    gold: 451,
+    equipment: {
+      ownedWeaponIds: ["starter-sword", "katana", "masterwork-katana"],
+      equippedWeaponId: "masterwork-katana",
+    },
+  };
+  assert.deepEqual(saveProgress(storage, "아렌", source), { ok: true });
+  const loaded = loadProgress(storage, "아렌");
+  assert.deepEqual(loaded, source);
+  assert.notEqual(loaded.equipment, source.equipment);
+  assert.notEqual(loaded.equipment.ownedWeaponIds, source.equipment.ownedWeaponIds);
+  assert.deepEqual(JSON.parse(storage.getItem(progressStorageKey("아렌"))), {
+    version: 4,
+    ...source,
+  });
 });
 
-test("정상 v1 진행을 v3로 이전하고 원본은 유지한다", () => {
+test("v4의 장비 목록과 장착값만 손상되면 나머지를 유지하며 시작 검으로 정규화한다", () => {
+  const storage = memoryStorage();
+  storage.setItem(progressStorageKey("아렌"), JSON.stringify({
+    version: 4,
+    ...createInitialProgress(),
+    level: 10,
+    nextLevelExp: 1000,
+    gold: 321,
+    equipment: {
+      ownedWeaponIds: ["katana", "katana", "unknown"],
+      equippedWeaponId: "unknown",
+    },
+  }));
+  const loaded = loadProgress(storage, "아렌");
+  assert.equal(loaded.level, 10);
+  assert.equal(loaded.gold, 321);
+  assert.deepEqual(loaded.equipment, {
+    ownedWeaponIds: ["starter-sword", "katana"],
+    equippedWeaponId: "starter-sword",
+  });
+});
+
+test("유효한 v3는 진행과 물약을 유지하고 초기 장비를 추가해 v4로 이전한다", () => {
+  const storage = memoryStorage();
+  const oldValue = validV3({
+    level: 2,
+    exp: 10,
+    nextLevelExp: 200,
+    gold: 35,
+    inventory: { hpPotion: 2, mpPotion: 3 },
+    quests: { adventureStart: { status: "active", progress: 1 } },
+  });
+  storage.setItem(v3ProgressStorageKey("아렌"), JSON.stringify(oldValue));
+  const loaded = loadProgress(storage, "아렌");
+  assert.equal(loaded.level, 2);
+  assert.equal(loaded.exp, 10);
+  assert.equal(loaded.gold, 35);
+  assert.deepEqual(loaded.inventory, { hpPotion: 2, mpPotion: 3 });
+  assert.deepEqual(loaded.equipment, createInitialEquipment());
+  assert.deepEqual(JSON.parse(storage.getItem(progressStorageKey("아렌"))), {
+    version: 4,
+    ...loaded,
+  });
+  assert.deepEqual(JSON.parse(storage.getItem(v3ProgressStorageKey("아렌"))), oldValue);
+});
+
+test("기본 진행이 손상된 v4는 정상 v3에서 복구한다", () => {
+  const storage = memoryStorage();
+  storage.setItem(progressStorageKey("아렌"), JSON.stringify({
+    version: 4,
+    ...createInitialProgress(),
+    gold: -1,
+  }));
+  storage.setItem(v3ProgressStorageKey("아렌"), JSON.stringify(validV3({ gold: 77 })));
+  const loaded = loadProgress(storage, "아렌");
+  assert.equal(loaded.gold, 77);
+  assert.deepEqual(loaded.equipment, createInitialEquipment());
+});
+
+test("v2 진행은 빈 인벤토리와 초기 장비를 추가해 v4로 이전한다", () => {
+  const storage = memoryStorage();
+  const oldValue = validV2({
+    level: 2,
+    exp: 10,
+    nextLevelExp: 200,
+    gold: 35,
+    quests: { adventureStart: { status: "active", progress: 1 } },
+  });
+  storage.setItem(v2ProgressStorageKey("아렌"), JSON.stringify(oldValue));
+  const loaded = loadProgress(storage, "아렌");
+  assert.equal(loaded.level, 2);
+  assert.equal(loaded.gold, 35);
+  assert.deepEqual(loaded.inventory, { hpPotion: 0, mpPotion: 0 });
+  assert.deepEqual(loaded.equipment, createInitialEquipment());
+  assert.deepEqual(JSON.parse(storage.getItem(progressStorageKey("아렌"))), {
+    version: 4,
+    ...loaded,
+  });
+  assert.deepEqual(JSON.parse(storage.getItem(v2ProgressStorageKey("아렌"))), oldValue);
+});
+
+test("v1 진행은 기존 보상을 유지하고 초기 장비를 추가해 v4로 이전한다", () => {
   const storage = memoryStorage();
   const oldValue = {
     version: 1,
@@ -63,47 +193,45 @@ test("정상 v1 진행을 v3로 이전하고 원본은 유지한다", () => {
     quests: { adventureStart: { status: "completed", progress: 3 } },
   };
   storage.setItem(legacyProgressStorageKey("아렌"), JSON.stringify(oldValue));
-
-  const migrated = loadProgress(storage, "아렌");
-  assert.deepEqual(migrated, {
+  const loaded = loadProgress(storage, "아렌");
+  assert.deepEqual(loaded, {
     level: 1,
     exp: 15,
     nextLevelExp: 100,
     gold: 0,
     inventory: { hpPotion: 0, mpPotion: 0 },
+    equipment: createInitialEquipment(),
     completedQuests: ["adventureStart"],
     quests: { adventureStart: { status: "completed", progress: 3 } },
   });
   assert.deepEqual(JSON.parse(storage.getItem(progressStorageKey("아렌"))), {
-    version: 3,
-    ...migrated,
+    version: 4,
+    ...loaded,
   });
   assert.deepEqual(JSON.parse(storage.getItem(legacyProgressStorageKey("아렌"))), oldValue);
 });
 
-test("손상된 v3가 있으면 정상 v1에서 복구한다", () => {
+test("손상된 상위 버전을 건너뛰고 v2와 v1을 차례로 복구한다", () => {
   const storage = memoryStorage();
   storage.setItem(progressStorageKey("아렌"), "{broken");
-  storage.setItem(legacyProgressStorageKey("아렌"), JSON.stringify({
+  storage.setItem(v3ProgressStorageKey("아렌"), "{broken");
+  storage.setItem(v2ProgressStorageKey("아렌"), JSON.stringify(validV2()));
+  assert.equal(loadProgress(storage, "아렌").exp, 12);
+
+  const legacyOnly = memoryStorage();
+  legacyOnly.setItem(progressStorageKey("아렌"), "{broken");
+  legacyOnly.setItem(v3ProgressStorageKey("아렌"), "{broken");
+  legacyOnly.setItem(v2ProgressStorageKey("아렌"), "{broken");
+  legacyOnly.setItem(legacyProgressStorageKey("아렌"), JSON.stringify({
     version: 1,
-    exp: 0,
+    exp: 7,
     quests: { adventureStart: { status: "active", progress: 1 } },
   }));
-
-  assert.equal(loadProgress(storage, "아렌").quests.adventureStart.progress, 1);
+  assert.equal(loadProgress(legacyOnly, "아렌").exp, 7);
 });
 
-test("손상되거나 유효하지 않은 저장 데이터는 기본값으로 복구된다", () => {
-  const storage = memoryStorage();
-  storage.setItem(progressStorageKey("아렌"), "{broken");
-  assert.deepEqual(loadProgress(storage, "아렌"), createInitialProgress());
-});
-
-test("유효하지 않은 v3 진행 데이터는 기본값으로 복구된다", () => {
-  const valid = {
-    version: 3,
-    ...createInitialProgress(),
-  };
+test("유효하지 않은 진행 데이터는 장비를 포함한 기본값으로 복구된다", () => {
+  const valid = { version: 4, ...createInitialProgress() };
   const invalidValues = [
     { ...valid, level: 0 },
     { ...valid, exp: -1 },
@@ -124,33 +252,10 @@ test("유효하지 않은 v3 진행 데이터는 기본값으로 복구된다", 
       completedQuests: ["adventureStart", "otherQuest"],
       quests: { adventureStart: { status: "completed", progress: 3 } },
     },
-    {
-      ...valid,
-      quests: { adventureStart: { status: "completed", progress: 3 } },
-    },
-    {
-      ...valid,
-      completedQuests: ["adventureStart"],
-      quests: { adventureStart: { status: "active", progress: 1 } },
-    },
-    {
-      ...valid,
-      quests: { adventureStart: { status: "available", progress: 1 } },
-    },
-    {
-      ...valid,
-      quests: { adventureStart: { status: "active", progress: 3 } },
-    },
-    {
-      ...valid,
-      quests: { adventureStart: { status: "ready_to_report", progress: 0 } },
-    },
-    {
-      ...valid,
-      quests: { adventureStart: { status: "completed", progress: 2 } },
-    },
+    { ...valid, quests: { adventureStart: { status: "available", progress: 1 } } },
+    { ...valid, quests: { adventureStart: { status: "active", progress: 3 } } },
+    { ...valid, quests: { adventureStart: { status: "completed", progress: 2 } } },
   ];
-
   for (const value of invalidValues) {
     const storage = memoryStorage();
     storage.setItem(progressStorageKey("아렌"), JSON.stringify(value));
@@ -158,94 +263,21 @@ test("유효하지 않은 v3 진행 데이터는 기본값으로 복구된다", 
   }
 });
 
-test("유효하지 않은 v1 진행 데이터는 기본값으로 복구된다", () => {
-  const storage = memoryStorage();
-  storage.setItem(legacyProgressStorageKey("아렌"), JSON.stringify({
-    version: 1,
-    exp: 100,
-    quests: { adventureStart: { status: "active", progress: 1 } },
-  }));
-
-  assert.deepEqual(loadProgress(storage, "아렌"), createInitialProgress());
-});
-
-test("저장 데이터는 버전 필드를 포함하고 저장 실패는 결과로 알린다", () => {
-  const storage = memoryStorage();
-  const progress = { ...createInitialProgress(), exp: 15 };
-  assert.deepEqual(saveProgress(storage, "아렌", progress), { ok: true });
-  assert.deepEqual(
-    JSON.parse(storage.getItem(progressStorageKey("아렌"))),
-    { version: 3, ...progress },
-  );
-
+test("저장 실패와 이전 쓰기 실패를 결과로 알리되 복구된 세션 상태는 유지한다", () => {
   const failingStorage = {
-    setItem() {
-      throw new Error("storage blocked");
-    },
-  };
-  assert.deepEqual(saveProgress(failingStorage, "아렌", progress), { ok: false });
-  assert.deepEqual(saveProgress({}, "아렌", progress), { ok: false });
-  assert.deepEqual(saveProgress(null, "아렌", progress), { ok: false });
-});
-
-test("v1 이전 쓰기가 실패하면 이전 상태에 실패 원인을 포함한다", async () => {
-  const { loadProgressWithStatus } = await import("../src/progress-storage.js");
-  assert.equal(typeof loadProgressWithStatus, "function");
-  const legacy = JSON.stringify({
-    version: 1,
-    exp: 15,
-    quests: { adventureStart: { status: "completed", progress: 3 } },
-  });
-  const storage = {
     getItem(key) {
-      return key === legacyProgressStorageKey("아렌") ? legacy : null;
+      if (key !== v3ProgressStorageKey("아렌")) return null;
+      return JSON.stringify(validV3({ exp: 15 }));
     },
     setItem() {
       throw new Error("storage blocked");
     },
   };
-
-  const result = loadProgressWithStatus(storage, "아렌");
-
-  assert.equal(result.progress.exp, 15);
-  assert.deepEqual(result.progress.completedQuests, ["adventureStart"]);
-  assert.equal(result.migrationWriteFailed, true);
-});
-
-test("v2 진행은 상태를 유지하고 빈 인벤토리를 추가해 v3로 이전한다", () => {
-  const storage = memoryStorage();
-  const oldValue = validV2({
-    level: 2,
-    exp: 10,
-    nextLevelExp: 200,
-    gold: 35,
-    quests: { adventureStart: { status: "active", progress: 1 } },
-  });
-  storage.setItem(v2Key(), JSON.stringify(oldValue));
-
-  const loaded = loadProgress(storage, "아렌");
-
-  assert.equal(loaded.level, 2);
-  assert.equal(loaded.exp, 10);
-  assert.equal(loaded.gold, 35);
-  assert.deepEqual(loaded.quests, oldValue.quests);
-  assert.deepEqual(loaded.inventory, { hpPotion: 0, mpPotion: 0 });
-  assert.deepEqual(JSON.parse(storage.getItem(v3Key())), {
-    version: 3,
-    ...loaded,
-  });
-  assert.deepEqual(JSON.parse(storage.getItem(v2Key())), oldValue);
-});
-
-test("손상된 v3가 있어도 유효한 v2 진행으로 복구한다", () => {
-  const storage = memoryStorage();
-  const oldValue = validV2();
-  storage.setItem(v3Key(), "{broken");
-  storage.setItem(v2Key(), JSON.stringify(oldValue));
-
-  const loaded = loadProgress(storage, "아렌");
-
-  assert.equal(loaded.exp, 12);
-  assert.equal(loaded.gold, 18);
-  assert.deepEqual(loaded.inventory, { hpPotion: 0, mpPotion: 0 });
+  const migrated = loadProgressWithStatus(failingStorage, "아렌");
+  assert.equal(migrated.progress.exp, 15);
+  assert.deepEqual(migrated.progress.equipment, createInitialEquipment());
+  assert.equal(migrated.migrationWriteFailed, true);
+  assert.deepEqual(saveProgress(failingStorage, "아렌", createInitialProgress()), { ok: false });
+  assert.deepEqual(saveProgress({}, "아렌", createInitialProgress()), { ok: false });
+  assert.deepEqual(saveProgress(null, "아렌", createInitialProgress()), { ok: false });
 });

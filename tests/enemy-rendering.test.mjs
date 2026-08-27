@@ -124,15 +124,15 @@ test("magma children render at a smaller relative scale than their parent", () =
 
 test("근거리 몬스터는 고정 레벨·이름·현재 체력을 머리 위에 표시한다", () => {
   const shark = enemy("fang-shark");
-  shark.hp = 18;
+  shark.hp = 18.7;
   const ctx = recordingContext();
 
   drawEnemy(ctx, shark, 0, 0, 1, { player: { x: 100, y: 100 } });
 
   assert.ok(ctx.texts.some(text => text.value === "Lv.7 송곳니 상어"));
-  assert.ok(ctx.texts.some(text => text.value === "18 / 25"));
+  assert.ok(ctx.texts.some(text => text.value === "18.7 / 25"));
   assert.ok(ctx.fills.some(fill => fill.color === "rgba(4,10,7,.9)" && fill.w === 104));
-  assert.ok(ctx.fills.some(fill => fill.color === "#ef4444" && fill.w > 74 && fill.w < 75));
+  assert.ok(ctx.fills.some(fill => fill.color === "#ef4444" && fill.w > 77 && fill.w < 78));
   assert.equal(ctx.fills.filter(fill => fill.color === "#ef4444").length, 1);
 });
 

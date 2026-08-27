@@ -79,11 +79,40 @@ button, input { font: inherit; }
 .shop-item button:hover:not(:disabled) { filter: brightness(1.08); }
 .shop-item button:disabled { cursor: not-allowed; filter: grayscale(.7); opacity: .48; }
 .shop-done { width: 100%; }
+.blacksmith-overlay { pointer-events: auto; position: absolute; inset: 0; z-index: 37; display: grid; place-items: center; padding: 20px; background: rgba(5,9,17,.84); backdrop-filter: blur(5px); }
+.blacksmith-card { position: relative; width: min(100%,800px); max-height: calc(100vh - 40px); overflow: hidden; text-align: left; }
+.blacksmith-card .modal-emblem { margin-left: 0; }
+.modal-emblem.blacksmith { border-color: rgba(251,191,36,.52); background: linear-gradient(145deg,rgba(120,53,15,.62),rgba(51,65,85,.72)); }
+.blacksmith-description { margin: 7px 0 12px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.blacksmith-status-row { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.blacksmith-gold, .blacksmith-equipped { display: flex; justify-content: space-between; gap: 8px; padding: 9px 12px; border: 1px solid rgba(251,191,36,.32); border-radius: 10px; background: rgba(120,53,15,.2); color: #fde68a; font-weight: 900; }
+.blacksmith-equipped { border-color: rgba(147,197,253,.3); background: rgba(30,64,175,.18); color: #bfdbfe; }
+.blacksmith-tabs { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin: 12px 0; }
+.blacksmith-tabs button { padding: 9px 12px; border: 1px solid rgba(148,163,184,.32); border-radius: 9px; background: rgba(30,41,59,.72); color: #cbd5e1; cursor: pointer; font-weight: 900; }
+.blacksmith-tabs button[aria-selected="true"] { border-color: rgba(251,191,36,.68); background: linear-gradient(135deg,rgba(146,64,14,.9),rgba(180,83,9,.84)); color: #fef3c7; }
+.blacksmith-card [role="tabpanel"] { max-height: min(56vh,560px); overflow-y: auto; padding-right: 4px; }
+.blacksmith-items { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }
+.blacksmith-item { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 10px; align-items: center; min-width: 0; padding: 11px; border: 1px solid rgba(148,163,184,.24); border-radius: 12px; background: linear-gradient(145deg,rgba(51,37,31,.78),rgba(15,23,42,.78)); }
+.blacksmith-item.buy-weapon { grid-template-columns: auto minmax(0,1fr) auto; }
+.blacksmith-item.masterwork { border-color: rgba(212,167,44,.42); background: linear-gradient(145deg,rgba(63,50,31,.82),rgba(15,23,42,.82)); }
+.weapon-preview { width: 54px; height: 32px; border: 1px solid rgba(148,163,184,.26); border-radius: 8px; background: rgba(3,8,18,.46); image-rendering: pixelated; }
+.blacksmith-item strong { display: block; color: #f8fafc; font-size: 14px; }
+.blacksmith-item small { display: block; margin-top: 3px; color: #fcd34d; font-size: 11px; }
+.blacksmith-item p { margin: 5px 0 0; color: var(--muted); font-size: 11px; line-height: 1.35; }
+.blacksmith-item b { display: block; margin-top: 5px; color: #93c5fd; font-size: 10px; }
+.blacksmith-item > button { min-width: 88px; padding: 9px 10px; border: 1px solid rgba(251,191,36,.42); border-radius: 9px; background: linear-gradient(135deg,#d97706,#fbbf24); color: #2b1702; cursor: pointer; font-size: 11px; font-weight: 900; }
+.blacksmith-item > button:hover:not(:disabled) { filter: brightness(1.1); }
+.blacksmith-item > button:disabled { cursor: not-allowed; filter: grayscale(.75); opacity: .48; }
+.blacksmith-sale-note, .blacksmith-empty-sale { margin: 0 0 10px; color: #fcd34d; font-size: 11px; line-height: 1.4; }
+.blacksmith-empty-sale { padding: 18px; border: 1px dashed rgba(148,163,184,.3); border-radius: 10px; color: var(--muted); text-align: center; }
+.weapon-sale-confirm-overlay { pointer-events: auto; position: absolute; inset: 0; z-index: 39; display: grid; place-items: center; padding: 20px; background: rgba(3,7,18,.9); backdrop-filter: blur(7px); }
 .inventory-overlay { pointer-events: auto; position: absolute; inset: 0; z-index: 37; display: grid; place-items: center; padding: 20px; background: rgba(5,9,17,.82); backdrop-filter: blur(5px); }
-.inventory-card { position: relative; width: min(100%,620px); text-align: left; }
+.inventory-card { position: relative; width: min(100%,720px); max-height: calc(100vh - 40px); overflow: auto; text-align: left; }
 .inventory-card .modal-emblem { margin-left: 0; }
 .modal-emblem.inventory { border-color: rgba(251,191,36,.48); background: rgba(120,53,15,.34); }
-.inventory-description { margin: 7px 0 16px; color: var(--muted); font-size: 13px; }
+.inventory-description { margin: 7px 0 14px; color: var(--muted); font-size: 13px; }
+.inventory-section + .inventory-section { margin-top: 16px; }
+.inventory-section h3 { margin: 0 0 8px; color: #fde68a; font-size: 12px; letter-spacing: .04em; }
 .inventory-items { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
 .inventory-item { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 10px; align-items: start; min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: linear-gradient(145deg,rgba(44,34,55,.74),rgba(3,8,18,.56)); }
 .inventory-item-icon { display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid rgba(255,255,255,.2); border-radius: 11px; font-size: 22px; }
@@ -96,6 +125,14 @@ button, input { font: inherit; }
 .inventory-item > button { grid-column: 1 / -1; width: 100%; padding: 9px 11px; border: 1px solid rgba(251,191,36,.38); border-radius: 9px; background: linear-gradient(135deg,#f59e0b,#fbbf24); color: #3b2103; cursor: pointer; font-size: 12px; font-weight: 900; }
 .inventory-item > button:hover:not(:disabled) { filter: brightness(1.08); }
 .inventory-item > button:disabled { cursor: not-allowed; filter: grayscale(.7); opacity: .48; }
+.inventory-equipment-items { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }
+.inventory-equipment-item { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 10px; align-items: center; min-width: 0; padding: 11px; border: 1px solid rgba(148,163,184,.24); border-radius: 12px; background: linear-gradient(145deg,rgba(37,43,54,.8),rgba(3,8,18,.6)); }
+.inventory-equipment-item.masterwork { border-color: rgba(212,167,44,.42); background: linear-gradient(145deg,rgba(63,50,31,.78),rgba(15,23,42,.82)); }
+.inventory-equipment-item strong { display: block; color: #f8fafc; font-size: 13px; }
+.inventory-equipment-item small { display: block; margin-top: 5px; color: #bfdbfe; font-size: 10px; line-height: 1.4; }
+.inventory-equipment-item > button { min-width: 70px; padding: 8px 9px; border: 1px solid rgba(251,191,36,.38); border-radius: 9px; background: linear-gradient(135deg,#d97706,#fbbf24); color: #2b1702; cursor: pointer; font-size: 11px; font-weight: 900; }
+.inventory-equipment-item > button:hover:not(:disabled) { filter: brightness(1.08); }
+.inventory-equipment-item > button:disabled { cursor: not-allowed; filter: grayscale(.7); opacity: .55; }
 .inventory-done { width: 100%; margin-top: 14px; }
 .qa-overlay { pointer-events: auto; position: absolute; inset: 0; z-index: 38; display: grid; place-items: center; padding: 20px; background: rgba(5,9,17,.84); backdrop-filter: blur(5px); }
 .qa-card { position: relative; width: min(100%,640px); max-height: calc(100vh - 40px); overflow: auto; text-align: left; }
@@ -110,6 +147,9 @@ button, input { font: inherit; }
 .qa-region-grid button { text-align: center; }
 .qa-region-grid button:hover, .qa-monster-grid button:hover { border-color: rgba(196,181,253,.7); filter: brightness(1.12); }
 .qa-monster-grid button span { display: block; margin-bottom: 3px; color: #c4b5fd; font-size: 9px; letter-spacing: .08em; }
+.qa-weapon-action { width: 100%; padding: 11px 12px; border: 1px solid rgba(251,191,36,.44); border-radius: 10px; background: linear-gradient(145deg,rgba(146,64,14,.72),rgba(76,29,149,.58)); color: #fef3c7; cursor: pointer; font-size: 12px; font-weight: 900; text-align: left; }
+.qa-weapon-action:hover { border-color: rgba(251,191,36,.76); filter: brightness(1.1); }
+.qa-weapon-action span { display: block; margin-bottom: 3px; color: #fde68a; font-size: 9px; letter-spacing: .06em; }
 .qa-done { width: 100%; margin-top: 16px; }
 .chat-panel { pointer-events: auto; position: absolute; left: 14px; bottom: max(14px, env(safe-area-inset-bottom)); z-index: 10; display: grid; grid-template-rows: auto minmax(72px,1fr) auto; width: min(360px,calc(100vw - 28px)); height: min(230px,32vh); min-height: 168px; overflow: hidden; border-radius: 14px; text-shadow: none; }
 .chat-panel header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 11px; border-bottom: 1px solid rgba(255,255,255,.12); font-size: 12px; }
@@ -216,8 +256,15 @@ kbd { min-width: 23px; padding: 2px 5px; border: 1px solid rgba(255,255,255,.35)
   .shop-card { max-height: calc(100vh - 24px); overflow: auto; }
   .shop-item { grid-template-columns: 1fr; }
   .shop-item button { width: 100%; }
+  .blacksmith-card { max-height: calc(100vh - 24px); overflow: hidden; padding-left: 16px; padding-right: 16px; }
+  .blacksmith-card [role="tabpanel"] { max-height: calc(100vh - 290px); }
+  .blacksmith-status-row { grid-template-columns: 1fr; }
+  .blacksmith-items { grid-template-columns: 1fr; }
+  .blacksmith-item, .blacksmith-item.buy-weapon { grid-template-columns: 1fr; }
+  .blacksmith-item > button { width: 100%; }
   .inventory-card { max-height: calc(100vh - 24px); overflow: auto; }
   .inventory-items { grid-template-columns: 1fr; }
+  .inventory-equipment-items { grid-template-columns: 1fr; }
   .inventory-item-copy p { min-height: 0; }
   .qa-card { max-height: calc(100vh - 24px); }
   .qa-region-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }

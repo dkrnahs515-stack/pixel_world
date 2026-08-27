@@ -10,6 +10,10 @@ import {
 test("초기 진행 데이터는 비어 있는 체력·마력 물약 인벤토리를 가진다", () => {
   const initial = createInitialProgress();
   assert.deepEqual(initial.inventory, { hpPotion: 0, mpPotion: 0 });
+  assert.deepEqual(initial.equipment, {
+    ownedWeaponIds: ["starter-sword"],
+    equippedWeaponId: "starter-sword",
+  });
 });
 
 test("퀘스트는 수락 후 승인된 슬라임 세 마리로 보고 가능 상태가 된다", () => {
@@ -91,6 +95,10 @@ test("잘못된 상태에서의 전이는 보상 없이 복제된 상태를 반�
     nextLevelExp: 100,
     gold: 0,
     inventory: { hpPotion: 0, mpPotion: 0 },
+    equipment: {
+      ownedWeaponIds: ["starter-sword"],
+      equippedWeaponId: "starter-sword",
+    },
     completedQuests: [],
     quests: { adventureStart: { status: "completed", progress: 3 } },
   });
