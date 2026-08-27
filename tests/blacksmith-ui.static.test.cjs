@@ -7,6 +7,26 @@ const html = readFileSync(path.join(__dirname, "../index.html"), "utf8");
 const main = readFileSync(path.join(__dirname, "../src/main.js"), "utf8");
 const css = readFileSync(path.join(__dirname, "../styles.css"), "utf8");
 
+function resolveDesktopWidth(classNames) {
+  const desktopCss = css.split("@media")[0];
+  const elementClasses = new Set(classNames);
+  let winner = null;
+
+  for (const match of desktopCss.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const width = match[2].match(/(?:^|;)\s*width:\s*([^;]+)/)?.[1].trim();
+    if (!width) continue;
+
+    for (const selector of match[1].split(",").map(value => value.trim())) {
+      const selectorClasses = [...selector.matchAll(/\.([\w-]+)/g)].map(value => value[1]);
+      if (selectorClasses.length === 0 || selectorClasses.some(value => !elementClasses.has(value))) continue;
+      const specificity = selectorClasses.length;
+      if (!winner || specificity >= winner.specificity) winner = { specificity, width };
+    }
+  }
+
+  return winner?.width;
+}
+
 test("대장간은 구매·판매 탭과 별도 판매 확인창을 접근 가능한 대화상자로 제공한다", () => {
   assert.match(html, /id="blacksmithOverlay"[^>]*hidden/);
   assert.match(html, /aria-labelledby="blacksmithTitle"/);
@@ -90,7 +110,7 @@ test("대장간은 QA 아래·HUD 위, 판매 확인은 최상단이며 모바�
 });
 
 test("대장간은 800px 폭을 유지하고 760px 이하에서 양쪽 거래 목록을 한 열로 접는다", () => {
-  assert.match(css, /\.blacksmith-card \{[^}]*width:\s*min\(100%,800px\)/);
+  assert.equal(resolveDesktopWidth(["modal-card", "blacksmith-card"]), "min(100%,800px)");
   assert.match(css, /@media \(max-width:\s*760px\)[\s\S]*?\.blacksmith-items \{[^}]*grid-template-columns:\s*1fr/);
   assert.match(css, /@media \(max-width:\s*520px\)[\s\S]*?\.blacksmith-item,\s*\.blacksmith-item\.buy-weapon \{[^}]*grid-template-columns:\s*1fr/);
   assert.match(css, /@media \(max-width:\s*520px\)[\s\S]*?\.blacksmith-item > button \{[^}]*width:\s*100%/);
