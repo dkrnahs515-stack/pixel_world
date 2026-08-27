@@ -101,6 +101,7 @@ function constructedQaGame() {
   const qaWorldButton = eventNode(documentRef, { dataset: { qaWorld: "forest" } });
   const qaMonsterButton = eventNode(documentRef, { dataset: { qaMonster: "fang-shark" } });
   const qaWeaponButton = eventNode(documentRef, { dataset: { qaWeapons: "prepare" } });
+  const qaBlacksmithButton = eventNode(documentRef, { dataset: { qaBlacksmith: "travel" } });
   const elements = {
     qaEnabled: true,
     canvas,
@@ -128,6 +129,7 @@ function constructedQaGame() {
     qaWorldButtons: [qaWorldButton],
     qaMonsterButtons: [qaMonsterButton],
     qaWeaponButton,
+    qaBlacksmithButton,
     hpPotionSlot: eventNode(documentRef, { dataset: { code: "Digit1" } }),
     mpPotionSlot: eventNode(documentRef, { dataset: { code: "Digit2" } }),
     chatPanel: eventNode(documentRef),
@@ -137,6 +139,7 @@ function constructedQaGame() {
     chatStatus: eventNode(documentRef),
     npcPrompt: eventNode(documentRef, { hidden: true }),
     npcPromptText: eventNode(documentRef),
+    playerCount: eventNode(documentRef),
   };
   documentRef.querySelectorAll = selector => selector === ".slot"
     ? [elements.hpPotionSlot, elements.mpPotionSlot]
@@ -148,7 +151,15 @@ function constructedQaGame() {
   game.updateBiome = () => {};
   game.updateNpcPrompt = () => {};
   game.notify = () => {};
-  return { game, elements, documentRef, qaWorldButton, qaMonsterButton, qaWeaponButton };
+  return {
+    game,
+    elements,
+    documentRef,
+    qaWorldButton,
+    qaMonsterButton,
+    qaWeaponButton,
+    qaBlacksmithButton,
+  };
 }
 
 function qaGame() {
@@ -209,6 +220,8 @@ function qaGame() {
     strongSlot: fakeNode(),
     strongCooldown: fakeNode(),
     message: fakeNode(),
+    npcPrompt: fakeNode({ hidden: true }),
+    npcPromptText: fakeNode(),
   };
   game.canvas = fakeNode();
   game.drawMinimapBase = () => {};
@@ -260,8 +273,15 @@ test("실제 QA 버튼과 닫기 버튼은 패널 상태와 포커스를 게임 
   assert.equal(documentRef.activeElement, elements.canvas);
 });
 
-test("QA 패널의 Tab 포커스는 지역·몬스터·닫기 버튼 안에서만 순환한다", () => {
-  const { elements, documentRef, qaWorldButton, qaMonsterButton, qaWeaponButton } = constructedQaGame();
+test("QA 패널의 Tab 포커스는 지역·몬스터·장비·브란 이동 버튼 안에서만 순환한다", () => {
+  const {
+    elements,
+    documentRef,
+    qaWorldButton,
+    qaMonsterButton,
+    qaWeaponButton,
+    qaBlacksmithButton,
+  } = constructedQaGame();
   elements.qaButton.click();
   let prevented = false;
 
@@ -286,6 +306,29 @@ test("QA 패널의 Tab 포커스는 지역·몬스터·닫기 버튼 안에서�
     preventDefault() {},
   });
   assert.equal(documentRef.activeElement, qaWeaponButton);
+
+  elements.qaOverlay.dispatch("keydown", {
+    code: "Tab",
+    shiftKey: false,
+    preventDefault() {},
+  });
+  assert.equal(documentRef.activeElement, qaBlacksmithButton);
+});
+
+test("실제 QA 브란 이동 버튼은 플레이어를 브란 상호작용 거리로 보내고 안내를 표시한다", () => {
+  const { game, elements } = constructedQaGame();
+  game.updateNpcPrompt = PixelRPG.prototype.updateNpcPrompt.bind(game);
+  elements.qaButton.click();
+
+  elements.qaBlacksmithButton.click();
+
+  assert.equal(game.mapId, "village");
+  assert.deepEqual({ x: game.player.x, y: game.player.y }, { x: 2460, y: 1060 });
+  assert.equal(game.nearbyNpc?.id, "brann");
+  assert.equal(elements.npcPrompt.hidden, false);
+  assert.equal(elements.npcPromptText.textContent, "대장장이 브란의 대장간 이용하기");
+  assert.equal(elements.qaOverlay.hidden, true);
+  assert.equal(game.inputEnabled, true);
 });
 
 test("QA 장비 준비는 Lv.30·5000G와 최대 HP·MP를 반영하고 한 번 저장한 뒤 닫힌다", () => {
@@ -334,6 +377,23 @@ test("QA가 비활성화됐거나 패널이 닫혀 있으면 장비 준비가 �
   game.ui.qaOverlay.hidden = true;
   assert.equal(game.qaPrepareWeaponShop(), false);
   assert.deepEqual(game.progress, before);
+  assert.equal(storage.writes.length, 0);
+  delete globalThis.localStorage;
+});
+
+test("QA 브란 이동은 열린 패널에서만 작동하며 진행 데이터와 저장값을 바꾸지 않는다", () => {
+  const game = qaGame();
+  const storage = memoryStorage();
+  globalThis.localStorage = storage;
+  const progressBefore = structuredClone(game.progress);
+
+  game.ui.qaOverlay.hidden = true;
+  assert.equal(game.qaTravelToBlacksmith(), false);
+  assert.deepEqual({ x: game.player.x, y: game.player.y }, { x: 1440, y: 1110 });
+
+  game.ui.qaOverlay.hidden = false;
+  assert.equal(game.qaTravelToBlacksmith(), true);
+  assert.deepEqual(game.progress, progressBefore);
   assert.equal(storage.writes.length, 0);
   delete globalThis.localStorage;
 });

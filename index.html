@@ -315,10 +315,16 @@
 
         <section class="qa-section" aria-labelledby="qaWeaponTitle">
           <h3 id="qaWeaponTitle">장비 상점 점검</h3>
-          <button class="qa-weapon-action" type="button" data-qa-weapons="prepare">
-            <span>대장간 구매·장착·판매 검증</span>
-            Lv.30 · 5000 G 준비
-          </button>
+          <div class="qa-weapon-actions">
+            <button class="qa-weapon-action" type="button" data-qa-weapons="prepare">
+              <span>대장간 구매·장착·판매 검증</span>
+              Lv.30 · 5000 G 준비
+            </button>
+            <button class="qa-weapon-action" type="button" data-qa-blacksmith="travel">
+              <span>브란 상호작용 바로 점검</span>
+              브란 앞으로 이동
+            </button>
+          </div>
         </section>
 
         <button id="qaDoneButton" class="secondary-button qa-done" type="button">QA 도구 닫기</button>
