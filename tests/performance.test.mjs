@@ -9,6 +9,8 @@ test("FPS 측정은 현실적인 프레임 간격만 표본으로 사용한다",
   assert.equal(gameModule.fpsSampleFromFrameSeconds?.(1 / 500), null);
   assert.equal(gameModule.fpsSampleFromFrameSeconds?.(1 / 240), 240);
   assert.equal(Math.round(gameModule.fpsSampleFromFrameSeconds?.(1 / 60)), 60);
+  assert.equal(gameModule.fpsSampleFromFrameSeconds?.(0.25), 4);
+  assert.equal(gameModule.fpsSampleFromFrameSeconds?.(0.251), null);
 });
 
 test("히트 스톱 중에는 고정 업데이트 없이 실제 프레임 시간만 소비한다", () => {
@@ -105,6 +107,56 @@ test("불규칙 프레임의 FPS는 순간 FPS 평균이 아니라 총 경과 �
   assert.equal(gameModule.averageFpsFromFrameSeconds?.([]), 0);
 });
 
+test("게임 루프는 시뮬레이션만 0.1초로 제한하고 성능 통계에는 실제 프레임 간격을 전달한다", () => {
+  const game = Object.create(PixelRPG.prototype);
+  Object.assign(game, {
+    running: true,
+    lastFrame: 100,
+    accumulator: 0,
+    fixedDt: 1 / 60,
+  });
+  let simulatedSeconds = null;
+  let measuredSeconds = null;
+  game.runSimulationFrame = seconds => { simulatedSeconds = seconds; };
+  game.render = () => {};
+  game.measurePerformance = (_timestamp, seconds) => { measuredSeconds = seconds; };
+  const previousRequestAnimationFrame = globalThis.requestAnimationFrame;
+  globalThis.requestAnimationFrame = () => 1;
+
+  try {
+    game.loop(400);
+  } finally {
+    globalThis.requestAnimationFrame = previousRequestAnimationFrame;
+  }
+
+  assert.equal(simulatedSeconds, 0.1);
+  assert.equal(measuredSeconds, 0.3);
+});
+
+test("성능 패널은 현재 구간과 세션 평균·최저·급락 횟수를 함께 갱신한다", () => {
+  const game = performanceGame(1);
+  game.resetPerformanceMeasurement();
+  game.measurePerformance(100, 0);
+
+  let timestamp = 100;
+  for (let index = 0; index < 28; index += 1) {
+    timestamp += 1000 / 60;
+    game.measurePerformance(timestamp, 1 / 60);
+  }
+  timestamp += 1000 / 30;
+  game.measurePerformance(timestamp, 1 / 30);
+
+  assert.equal(game.ui.fpsText.textContent, "58");
+  assert.equal(game.ui.averageFpsText.textContent, "58");
+  assert.equal(game.ui.minFpsText.textContent, "30");
+  assert.equal(game.ui.frameDropCount.textContent, "1");
+
+  game.resetPerformanceMeasurement();
+  assert.equal(game.ui.averageFpsText.textContent, "0");
+  assert.equal(game.ui.minFpsText.textContent, "0");
+  assert.equal(game.ui.frameDropCount.textContent, "0");
+});
+
 test("60 FPS가 유지되면 동적 해상도를 성능 우선으로 잘못 낮추지 않는다", () => {
   const game = performanceGame(1);
 
@@ -171,6 +223,24 @@ test("첫 0초 프레임은 저FPS로 계산하지 않고 새 입장은 이전 �
   game.measurePerformance(500, 0);
   assert.equal(game.lowFpsSeconds, 0);
   assert.equal(game.highFpsSeconds, 0);
+});
+
+test("250ms를 넘는 공백은 현재 FPS 창과 연속 품질 판정을 재동기화한다", () => {
+  const game = performanceGame(1);
+  game.measurePerformance(200, 1 / 30);
+  game.lowFpsSeconds = 1.5;
+  game.highFpsSeconds = 3;
+
+  game.measurePerformance(5200, 5);
+
+  assert.deepEqual(game.fpsSamples, []);
+  assert.equal(game.lastFpsUpdate, 5200);
+  assert.equal(game.lowFpsSeconds, 0);
+  assert.equal(game.highFpsSeconds, 0);
+  assert.equal(game.renderScale, 1);
+  assert.equal(game.resizeCalls, 0);
+  assert.equal(game.ui.fpsText.textContent, "");
+  assert.equal(game.performanceMetrics.frameCount, 1);
 });
 
 test("미니맵은 큰 월드 배경을 한 번만 축소하고 위치 점은 100ms마다 갱신한다", () => {
@@ -307,6 +377,9 @@ function performanceGame(renderScale) {
     resizeCalls: 0,
     ui: {
       fpsText: { textContent: "" },
+      averageFpsText: { textContent: "" },
+      minFpsText: { textContent: "" },
+      frameDropCount: { textContent: "" },
       qualityText: { textContent: "" },
     },
   });
