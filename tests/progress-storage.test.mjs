@@ -212,6 +212,7 @@ test("v1 진행은 기존 보상을 유지하고 초기 장비를 추가해 v5�
     gold: 0,
     inventory: { hpPotion: 0, mpPotion: 0 },
     equipmentByClass: createInitialEquipmentByClass(),
+    claimedBossRewardIds: [],
     completedQuests: ["adventureStart"],
     quests: { adventureStart: { status: "completed", progress: 3 } },
   });
@@ -392,4 +393,16 @@ test("v5 저장은 세 직업 장비를 독립 배열로 왕복한다", () => {
       source.equipmentByClass[classId].ownedWeaponIds,
     );
   }
+});
+
+test("협동 보상 영수증은 진행과 원자적으로 저장되고 기존 v5에는 빈 목록을 보완한다", () => {
+  const storage = memoryStorage();
+  const progress = { ...createInitialProgress(), claimedBossRewardIds: ["boss-1:uid", "boss-2:uid"] };
+  assert.deepEqual(saveProgress(storage, "협동", progress), { ok: true });
+  assert.deepEqual(loadProgress(storage, "협동").claimedBossRewardIds, ["boss-1:uid", "boss-2:uid"]);
+
+  const legacyV5 = { version: 5, ...createInitialProgress() };
+  delete legacyV5.claimedBossRewardIds;
+  storage.setItem(progressStorageKey("기존"), JSON.stringify(legacyV5));
+  assert.deepEqual(loadProgress(storage, "기존").claimedBossRewardIds, []);
 });

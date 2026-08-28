@@ -68,3 +68,18 @@ export function grantHuntingReward(progress, enemyKind, random = Math.random) {
     rewardGold: reward.gold,
   };
 }
+
+export function grantCoopBossReward(progress, bossDefinition) {
+  if (!bossDefinition || !(bossDefinition.rewardExp >= 0) || !(bossDefinition.rewardGold >= 0)) return null;
+  const result = grantProgressReward(progress, {
+    exp: bossDefinition.rewardExp,
+    gold: bossDefinition.rewardGold,
+  });
+  return {
+    ...result,
+    bossId: bossDefinition.id,
+    label: bossDefinition.name,
+    rewardExp: bossDefinition.rewardExp,
+    rewardGold: bossDefinition.rewardGold,
+  };
+}

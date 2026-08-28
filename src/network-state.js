@@ -7,6 +7,7 @@ export function serializePlayerState(player, mapId) {
   return {
     x: Math.round(player.x * 10) / 10,
     y: Math.round(player.y * 10) / 10,
+    hp: Number.isFinite(player.hp) ? Math.max(0, Math.round(player.hp * 10) / 10) : 100,
     dir: player.dir,
     moving: Boolean(player.moving),
     color: player.color,
@@ -29,6 +30,7 @@ export function filterPlayersForMap(rawPlayers, ownUid, activeMapId) {
     const classId = normalizeClassId(raw.classId);
     players.set(uid, {
       ...raw,
+      hp: Number.isFinite(raw.hp) ? Math.max(0, raw.hp) : 100,
       mapId,
       classId,
       equippedWeaponId: resolveWeaponDefinition(raw.equippedWeaponId, classId).id,

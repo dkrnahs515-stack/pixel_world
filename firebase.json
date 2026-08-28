@@ -9,6 +9,9 @@
       "README.md",
       "database.rules.json",
       ".github/**",
+      "docs/**",
+      "tests/**",
+      ".worktrees/**",
       "**/.*",
       "**/node_modules/**"
     ],

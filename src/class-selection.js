@@ -1,4 +1,5 @@
 import { getClassDefinition } from "./class-data.js";
+import { DEFAULT_PLAY_MODE, validatePlayMode } from "./play-mode.js";
 
 export const CLASS_PREFERENCE_KEY = "pixelWorldClassId";
 
@@ -36,7 +37,7 @@ export function storeClassId(storage, classId) {
   }
 }
 
-export function validateEntrySelection(nickname, classId) {
+export function validateEntrySelection(nickname, classId, playMode = DEFAULT_PLAY_MODE) {
   const normalized = normalizedNickname(nickname);
   const length = Array.from(normalized).length;
   if (length < 1) return { ok: false, field: "nickname", error: "닉네임을 입력해 주세요." };
@@ -46,7 +47,9 @@ export function validateEntrySelection(nickname, classId) {
   }
   const definition = getClassDefinition(classId);
   if (!definition) return { ok: false, field: "classId", error: "플레이할 직업을 선택해 주세요." };
-  return { ok: true, nickname: normalized, classId: definition.id };
+  const modeResult = validatePlayMode(playMode);
+  if (!modeResult.ok) return modeResult;
+  return { ok: true, nickname: normalized, classId: definition.id, playMode: modeResult.playMode };
 }
 
 export function entryButtonLabel(classId) {

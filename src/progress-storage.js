@@ -89,8 +89,23 @@ function isValidInventory(inventory) {
     ));
 }
 
+function normalizeClaimedBossRewardIds(value) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter(id => typeof id === "string" && id.length > 0 && id.length <= 160))].slice(-2_000);
+}
+
+function isValidClaimedBossRewardIds(value) {
+  return Array.isArray(value)
+    && value.length <= 2_000
+    && value.every(id => typeof id === "string" && id.length > 0 && id.length <= 160)
+    && new Set(value).size === value.length;
+}
+
 function isValidProgress(progress) {
-  return isValidBaseProgress(progress) && isValidInventory(progress.inventory);
+  return isValidBaseProgress(progress)
+    && isValidInventory(progress.inventory)
+    && (!Object.hasOwn(progress, "claimedBossRewardIds")
+      || isValidClaimedBossRewardIds(progress.claimedBossRewardIds));
 }
 
 function isValidV2Progress(progress) {
@@ -117,6 +132,7 @@ function toBaseAndInventoryProgress(value) {
       hpPotion: value.inventory.hpPotion,
       mpPotion: value.inventory.mpPotion,
     },
+    claimedBossRewardIds: normalizeClaimedBossRewardIds(value.claimedBossRewardIds),
     completedQuests: [...value.completedQuests],
     quests: {
       [ADVENTURE_QUEST.id]: {
@@ -164,6 +180,7 @@ function migrateV2Progress(value) {
     nextLevelExp: value.nextLevelExp,
     gold: value.gold,
     inventory: { hpPotion: 0, mpPotion: 0 },
+    claimedBossRewardIds: [],
     equipmentByClass: createInitialEquipmentByClass(),
     completedQuests: [...value.completedQuests],
     quests: {

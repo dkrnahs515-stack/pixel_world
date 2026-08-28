@@ -24,7 +24,7 @@ export function createEnemyInstance(kind, spawn, id, overrides = {}) {
   if (!type) return null;
   const hp = overrides.hp ?? type.hp;
   return {
-    id, kind, name: type.name, level: type.level,
+    id, kind, name: overrides.name ?? type.name, level: overrides.level ?? type.level,
     x: spawn.x, y: spawn.y, prevX: spawn.x, prevY: spawn.y,
     homeX: spawn.x, homeY: spawn.y,
     hp, maxHp: overrides.maxHp ?? hp, speed: type.speed,
@@ -34,13 +34,31 @@ export function createEnemyInstance(kind, spawn, id, overrides = {}) {
     cooldownRemaining: 0, attackSequence: 0, attackApplied: false,
     lastDamagedAgo: Number.POSITIVE_INFINITY, infoVisibleRemaining: 0,
     generation: overrides.generation ?? type.generation ?? 0,
-    targetable: true, contactMode: type.contactMode,
+    targetable: overrides.targetable ?? true, contactMode: type.contactMode,
     contactCooldownDuration: type.contactCooldown ?? 1,
     state: "idle", moving: false, step: overrides.step ?? 0,
-    hitFlash: 0, shake: 0, deathTime: 0, opacity: 1, scale: 1,
+    hitFlash: 0, shake: 0, deathTime: 0, opacity: 1, scale: overrides.scale ?? 1,
     knockbackX: 0, knockbackY: 0, contactCooldown: 0,
     hitStunRemaining: 0,
+    ...(overrides.isCoopBoss ? { isCoopBoss: true } : {}),
   };
+}
+
+export function createBossEnemyView(definition, snapshot) {
+  if (!definition || !snapshot) return null;
+  return createEnemyInstance(
+    definition.enemyKind,
+    { x: snapshot.x, y: snapshot.y },
+    snapshot.bossId,
+    {
+      name: definition.name,
+      hp: snapshot.hp,
+      maxHp: snapshot.maxHp,
+      scale: 1.55,
+      targetable: snapshot.status === "alive",
+      isCoopBoss: true,
+    },
+  );
 }
 
 export function applyEnemyHitStun(enemy, duration) {

@@ -101,6 +101,7 @@ test("잘못된 상태에서의 전이는 보상 없이 복제된 상태를 반�
       archer: { ownedWeaponIds: ["training-bow"], equippedWeaponId: "training-bow" },
       mage: { ownedWeaponIds: ["training-staff"], equippedWeaponId: "training-staff" },
     },
+    claimedBossRewardIds: [],
     completedQuests: [],
     quests: { adventureStart: { status: "completed", progress: 3 } },
   });

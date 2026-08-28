@@ -36,10 +36,12 @@ async function expectRegion(page, regionName) {
 
     await page.locator("#nicknameInput").fill("포탈테스터");
     await page.locator('[data-class-id="warrior"]').click();
+    await page.locator('[data-play-mode="solo"]').click();
     await page.locator("#enterButton").click();
     await page.locator("#hud").waitFor({ state: "visible" });
     await expectRegion(page, "중앙 마을");
-    assert.match(await page.locator("#chatStatus").textContent(), /연결 실패|오프라인/);
+    assert.equal(await page.locator("#chatStatus").textContent(), "솔로");
+    assert.equal(await page.locator("#chatPanel").isHidden(), true);
     await page.keyboard.press("Enter");
     assert.equal(await page.locator("#chatInput").evaluate(element => document.activeElement === element), false);
     await page.keyboard.press("Escape");

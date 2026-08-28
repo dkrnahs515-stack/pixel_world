@@ -238,6 +238,23 @@ kbd { min-width: 23px; padding: 2px 5px; border: 1px solid rgba(255,255,255,.35)
 .selection-state { justify-self: start; padding: 2px 7px; border-radius: 999px; background: rgba(71,85,105,.62); color: #cbd5e1; font-size: 9px; font-weight: 900; }
 .class-card.selected .selection-state { background: #2dd4bf; color: #062721; }
 .class-error { margin-top: 5px; }
+.play-mode-selection-label { margin: 4px 0 9px !important; color: #dbe6f4; text-align: left; font-size: 14px !important; }
+.play-mode-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.play-mode-card { display: grid; gap: 4px; padding: 11px 13px; border: 2px solid rgba(148,163,184,.25); border-radius: 12px; outline: none; background: rgba(15,23,42,.72); color: #e5edf7; cursor: pointer; text-align: left; transition: border-color .16s ease, background .16s ease, transform .16s ease; }
+.play-mode-card:hover { border-color: rgba(129,230,217,.52); transform: translateY(-1px); }
+.play-mode-card:focus-visible { box-shadow: 0 0 0 3px rgba(45,212,191,.2); }
+.play-mode-card[aria-checked="true"] { border: 2px solid #5eead4; background: rgba(15,118,110,.38); }
+.play-mode-card strong { font-size: 14px; }
+.play-mode-card span { color: #aebdd0; font-size: 10px; }
+.play-mode-error { margin-top: 5px; }
+.coop-boss-hud { position: absolute; top: 106px; left: 50%; width: min(calc(100vw - 28px),520px); max-width: 520px; transform: translateX(-50%); padding: 10px 14px; border-radius: 13px; }
+.coop-boss-hud > div:first-child, .coop-boss-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.coop-boss-hud small { color: #fbbf24; font-size: 9px; font-weight: 900; letter-spacing: .14em; }
+.coop-boss-hud strong { color: #fff7d6; font-size: 14px; }
+#coopBossStatus { display: block; margin: 3px 0 7px; color: #cbd5e1; font-size: 10px; }
+.bar.boss { height: 9px; background: rgba(15,23,42,.72); }
+.bar.boss i { background: linear-gradient(90deg,#ef4444,#f97316,#facc15); transform-origin: left center; transition: transform .18s ease; }
+.coop-boss-meta { margin-top: 5px; color: #e2e8f0; font-size: 10px; }
 .primary-button, .secondary-button, .danger-button { border: 0; border-radius: 10px; padding: 12px 17px; cursor: pointer; font-weight: 900; }
 .primary-button { width: 100%; background: linear-gradient(135deg,#2dd4bf,#22c55e); color: #07221c; }
 .primary-button:hover { filter: brightness(1.08); }
@@ -259,6 +276,7 @@ kbd { min-width: 23px; padding: 2px 5px; border: 1px solid rgba(255,255,255,.35)
 }
 @media (max-width: 760px) {
   .blacksmith-items { grid-template-columns: 1fr; }
+  .coop-boss-hud { top: var(--player-panel-stack-top); left: 14px; width: calc(100% - 28px); max-width: 520px; transform: none; }
 }
 @media (max-width: 620px) {
   .class-card-grid { grid-template-columns: 1fr; }
@@ -267,8 +285,11 @@ kbd { min-width: 23px; padding: 2px 5px; border: 1px solid rgba(255,255,255,.35)
 }
 @media (prefers-reduced-motion: reduce) {
   .class-card { transition: none; }
+  .play-mode-card { transition: none; }
+  .bar.boss i { transition: none; }
 }
 @media (max-width: 520px) {
+  .play-mode-grid { grid-template-columns: 1fr; }
   .player-panel { width: calc(100% - 28px); }
   .performance-panel { display: none; }
   .npc-prompt { bottom: calc(266px + env(safe-area-inset-bottom)); max-width: calc(100% - 28px); white-space: nowrap; }

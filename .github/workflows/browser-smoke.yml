@@ -1,0 +1,42 @@
+name: Browser smoke
+
+on:
+  pull_request:
+    branches: ["main"]
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: browser-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Solo and online browser smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
+      - name: Install Playwright
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Run browser smoke
+        shell: bash
+        run: |
+          python3 -m http.server 4173 >/tmp/pixel-world-server.log 2>&1 &
+          PIXEL_WORLD_URL=http://127.0.0.1:4173 node tests/solo-mode-smoke.cjs
+          PIXEL_WORLD_URL=http://127.0.0.1:4173 node tests/browser-smoke.cjs
+          PIXEL_WORLD_URL=http://127.0.0.1:4173 node tests/chat-game-smoke.cjs

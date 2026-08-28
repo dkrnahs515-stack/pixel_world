@@ -1,0 +1,47 @@
+name: Firebase rules test
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "database.rules.json"
+      - "firebase.json"
+      - "tests/firebase-rules-emulator.cjs"
+      - ".github/workflows/firebase-rules-test.yml"
+  push:
+    branches: ["main"]
+    paths:
+      - "database.rules.json"
+      - "firebase.json"
+      - "tests/firebase-rules-emulator.cjs"
+      - ".github/workflows/firebase-rules-test.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rules:
+    name: Realtime Database emulator rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Install Firebase test tools
+        run: npm install --no-save firebase-tools@15.26.0 @firebase/rules-unit-testing@5.0.0 firebase@12.6.0
+
+      - name: Run rules emulator tests
+        run: npx firebase emulators:exec --only database --project demo-pixel-world-rules "node tests/firebase-rules-emulator.cjs"

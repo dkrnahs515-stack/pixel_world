@@ -67,11 +67,16 @@ function blockedDistance(projectile, distance, isBlocked) {
   return distance;
 }
 
-function hitEvent(projectile, enemyId) {
+function hitEvent(projectile, target) {
   return {
     projectileId: projectile.id,
-    enemyId,
+    enemyId: target.id,
+    targetType: target.isCoopBoss ? "coop-boss" : "enemy",
     kind: projectile.kind,
+    classId: projectile.classId,
+    weaponId: projectile.weaponId,
+    attackKind: projectileAttackKind(projectile.kind),
+    direction: projectile.direction,
     damage: projectile.damage,
     knockback: projectile.knockback,
     directionX: projectile.directionX,
@@ -89,7 +94,7 @@ function explosionResult(projectile, x, y, enemies) {
     const radius = Number.isFinite(enemy.radius) ? Math.max(0, enemy.radius) : 0;
     if (Math.hypot(enemy.x - x, enemy.y - y) > projectile.explosionRadius + radius) continue;
     alreadyHit.add(enemy.id);
-    hits.push(hitEvent(projectile, enemy.id));
+    hits.push(hitEvent(projectile, enemy));
   }
   return {
     hits,
@@ -146,6 +151,7 @@ export function createProjectile({ id, kind, classId, weaponId, x, y, direction 
     y,
     directionX: vector.x,
     directionY: vector.y,
+    direction,
     speed: definition.speed,
     maxRange: definition.range,
     distanceTravelled: 0,
@@ -163,7 +169,10 @@ export function updateProjectiles(projectiles, dt, options = {}) {
   const survivors = [];
   const hits = [];
   const explosions = [];
-  const enemies = Array.isArray(options.enemies) ? options.enemies : [];
+  const enemies = [
+    ...(Array.isArray(options.enemies) ? options.enemies : []),
+    ...(Array.isArray(options.bosses) ? options.bosses : []),
+  ];
   const elapsed = Number.isFinite(dt) ? Math.max(0, dt) : 0;
 
   for (const source of projectiles) {
@@ -208,14 +217,14 @@ export function updateProjectiles(projectiles, dt, options = {}) {
     } else if (projectile.kind === "piercing-arrow") {
       for (const collision of collisions) {
         projectile.hitEnemyIds.push(collision.enemy.id);
-        hits.push(hitEvent(projectile, collision.enemy.id));
+        hits.push(hitEvent(projectile, collision.enemy));
         if (projectile.hitEnemyIds.length >= projectile.maxHits) break;
       }
       if (projectile.hitEnemyIds.length >= projectile.maxHits || stoppedByWorld || reachedRange) continue;
     } else {
       const first = collisions[0];
       if (first) {
-        hits.push(hitEvent(projectile, first.enemy.id));
+        hits.push(hitEvent(projectile, first.enemy));
         continue;
       }
       if (stoppedByWorld || reachedRange) continue;

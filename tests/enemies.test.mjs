@@ -4,6 +4,7 @@ import {
   applyEnemyHitStun,
   createEnemies,
   createEnemyInstance,
+  createBossEnemyView,
   createMagmaChildren,
   damageEnemy,
   formatHealthValue,
@@ -42,6 +43,20 @@ test("enemy species receive distinct combat stats", () => {
   assert.deepEqual({ hp: fire.hp, damage: fire.contactDamage }, { hp: 4, damage: 12 });
   assert.deepEqual({ hp: boar.hp, speed: boar.speed }, { hp: 6, speed: 112 });
   assert.deepEqual({ hp: crab.hp, radius: crab.radius }, { hp: 5, radius: 20 });
+});
+
+test("협동 보스 view는 기존 행동과 외형을 유지하며 공유 상태를 덮어쓴다", () => {
+  const view = createBossEnemyView(
+    { id: "coast-core-shark", name: "심해 코어 포식자", enemyKind: "pirate-shark" },
+    { bossId: "coast-core-shark", x: 500, y: 600, hp: 70, maxHp: 120, status: "alive" },
+  );
+  assert.equal(view.kind, "pirate-shark");
+  assert.equal(view.name, "심해 코어 포식자");
+  assert.equal(view.hp, 70);
+  assert.equal(view.maxHp, 120);
+  assert.equal(view.scale, 1.55);
+  assert.equal(view.isCoopBoss, true);
+  assert.equal(view.targetable, true);
 });
 
 test("a nearby player makes an enemy chase at its species speed", () => {

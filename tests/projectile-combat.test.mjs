@@ -210,6 +210,19 @@ test("사망·표적 불가 적은 무시하고 입력 객체와 적 HP를 변�
   assert.deepEqual(enemies.map(value => value.hp), [0, 10, 10]);
 });
 
+test("협동 보스 충돌은 일반 적과 구분된 targetType으로 보고한다", () => {
+  const projectile = createProjectile({
+    id: "boss-arrow", kind: "arrow", classId: "archer", weaponId: "training-bow",
+    x: 20, y: 100, direction: "right",
+  });
+  const boss = enemy("coast-core-shark", 100, 100, { isCoopBoss: true, hp: 120 });
+  const result = updateProjectiles([projectile], 0.5, { ...openWorld, bosses: [boss] });
+  assert.equal(result.hits.length, 1);
+  assert.equal(result.hits[0].targetType, "coop-boss");
+  assert.equal(result.hits[0].enemyId, "coast-core-shark");
+  assert.equal(boss.hp, 120);
+});
+
 test("비정상 좌표·방향·속도·사거리·수명의 투사체는 즉시 제거한다", () => {
   const valid = createProjectile({
     id: "valid",
