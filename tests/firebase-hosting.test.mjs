@@ -31,3 +31,13 @@ test("진입 HTML은 CSS와 JavaScript의 실제 파일명으로 기존 배포 �
   assert.ok(gameModulePath);
   assert.ok(existsSync(new URL(`..\/src\/${gameModulePath}`, import.meta.url)));
 });
+
+test("세 직업 배포는 새 물리 엔트리와 게임 모듈만 연결한다", () => {
+  assert.match(index, /src="\.\/src\/main-20260828-classes\.js"/);
+  assert.doesNotMatch(index, /main-20260827-2\.js/);
+  assert.ok(existsSync(new URL("../src/main-20260828-classes.js", import.meta.url)));
+  assert.ok(existsSync(new URL("../src/game-20260828-classes.js", import.meta.url)));
+  const entry = readFileSync(new URL("../src/main-20260828-classes.js", import.meta.url), "utf8");
+  assert.match(entry, /from "\.\/game-20260828-classes\.js"/);
+  assert.doesNotMatch(entry, /game-20260827-2\.js/);
+});

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { attackDefinition } from "../src/combat.js";
 import { createEnemyInstance, drawEnemy } from "../src/enemies.js";
-import * as gameModule from "../src/game-20260827-2.js";
+import * as gameModule from "../src/game-20260828-classes.js";
 
 function recordingContext() {
   const fills = [];
@@ -433,5 +433,5 @@ test("명중 판정이 적용되는 첫 프레임부터 검 궤적은 전체 유
   const basicArc = renderAttack("basic").arcs.find(arc => arc.color === "#e0f2fe");
   const strongArc = renderAttack("strong").arcs.find(arc => arc.color === "#fde047");
   assert.equal(basicArc.radius, 64);
-  assert.equal(strongArc.radius, 96);
+  assert.equal(strongArc.radius, 92);
 });

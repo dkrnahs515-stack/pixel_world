@@ -5,7 +5,7 @@ import {
   drawWeapon,
   drawWeaponPreview,
 } from "../src/weapon-rendering.js";
-import { WEAPON_ORDER, WEAPONS } from "../src/weapon-data.js";
+import { WEAPON_ORDER, WEAPON_ORDER_BY_CLASS, WEAPONS } from "../src/weapon-data.js";
 
 function recordingContext() {
   const fills = [];
@@ -183,6 +183,43 @@ test("대장간 미리보기는 가장 긴 무기까지 캔버스 경계 안에 
     const canvas = { width: 54, height: 32, getContext: () => context };
     assert.equal(drawWeaponPreview(canvas, weaponId), true);
     assert.ok(context.fills.length > 0);
+    for (const fill of context.fills) {
+      assert.ok(fill.minX >= 0, `${weaponId} minX ${fill.minX}`);
+      assert.ok(fill.maxX <= canvas.width, `${weaponId} maxX ${fill.maxX}`);
+      assert.ok(fill.minY >= 0, `${weaponId} minY ${fill.minY}`);
+      assert.ok(fill.maxY <= canvas.height, `${weaponId} maxY ${fill.maxY}`);
+    }
+  }
+});
+
+test("활 7종은 현과 등급별 재료색을 가진 활 모양으로 그린다", () => {
+  for (const weaponId of WEAPON_ORDER_BY_CLASS.archer) {
+    const context = recordingContext();
+    const weapon = WEAPONS[weaponId];
+    drawWeapon(context, { classId: "archer", direction: "right", weaponId });
+    assert.ok(fillsOf(context, weapon.visual.woodColor).length >= 2, `${weaponId} limbs`);
+    assert.ok(fillsOf(context, weapon.visual.stringColor).length >= 1, `${weaponId} string`);
+    assert.equal(fillsOf(context, "#bec9d4").length, 0, `${weaponId} is not sword`);
+  }
+});
+
+test("지팡이 7종은 축과 발광 코어를 등급별 색으로 그린다", () => {
+  for (const weaponId of WEAPON_ORDER_BY_CLASS.mage) {
+    const context = recordingContext();
+    const weapon = WEAPONS[weaponId];
+    drawWeapon(context, { classId: "mage", direction: "right", weaponId });
+    assert.ok(fillsOf(context, weapon.visual.shaftColor).length >= 1, `${weaponId} shaft`);
+    assert.ok(fillsOf(context, weapon.visual.coreColor).length >= 1, `${weaponId} core`);
+    assert.ok(fillsOf(context, weapon.visual.glowColor).length >= 1, `${weaponId} glow`);
+  }
+});
+
+test("모든 21종 무기 미리보기가 전용 Canvas 안에 표시된다", () => {
+  for (const weaponId of Object.values(WEAPON_ORDER_BY_CLASS).flat()) {
+    const context = boundsRecordingContext();
+    const canvas = { width: 54, height: 32, getContext: () => context };
+    assert.equal(drawWeaponPreview(canvas, weaponId), true);
+    assert.ok(context.fills.length > 0, weaponId);
     for (const fill of context.fills) {
       assert.ok(fill.minX >= 0, `${weaponId} minX ${fill.minX}`);
       assert.ok(fill.maxX <= canvas.width, `${weaponId} maxX ${fill.maxX}`);

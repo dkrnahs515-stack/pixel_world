@@ -1,8 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PixelRPG, interactionKeyAction } from "../src/game-20260827-2.js";
+import { PixelRPG, interactionKeyAction } from "../src/game-20260828-classes.js";
 import { createCombatStatusEffects } from "../src/player-combat.js";
 import { createInitialProgress } from "../src/quest-state.js";
+import { WEAPON_ORDER_BY_CLASS } from "../src/weapon-data.js";
 
 function fakeNode(overrides = {}) {
   return {
@@ -170,6 +171,7 @@ function qaGame() {
   game.inputEnabled = false;
   game.chatInputActive = false;
   game.mapId = "village";
+  game.classId = "warrior";
   game.player = {
     name: "QA테스터",
     x: 1440,
@@ -185,6 +187,7 @@ function qaGame() {
     maxMp: 100,
     respawnTimer: 0,
     statusEffects: createCombatStatusEffects(),
+    equippedWeaponId: "starter-sword",
   };
   game.keys = new Set();
   game.attackState = null;
@@ -336,7 +339,7 @@ test("QA 장비 준비는 Lv.30·5000G와 최대 HP·MP를 반영하고 한 번 
   const storage = memoryStorage();
   globalThis.localStorage = storage;
   game.progress.inventory = { hpPotion: 2, mpPotion: 3 };
-  game.progress.equipment = {
+  game.progress.equipmentByClass.warrior = {
     ownedWeaponIds: ["starter-sword", "katana"],
     equippedWeaponId: "katana",
   };
@@ -348,20 +351,45 @@ test("QA 장비 준비는 Lv.30·5000G와 최대 HP·MP를 반영하고 한 번 
   assert.equal(game.progress.nextLevelExp, 3000);
   assert.equal(game.progress.gold, 5000);
   assert.deepEqual(game.progress.inventory, { hpPotion: 2, mpPotion: 3 });
-  assert.deepEqual(game.progress.equipment, {
-    ownedWeaponIds: ["starter-sword", "katana"],
+  assert.deepEqual(game.progress.equipmentByClass.warrior, {
+    ownedWeaponIds: WEAPON_ORDER_BY_CLASS.warrior,
     equippedWeaponId: "katana",
   });
-  assert.equal(game.player.maxHp, 390);
-  assert.equal(game.player.maxMp, 245);
-  assert.equal(game.player.hp, 390);
-  assert.equal(game.player.mp, 245);
+  assert.equal(game.player.maxHp, 468);
+  assert.equal(game.player.maxMp, 196);
+  assert.equal(game.player.hp, 468);
+  assert.equal(game.player.mp, 196);
   assert.equal(game.ui.expText.textContent, "0 / 3000");
   assert.equal(game.ui.goldText.textContent, "5000 G");
   assert.equal(game.ui.qaOverlay.hidden, true);
   assert.equal(storage.writes.length, 1);
-  assert.equal(storage.writes[0].value.version, 4);
-  assert.equal(game.lastNotice, "장비 점검 준비 완료 · Lv.30 · 5000 G");
+  assert.equal(storage.writes[0].value.version, 5);
+  assert.equal(game.lastNotice, "검사 7종 무기 준비 완료 · Lv.30 · 5000 G");
+  delete globalThis.localStorage;
+});
+
+test("QA 장비 준비는 선택 직업 일곱 무기만 준비하고 다른 직업 장비를 유지한다", () => {
+  const game = qaGame();
+  const storage = memoryStorage();
+  globalThis.localStorage = storage;
+  game.classId = "mage";
+  game.player.classId = "mage";
+  game.player.equippedWeaponId = "training-staff";
+  const warriorBefore = structuredClone(game.progress.equipmentByClass.warrior);
+  game.progress.equipmentByClass.archer = {
+    ownedWeaponIds: ["training-bow", "hunter-bow"],
+    equippedWeaponId: "hunter-bow",
+  };
+  const archerBefore = structuredClone(game.progress.equipmentByClass.archer);
+
+  assert.equal(game.qaPrepareWeaponShop(), true);
+  assert.deepEqual(game.progress.equipmentByClass.mage, {
+    ownedWeaponIds: WEAPON_ORDER_BY_CLASS.mage,
+    equippedWeaponId: "training-staff",
+  });
+  assert.deepEqual(game.progress.equipmentByClass.warrior, warriorBefore);
+  assert.deepEqual(game.progress.equipmentByClass.archer, archerBefore);
+  assert.equal(game.lastNotice, "마법사 7종 무기 준비 완료 · Lv.30 · 5000 G");
   delete globalThis.localStorage;
 });
 
@@ -466,7 +494,7 @@ test("다른 지역 QA 소환의 안전 위치가 없으면 현재 지역과 전
   assert.equal(game.ui.qaOverlay.hidden, false);
 });
 
-test("QA 소환 몬스터 처치 보상은 일반 진행 데이터에 지급되고 v4 저장소에 기록된다", () => {
+test("QA 소환 몬스터 처치 보상은 일반 진행 데이터에 지급되고 v5 저장소에 기록된다", () => {
   const game = qaGame();
   const storage = memoryStorage();
   globalThis.localStorage = storage;
@@ -480,7 +508,7 @@ test("QA 소환 몬스터 처치 보상은 일반 진행 데이터에 지급되�
   assert.equal(game.progress.exp, 20);
   assert.equal(game.progress.gold, 15);
   assert.equal(storage.writes.length, 1);
-  assert.equal(storage.writes[0].value.version, 4);
+  assert.equal(storage.writes[0].value.version, 5);
   assert.equal(storage.writes[0].value.exp, 20);
   assert.equal(storage.writes[0].value.gold, 15);
   delete globalThis.localStorage;
@@ -498,6 +526,7 @@ test("Escape는 다른 상호작용보다 열린 QA 패널을 먼저 닫는다",
 
 test("QA 패널을 연 채 쓰러지면 패널을 닫고 부활 입력 상태를 유지한다", () => {
   const game = qaGame();
+  game.projectiles = [{ id: "before-death" }];
   game.inputEnabled = true;
   game.player.hp = 1;
   game.player.invulnerable = 0;
@@ -511,4 +540,5 @@ test("QA 패널을 연 채 쓰러지면 패널을 닫고 부활 입력 상태를
   assert.equal(game.ui.qaOverlay.hidden, true);
   assert.equal(game.ui.respawnOverlay.hidden, false);
   assert.equal(game.inputEnabled, false);
+  assert.deepEqual(game.projectiles, []);
 });

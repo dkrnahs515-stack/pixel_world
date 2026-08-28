@@ -80,7 +80,12 @@ test("종류별 사냥 보상을 진행 데이터에 반영하고 알 수 없는
   assert.equal(progression.grantHuntingReward(base(), "unknown", () => 0), null);
 });
 
-test("레벨별 최대 HP와 MP를 계산한다", () => {
-  assert.deepEqual(statsForLevel(1), { maxHp: 100, maxMp: 100 });
-  assert.deepEqual(statsForLevel(4), { maxHp: 130, maxMp: 115 });
+test("레벨과 직업에 따라 최대 HP와 MP를 계산한다", () => {
+  assert.deepEqual(statsForLevel(1, "warrior"), { maxHp: 120, maxMp: 80 });
+  assert.deepEqual(statsForLevel(30, "warrior"), { maxHp: 468, maxMp: 196 });
+  assert.deepEqual(statsForLevel(1, "archer"), { maxHp: 100, maxMp: 100 });
+  assert.deepEqual(statsForLevel(30, "archer"), { maxHp: 390, maxMp: 245 });
+  assert.deepEqual(statsForLevel(1, "mage"), { maxHp: 80, maxMp: 140 });
+  assert.deepEqual(statsForLevel(30, "mage"), { maxHp: 312, maxMp: 343 });
+  assert.deepEqual(statsForLevel(1, "invalid"), { maxHp: 120, maxMp: 80 });
 });

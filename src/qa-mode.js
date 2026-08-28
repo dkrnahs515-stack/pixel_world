@@ -1,4 +1,6 @@
+import { normalizeClassId } from "./class-data.js";
 import { nextLevelExp } from "./player-progression.js";
+import { WEAPON_ORDER_BY_CLASS, resolveWeaponDefinition } from "./weapon-data.js";
 
 const QA_MONSTERS = Object.freeze({
   "fang-shark": Object.freeze({ kind: "fang-shark", name: "송곳니 상어", mapId: "coast" }),
@@ -27,14 +29,22 @@ export function getQaMonster(kind) {
     : null;
 }
 
-export function prepareWeaponQaProgress(progress) {
+export function prepareWeaponQaProgress(progress, classId = "warrior") {
+  const normalizedClassId = normalizeClassId(classId);
   return {
     ...progress,
     inventory: { ...progress.inventory },
-    equipment: {
-      ...progress.equipment,
-      ownedWeaponIds: [...progress.equipment.ownedWeaponIds],
-    },
+    equipmentByClass: Object.fromEntries(Object.entries(progress.equipmentByClass).map(
+      ([equipmentClassId, equipment]) => [equipmentClassId, {
+        ...equipment,
+        ownedWeaponIds: equipmentClassId === normalizedClassId
+          ? [...WEAPON_ORDER_BY_CLASS[normalizedClassId]]
+          : [...equipment.ownedWeaponIds],
+        equippedWeaponId: equipmentClassId === normalizedClassId
+          ? resolveWeaponDefinition(equipment.equippedWeaponId, normalizedClassId).id
+          : equipment.equippedWeaponId,
+      }],
+    )),
     completedQuests: [...progress.completedQuests],
     quests: Object.fromEntries(
       Object.entries(progress.quests).map(([questId, quest]) => [questId, { ...quest }]),

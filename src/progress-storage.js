@@ -7,12 +7,15 @@ import {
   nextLevelExp,
 } from "./player-progression.js";
 import {
-  createInitialEquipment,
-  normalizeEquipment,
+  createInitialEquipmentByClass,
+  normalizeClassEquipment,
+  normalizeEquipmentByClass,
 } from "./equipment-state.js";
 
-const STORAGE_VERSION = 4;
-const STORAGE_PREFIX = "pixel-world.progress.v4:";
+const STORAGE_VERSION = 5;
+const STORAGE_PREFIX = "pixel-world.progress.v5:";
+const V4_STORAGE_PREFIX = "pixel-world.progress.v4:";
+const V4_STORAGE_VERSION = 4;
 const V3_STORAGE_PREFIX = "pixel-world.progress.v3:";
 const V3_STORAGE_VERSION = 3;
 const V2_STORAGE_PREFIX = "pixel-world.progress.v2:";
@@ -125,12 +128,24 @@ function toBaseAndInventoryProgress(value) {
 }
 
 function toProgress(value) {
-  const equipment = normalizeEquipment(value.equipment);
+  const equipmentByClass = normalizeEquipmentByClass(value.equipmentByClass);
   return {
     ...toBaseAndInventoryProgress(value),
-    equipment: {
-      ownedWeaponIds: [...equipment.ownedWeaponIds],
-      equippedWeaponId: equipment.equippedWeaponId,
+    equipmentByClass: Object.fromEntries(Object.entries(equipmentByClass).map(
+      ([classId, equipment]) => [classId, {
+        ownedWeaponIds: [...equipment.ownedWeaponIds],
+        equippedWeaponId: equipment.equippedWeaponId,
+      }],
+    )),
+  };
+}
+
+function migrateV4Progress(value) {
+  return {
+    ...toBaseAndInventoryProgress(value),
+    equipmentByClass: {
+      ...createInitialEquipmentByClass(),
+      warrior: normalizeClassEquipment("warrior", value.equipment),
     },
   };
 }
@@ -138,7 +153,7 @@ function toProgress(value) {
 function migrateV3Progress(value) {
   return {
     ...toBaseAndInventoryProgress(value),
-    equipment: createInitialEquipment(),
+    equipmentByClass: createInitialEquipmentByClass(),
   };
 }
 
@@ -149,7 +164,7 @@ function migrateV2Progress(value) {
     nextLevelExp: value.nextLevelExp,
     gold: value.gold,
     inventory: { hpPotion: 0, mpPotion: 0 },
-    equipment: createInitialEquipment(),
+    equipmentByClass: createInitialEquipmentByClass(),
     completedQuests: [...value.completedQuests],
     quests: {
       [ADVENTURE_QUEST.id]: {
@@ -175,6 +190,10 @@ export function progressStorageKey(nickname) {
   return `${STORAGE_PREFIX}${encodeURIComponent(normalizeNickname(nickname))}`;
 }
 
+export function v4ProgressStorageKey(nickname) {
+  return `${V4_STORAGE_PREFIX}${encodeURIComponent(normalizeNickname(nickname))}`;
+}
+
 export function v3ProgressStorageKey(nickname) {
   return `${V3_STORAGE_PREFIX}${encodeURIComponent(normalizeNickname(nickname))}`;
 }
@@ -198,11 +217,21 @@ function parseStoredValue(raw) {
 
 export function loadProgressWithStatus(storage, nickname) {
   try {
-    const v4 = parseStoredValue(storage?.getItem(progressStorageKey(nickname)));
-    if (v4?.version === STORAGE_VERSION && isValidProgress(v4)) {
+    const v5 = parseStoredValue(storage?.getItem(progressStorageKey(nickname)));
+    if (v5?.version === STORAGE_VERSION && isValidProgress(v5)) {
       return {
-        progress: toProgress(v4),
+        progress: toProgress(v5),
         migrationWriteFailed: false,
+      };
+    }
+
+    const v4 = parseStoredValue(storage?.getItem(v4ProgressStorageKey(nickname)));
+    if (v4?.version === V4_STORAGE_VERSION && isValidProgress(v4)) {
+      const migrated = migrateV4Progress(v4);
+      const migrationSave = saveProgress(storage, nickname, migrated);
+      return {
+        progress: migrated,
+        migrationWriteFailed: !migrationSave.ok,
       };
     }
 

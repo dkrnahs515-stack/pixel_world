@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import * as gameModule from "../src/game-20260827-2.js";
+import * as gameModule from "../src/game-20260828-classes.js";
 import { getNpcsForWorld } from "../src/npc-data.js";
 import { createInitialProgress } from "../src/quest-state.js";
 
@@ -539,6 +539,7 @@ test("Escape 입력은 나가기보다 인벤토리를 먼저 닫는다", () => 
 
 test("게임을 나가면 열려 있던 인벤토리도 닫힌다", async () => {
   const { game } = shopHarness();
+  game.projectiles = [{ id: "before-leave" }];
   game.ui.inventoryOverlay.hidden = false;
   game.ui.playerCount = fakeNode();
   game.network = null;
@@ -552,6 +553,7 @@ test("게임을 나가면 열려 있던 인벤토리도 닫힌다", async () => 
   await game.leave({ silent: true });
 
   assert.equal(game.isInventoryOpen(), false);
+  assert.deepEqual(game.projectiles, []);
 });
 
 test("인벤토리를 연 채 피격되면 체력 물약 사용 가능 상태를 갱신한다", () => {

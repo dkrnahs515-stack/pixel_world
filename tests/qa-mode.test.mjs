@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createInitialProgress } from "../src/quest-state.js";
+import { WEAPON_ORDER_BY_CLASS } from "../src/weapon-data.js";
 
 async function qaModule() {
   try {
@@ -75,16 +76,19 @@ test("QA 소환 후보가 모두 막히면 위치를 만들지 않는다", async
   }), null);
 });
 
-test("장비 QA 준비는 진행 컬렉션을 보존하고 Lv.30과 충분한 Gold를 설정한다", async () => {
+test("장비 QA 준비는 현재 직업 7종만 채우고 공통 진행과 다른 직업 장비를 보존한다", async () => {
   const { prepareWeaponQaProgress } = await qaModule();
   const original = createInitialProgress();
   const source = {
     ...original,
     gold: 120,
     inventory: { hpPotion: 2, mpPotion: 3 },
-    equipment: {
-      ownedWeaponIds: ["starter-sword", "katana"],
-      equippedWeaponId: "katana",
+    equipmentByClass: {
+      ...original.equipmentByClass,
+      warrior: {
+        ownedWeaponIds: ["starter-sword", "katana"],
+        equippedWeaponId: "katana",
+      },
     },
     completedQuests: ["oldQuest"],
     quests: {
@@ -95,19 +99,30 @@ test("장비 QA 준비는 진행 컬렉션을 보존하고 Lv.30과 충분한 Go
   const before = structuredClone(source);
 
   assert.equal(typeof prepareWeaponQaProgress, "function");
-  const prepared = prepareWeaponQaProgress(source);
+  const prepared = prepareWeaponQaProgress(source, "archer");
   assert.equal(prepared.level, 30);
   assert.equal(prepared.exp, 0);
   assert.equal(prepared.nextLevelExp, 3000);
   assert.equal(prepared.gold, 5000);
   assert.deepEqual(prepared.inventory, source.inventory);
-  assert.deepEqual(prepared.equipment, source.equipment);
+  assert.deepEqual(prepared.equipmentByClass.archer, {
+    ownedWeaponIds: WEAPON_ORDER_BY_CLASS.archer,
+    equippedWeaponId: "training-bow",
+  });
+  assert.deepEqual(prepared.equipmentByClass.warrior, source.equipmentByClass.warrior);
+  assert.deepEqual(prepared.equipmentByClass.mage, source.equipmentByClass.mage);
   assert.deepEqual(prepared.completedQuests, source.completedQuests);
   assert.deepEqual(prepared.quests, source.quests);
   assert.notEqual(prepared.inventory, source.inventory);
-  assert.notEqual(prepared.equipment, source.equipment);
-  assert.notEqual(prepared.equipment.ownedWeaponIds, source.equipment.ownedWeaponIds);
+  assert.notEqual(prepared.equipmentByClass, source.equipmentByClass);
+  for (const classId of ["warrior", "archer", "mage"]) {
+    assert.notEqual(prepared.equipmentByClass[classId], source.equipmentByClass[classId]);
+    assert.notEqual(
+      prepared.equipmentByClass[classId].ownedWeaponIds,
+      source.equipmentByClass[classId].ownedWeaponIds,
+    );
+  }
   assert.deepEqual(source, before);
 
-  assert.equal(prepareWeaponQaProgress({ ...source, gold: 7000 }).gold, 7000);
+  assert.equal(prepareWeaponQaProgress({ ...source, gold: 7000 }, "mage").gold, 7000);
 });

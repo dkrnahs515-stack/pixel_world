@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#111827" />
   <title>픽셀 월드 온라인 RPG</title>
-  <link rel="stylesheet" href="./styles.css?v=20260827-2" />
+  <link rel="stylesheet" href="./styles.css?v=20260828-classes" />
 </head>
 <body>
   <canvas id="game" tabindex="0" aria-label="2D 픽셀 온라인 RPG 게임 화면"></canvas>
@@ -15,7 +15,7 @@
       <div class="modal-emblem" aria-hidden="true">⚔</div>
       <p class="eyebrow">PIXEL WORLD ONLINE</p>
       <h1>모험가 등록</h1>
-      <p class="modal-description">다른 플레이어에게 표시할 닉네임을 정한 뒤 세계에 입장하세요.</p>
+      <p class="modal-description">닉네임과 플레이할 직업을 선택한 뒤 세계에 입장하세요.</p>
       <label class="nickname-label" for="nicknameInput">닉네임</label>
       <input id="nicknameInput" name="nickname" type="text" maxlength="12" autocomplete="nickname" placeholder="1~12자 닉네임" aria-describedby="nicknameHint nicknameError" required />
       <div class="input-meta">
@@ -23,7 +23,32 @@
         <small><span id="nicknameLength">0</span>/12</small>
       </div>
       <p id="nicknameError" class="form-error" role="alert"></p>
-      <button id="enterButton" class="primary-button" type="submit">게임 입장</button>
+      <h2 id="classSelectionLabel" class="class-selection-label">직업 선택</h2>
+      <div id="classSelection" class="class-card-grid" role="radiogroup" aria-labelledby="classSelectionLabel" aria-describedby="classError">
+        <button class="class-card" type="button" role="radio" data-class-id="warrior" aria-checked="false" tabindex="0">
+          <canvas width="96" height="72" data-class-preview="warrior" aria-hidden="true"></canvas>
+          <span class="class-card-heading"><strong>검사</strong><small>근접 전투</small></span>
+          <span class="class-card-combat"><b>Ctrl</b> 전방 검격</span>
+          <span class="class-card-combat"><b>Q</b> 회전 베기</span>
+          <span class="selection-state">선택</span>
+        </button>
+        <button class="class-card" type="button" role="radio" data-class-id="archer" aria-checked="false" tabindex="-1">
+          <canvas width="96" height="72" data-class-preview="archer" aria-hidden="true"></canvas>
+          <span class="class-card-heading"><strong>궁수</strong><small>원거리 전투</small></span>
+          <span class="class-card-combat"><b>Ctrl</b> 화살</span>
+          <span class="class-card-combat"><b>Q</b> 관통 화살</span>
+          <span class="selection-state">선택</span>
+        </button>
+        <button class="class-card" type="button" role="radio" data-class-id="mage" aria-checked="false" tabindex="-1">
+          <canvas width="96" height="72" data-class-preview="mage" aria-hidden="true"></canvas>
+          <span class="class-card-heading"><strong>마법사</strong><small>범위 마법</small></span>
+          <span class="class-card-combat"><b>Ctrl</b> 마법탄</span>
+          <span class="class-card-combat"><b>Q</b> 폭발 마법탄</span>
+          <span class="selection-state">선택</span>
+        </button>
+      </div>
+      <p id="classError" class="form-error class-error" role="alert"></p>
+      <button id="enterButton" class="primary-button" type="submit" disabled>직업을 선택해 주세요</button>
       <p class="entry-note">입장하면 익명 계정으로 실시간 서버에 연결됩니다.</p>
     </form>
   </div>
@@ -153,50 +178,12 @@
         </div>
 
         <section id="blacksmithBuyPanel" role="tabpanel" aria-labelledby="blacksmithBuyTab">
-          <div class="blacksmith-items">
-            <article class="blacksmith-item buy-weapon" data-buy-weapon-card="katana">
-              <canvas class="weapon-preview" width="54" height="32" data-weapon-preview="katana" aria-label="카타나 외형 미리보기"></canvas>
-              <div><strong>카타나</strong><small>Lv.5 · 80 G</small><p>피해 1 · 사거리 76px · 강공격 4.0초</p><b data-buy-weapon-status="katana">Lv.5 필요</b></div>
-              <button type="button" data-buy-weapon="katana">80 G 구매</button>
-            </article>
-            <article class="blacksmith-item buy-weapon" data-buy-weapon-card="reinforced-katana">
-              <canvas class="weapon-preview" width="54" height="32" data-weapon-preview="reinforced-katana" aria-label="강화 카타나 외형 미리보기"></canvas>
-              <div><strong>강화 카타나</strong><small>Lv.10 · 180 G</small><p>피해 1.3 · 사거리 76px · 강공격 3.8초</p><b data-buy-weapon-status="reinforced-katana">Lv.10 필요</b></div>
-              <button type="button" data-buy-weapon="reinforced-katana">180 G 구매</button>
-            </article>
-            <article class="blacksmith-item buy-weapon" data-buy-weapon-card="superior-katana">
-              <canvas class="weapon-preview" width="54" height="32" data-weapon-preview="superior-katana" aria-label="상급 카타나 외형 미리보기"></canvas>
-              <div><strong>상급 카타나</strong><small>Lv.15 · 350 G</small><p>피해 1.5 · 사거리 76px · 강공격 3.5초</p><b data-buy-weapon-status="superior-katana">Lv.15 필요</b></div>
-              <button type="button" data-buy-weapon="superior-katana">350 G 구매</button>
-            </article>
-            <article class="blacksmith-item buy-weapon" data-buy-weapon-card="elite-katana">
-              <canvas class="weapon-preview" width="54" height="32" data-weapon-preview="elite-katana" aria-label="정예 카타나 외형 미리보기"></canvas>
-              <div><strong>정예 카타나</strong><small>Lv.20 · 600 G</small><p>피해 2 · 사거리 77px · 강공격 3.3초</p><b data-buy-weapon-status="elite-katana">Lv.20 필요</b></div>
-              <button type="button" data-buy-weapon="elite-katana">600 G 구매</button>
-            </article>
-            <article class="blacksmith-item buy-weapon masterwork" data-buy-weapon-card="masterwork-katana">
-              <canvas class="weapon-preview" width="54" height="32" data-weapon-preview="masterwork-katana" aria-label="명검 외형 미리보기"></canvas>
-              <div><strong>명검</strong><small>Lv.25 · 900 G</small><p>피해 2.2 · 사거리 77px · 강공격 3.3초</p><b data-buy-weapon-status="masterwork-katana">Lv.25 필요</b></div>
-              <button type="button" data-buy-weapon="masterwork-katana">900 G 구매</button>
-            </article>
-            <article class="blacksmith-item buy-weapon masterwork" data-buy-weapon-card="reinforced-masterwork-katana">
-              <canvas class="weapon-preview" width="54" height="32" data-weapon-preview="reinforced-masterwork-katana" aria-label="강화 명검 외형 미리보기"></canvas>
-              <div><strong>강화 명검</strong><small>Lv.30 · 1300 G</small><p>피해 2.5 · 사거리 78px · 강공격 3.1초</p><b data-buy-weapon-status="reinforced-masterwork-katana">Lv.30 필요</b></div>
-              <button type="button" data-buy-weapon="reinforced-masterwork-katana">1300 G 구매</button>
-            </article>
-          </div>
+          <div id="blacksmithBuyItems" class="blacksmith-items"></div>
         </section>
 
         <section id="blacksmithSellPanel" role="tabpanel" aria-labelledby="blacksmithSellTab" hidden>
-          <p class="blacksmith-sale-note">판매가는 구매가의 50%입니다. 어떤 무기를 판매해도 시작 검으로 교체됩니다.</p>
-          <div class="blacksmith-items">
-            <article class="blacksmith-item" data-sell-weapon-card="katana" hidden><div><strong>카타나</strong><small>판매가 40 G</small><b data-sell-weapon-status="katana">보유 중</b></div><button type="button" data-sell-weapon="katana">40 G 판매</button></article>
-            <article class="blacksmith-item" data-sell-weapon-card="reinforced-katana" hidden><div><strong>강화 카타나</strong><small>판매가 90 G</small><b data-sell-weapon-status="reinforced-katana">보유 중</b></div><button type="button" data-sell-weapon="reinforced-katana">90 G 판매</button></article>
-            <article class="blacksmith-item" data-sell-weapon-card="superior-katana" hidden><div><strong>상급 카타나</strong><small>판매가 175 G</small><b data-sell-weapon-status="superior-katana">보유 중</b></div><button type="button" data-sell-weapon="superior-katana">175 G 판매</button></article>
-            <article class="blacksmith-item" data-sell-weapon-card="elite-katana" hidden><div><strong>정예 카타나</strong><small>판매가 300 G</small><b data-sell-weapon-status="elite-katana">보유 중</b></div><button type="button" data-sell-weapon="elite-katana">300 G 판매</button></article>
-            <article class="blacksmith-item masterwork" data-sell-weapon-card="masterwork-katana" hidden><div><strong>명검</strong><small>판매가 450 G</small><b data-sell-weapon-status="masterwork-katana">보유 중</b></div><button type="button" data-sell-weapon="masterwork-katana">450 G 판매</button></article>
-            <article class="blacksmith-item masterwork" data-sell-weapon-card="reinforced-masterwork-katana" hidden><div><strong>강화 명검</strong><small>판매가 650 G</small><b data-sell-weapon-status="reinforced-masterwork-katana">보유 중</b></div><button type="button" data-sell-weapon="reinforced-masterwork-katana">650 G 판매</button></article>
-          </div>
+          <p class="blacksmith-sale-note">판매가는 구매가의 50%입니다. 장착 무기를 판매하면 해당 직업의 기본 무기로 교체됩니다.</p>
+          <div id="blacksmithSellItems" class="blacksmith-items"></div>
           <p id="blacksmithEmptySaleText" class="blacksmith-empty-sale">판매할 수 있는 무기가 없습니다.</p>
         </section>
       </div>
@@ -247,36 +234,7 @@
 
         <section class="inventory-section" aria-labelledby="inventoryEquipmentTitle">
           <h3 id="inventoryEquipmentTitle">장비</h3>
-          <div class="inventory-equipment-items">
-            <article class="inventory-equipment-item" data-inventory-weapon="starter-sword">
-              <div><strong>시작 검</strong><small>Lv.1 · 피해 1.0 · 사거리 64px · 강공격 4.0초</small></div>
-              <button type="button" data-equip-weapon="starter-sword" disabled>장착 중</button>
-            </article>
-            <article class="inventory-equipment-item" data-inventory-weapon="katana" hidden>
-              <div><strong>카타나</strong><small>Lv.5 · 피해 1.0 · 사거리 76px · 강공격 4.0초</small></div>
-              <button type="button" data-equip-weapon="katana">장착</button>
-            </article>
-            <article class="inventory-equipment-item" data-inventory-weapon="reinforced-katana" hidden>
-              <div><strong>강화 카타나</strong><small>Lv.10 · 피해 1.3 · 사거리 76px · 강공격 3.8초</small></div>
-              <button type="button" data-equip-weapon="reinforced-katana">장착</button>
-            </article>
-            <article class="inventory-equipment-item" data-inventory-weapon="superior-katana" hidden>
-              <div><strong>상급 카타나</strong><small>Lv.15 · 피해 1.5 · 사거리 76px · 강공격 3.5초</small></div>
-              <button type="button" data-equip-weapon="superior-katana">장착</button>
-            </article>
-            <article class="inventory-equipment-item" data-inventory-weapon="elite-katana" hidden>
-              <div><strong>정예 카타나</strong><small>Lv.20 · 피해 2.0 · 사거리 77px · 강공격 3.3초</small></div>
-              <button type="button" data-equip-weapon="elite-katana">장착</button>
-            </article>
-            <article class="inventory-equipment-item masterwork" data-inventory-weapon="masterwork-katana" hidden>
-              <div><strong>명검</strong><small>Lv.25 · 피해 2.2 · 사거리 77px · 강공격 3.3초</small></div>
-              <button type="button" data-equip-weapon="masterwork-katana">장착</button>
-            </article>
-            <article class="inventory-equipment-item masterwork" data-inventory-weapon="reinforced-masterwork-katana" hidden>
-              <div><strong>강화 명검</strong><small>Lv.30 · 피해 2.5 · 사거리 78px · 강공격 3.1초</small></div>
-              <button type="button" data-equip-weapon="reinforced-masterwork-katana">장착</button>
-            </article>
-          </div>
+          <div id="inventoryWeaponItems" class="inventory-equipment-items"></div>
         </section>
         <button id="inventoryDoneButton" class="secondary-button inventory-done" type="button">인벤토리 닫기</button>
       </div>
@@ -317,7 +275,7 @@
           <h3 id="qaWeaponTitle">장비 상점 점검</h3>
           <div class="qa-weapon-actions">
             <button class="qa-weapon-action" type="button" data-qa-weapons="prepare">
-              <span>대장간 구매·장착·판매 검증</span>
+              <span>현재 직업 7종 무기 준비</span>
               Lv.30 · 5000 G 준비
             </button>
             <button class="qa-weapon-action" type="button" data-qa-blacksmith="travel">
@@ -366,7 +324,7 @@
       <div class="slot-group glass">
         <button id="strongSlot" class="slot strong" data-code="KeyQ" type="button">
           <span class="key">Q</span><span class="slot-type">SKILL</span>
-          <span class="skill-name">강한 공격</span><span class="skill-cost">MP 20</span>
+          <span id="strongSkillName" class="skill-name">회전 베기</span><span id="strongSkillCost" class="skill-cost">MP 20</span>
           <span id="strongCooldown" class="cooldown"></span>
         </button>
         <button class="slot" data-code="KeyE" type="button"><span class="key">E</span><span class="slot-type">SKILL</span><span class="empty">비어 있음</span></button>
@@ -389,6 +347,6 @@
   </div>
 
   <noscript>이 게임은 JavaScript가 필요합니다.</noscript>
-  <script type="module" src="./src/main-20260827-2.js"></script>
+  <script type="module" src="./src/main-20260828-classes.js"></script>
 </body>
 </html>

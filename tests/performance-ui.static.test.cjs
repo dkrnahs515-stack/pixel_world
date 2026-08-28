@@ -5,7 +5,7 @@ const path = require("node:path");
 
 const root = path.resolve(__dirname, "..");
 const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
-const main = fs.readFileSync(path.join(root, "src/main-20260827-2.js"), "utf8");
+const main = fs.readFileSync(path.join(root, "src/main-20260828-classes.js"), "utf8");
 const css = fs.readFileSync(path.join(root, "styles.css"), "utf8");
 
 test("성능 패널은 현재·평균·최저 FPS와 급락 횟수를 실제 DOM 요소로 제공한다", () => {

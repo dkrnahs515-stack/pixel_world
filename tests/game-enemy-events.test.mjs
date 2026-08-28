@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { GAME_CONFIG as C } from "../src/config.js";
-import { PixelRPG } from "../src/game-20260827-2.js";
+import { PixelRPG } from "../src/game-20260828-classes.js";
 import { createEnemyInstance } from "../src/enemies.js";
 import { applyPlayerSlow, createCombatStatusEffects, playerMovementMultiplier } from "../src/player-combat.js";
 
@@ -36,9 +36,21 @@ test("둔화된 플레이어의 ArrowRight 1초 이동은 속도 배율을 사�
   assert.equal(game.player.y, 1110);
 });
 
+test("직업 이동속도가 있으면 공통 기본값 대신 현재 직업 속도를 사용한다", () => {
+  const game = statusGame();
+  game.player.speed = 265;
+
+  game.updatePlayerMovement(1);
+
+  assert.equal(game.player.x, 1440 + 265);
+  assert.equal(game.player.y, 1110);
+});
+
 test("세계 전환은 플레이어 둔화를 제거한다", () => {
   const game = statusGame();
   applyPlayerSlow(game.player, 0.65, 2.5);
+  game.projectiles = [{ id: "before-switch" }];
+  game.explosionEffects = [{ id: "before-switch-effect" }];
   game.hitStopRemaining = 0.065;
   game.remotePlayers = new Map();
   game.ui = { playerCount: { textContent: "" } };
@@ -66,6 +78,8 @@ test("세계 전환은 플레이어 둔화를 제거한다", () => {
   assert.equal(playerMovementMultiplier(game.player), 1);
   assert.deepEqual(game.player.statusEffects, createCombatStatusEffects());
   assert.equal(game.hitStopRemaining, 0);
+  assert.deepEqual(game.projectiles, []);
+  assert.deepEqual(game.explosionEffects, []);
 });
 
 test("같은 공격 ID의 상어 피해 이벤트는 플레이어 HP를 한 번만 낮춘다", () => {
