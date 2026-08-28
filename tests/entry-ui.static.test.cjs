@@ -5,7 +5,7 @@ const path = require("node:path");
 
 const html = readFileSync(path.join(__dirname, "../index.html"), "utf8");
 const css = readFileSync(path.join(__dirname, "../styles.css"), "utf8");
-const main = readFileSync(path.join(__dirname, "../src/main-20260828-classes.js"), "utf8");
+const main = readFileSync(path.join(__dirname, "../src/main-20260828-coop.js"), "utf8");
 
 test("입장 화면은 접근 가능한 세 직업 단일 선택 카드와 오류 연결을 제공한다", () => {
   assert.match(html, /id="classSelection"[^>]*role="radiogroup"[^>]*aria-labelledby="classSelectionLabel"/);
@@ -28,7 +28,7 @@ test("입장 모듈은 저장된 유효 선호만 복구하고 키보드 선택 
   assert.match(main, /data-class-id/);
   assert.match(main, /ArrowLeft|ArrowRight/);
   assert.match(main, /Space/);
-  assert.match(main, /game\.enter\(selection\.nickname,\s*selection\.classId\)/);
+  assert.match(main, /game\.enter\(selection\.nickname,\s*selection\.classId,\s*selection\.playMode\)/);
 });
 
 test("직업 카드는 데스크톱 3열·좁은 화면 1열과 스크롤·감소 모션을 제공한다", () => {

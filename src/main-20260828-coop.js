@@ -1,4 +1,4 @@
-import { PixelRPG, interactionKeyAction } from "./game-20260828-classes.js";
+import { PixelRPG, interactionKeyAction } from "./game-20260828-coop.js";
 import { chatKeyAction } from "./chat-controller.js";
 import { drawClassPreview } from "./class-rendering.js";
 import {
@@ -8,6 +8,7 @@ import {
   storeClassId,
   validateEntrySelection,
 } from "./class-selection.js";
+import { readStoredPlayMode, storePlayMode } from "./play-mode.js";
 import { isQaMode } from "./qa-mode.js";
 
 const qaEnabled = isQaMode(location.search);
@@ -27,6 +28,7 @@ const elements = {
   playerCount: document.querySelector("#playerCount"),
   qualityText: document.querySelector("#qualityText"),
   networkBadge: document.querySelector("#networkBadge"),
+  onlinePresence: document.querySelector("#onlinePresence"),
   message: document.querySelector("#message"),
   playerSubtitle: document.querySelector(".player-header small"),
   playerName: document.querySelector("#playerName"),
@@ -38,6 +40,12 @@ const elements = {
   portalTransitionOverlay: document.querySelector("#portalTransitionOverlay"),
   portalDestination: document.querySelector("#portalDestination"),
   chatPanel: document.querySelector("#chatPanel"),
+  coopBossHud: document.querySelector("#coopBossHud"),
+  coopBossName: document.querySelector("#coopBossName"),
+  coopBossHpBar: document.querySelector("#coopBossHpBar"),
+  coopBossHpText: document.querySelector("#coopBossHpText"),
+  coopBossParticipants: document.querySelector("#coopBossParticipants"),
+  coopBossStatus: document.querySelector("#coopBossStatus"),
   chatMessages: document.querySelector("#chatMessages"),
   chatForm: document.querySelector("#chatForm"),
   chatInput: document.querySelector("#chatInput"),
@@ -113,6 +121,8 @@ const nicknameError = document.querySelector("#nicknameError");
 const classError = document.querySelector("#classError");
 const classCards = [...document.querySelectorAll("[data-class-id]")];
 const classPreviews = [...document.querySelectorAll("[data-class-preview]")];
+const playModeError = document.querySelector("#playModeError");
+const playModeCards = [...document.querySelectorAll("[data-play-mode]")];
 const enterButton = document.querySelector("#enterButton");
 const exitButton = document.querySelector("#exitButton");
 const cancelExitButton = document.querySelector("#cancelExitButton");
@@ -121,12 +131,14 @@ const browserStorage = getBrowserStorage(globalThis);
 
 const storedName = readStoredNickname();
 let selectedClassId = readStoredClassId(browserStorage);
+let selectedPlayMode = readStoredPlayMode(browserStorage);
 nicknameInput.value = storedName;
 updateNicknameLength();
 for (const preview of classPreviews) {
   drawClassPreview(preview.getContext("2d"), preview.dataset.classPreview);
 }
 updateClassSelection();
+updatePlayModeSelection();
 queueMicrotask(() => nicknameInput.focus());
 
 nicknameInput.addEventListener("input", () => {
@@ -158,15 +170,44 @@ for (const card of classCards) {
   });
 }
 
+for (const card of playModeCards) {
+  card.addEventListener("click", () => selectPlayMode(card.dataset.playMode));
+  card.addEventListener("keydown", event => {
+    const currentIndex = playModeCards.indexOf(card);
+    const previous = event.code === "ArrowLeft" || event.code === "ArrowUp";
+    const next = event.code === "ArrowRight" || event.code === "ArrowDown";
+    let targetIndex = currentIndex;
+    if (previous) targetIndex = (currentIndex - 1 + playModeCards.length) % playModeCards.length;
+    else if (next) targetIndex = (currentIndex + 1) % playModeCards.length;
+    else if (event.code === "Home") targetIndex = 0;
+    else if (event.code === "End") targetIndex = playModeCards.length - 1;
+    else if (event.code === "Space" || event.code === "Enter") {
+      event.preventDefault();
+      selectPlayMode(card.dataset.playMode, { focus: true });
+      return;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    selectPlayMode(playModeCards[targetIndex].dataset.playMode, { focus: true });
+  });
+}
+
 nicknameForm.addEventListener("submit", async event => {
   event.preventDefault();
-  const selection = validateEntrySelection(nicknameInput.value, selectedClassId);
+  const selection = validateEntrySelection(nicknameInput.value, selectedClassId, selectedPlayMode);
   nicknameError.textContent = "";
   classError.textContent = "";
+  playModeError.textContent = "";
   if (!selection.ok) {
     if (selection.field === "classId") {
       classError.textContent = selection.error;
       classCards[0]?.focus();
+      return;
+    }
+    if (selection.field === "playMode") {
+      playModeError.textContent = selection.error;
+      playModeCards[0]?.focus();
       return;
     }
     nicknameInput.classList.add("invalid");
@@ -180,7 +221,8 @@ nicknameForm.addEventListener("submit", async event => {
   try {
     storeNickname(selection.nickname);
     storeClassId(browserStorage, selection.classId);
-    await game.enter(selection.nickname, selection.classId);
+    storePlayMode(browserStorage, selection.playMode);
+    await game.enter(selection.nickname, selection.classId, selection.playMode);
     entryOverlay.hidden = true;
     hud.hidden = false;
   } catch (error) {
@@ -188,7 +230,7 @@ nicknameForm.addEventListener("submit", async event => {
     nicknameError.textContent = "게임 접속에 실패했습니다. 잠시 후 다시 시도해 주세요.";
   } finally {
     enterButton.disabled = selectedClassId === null;
-    enterButton.textContent = entryButtonLabel(selectedClassId);
+    updateEntryButton();
   }
 });
 
@@ -301,8 +343,36 @@ function updateClassSelection() {
     const state = card.querySelector(".selection-state");
     if (state) state.textContent = selected ? "선택됨" : "선택";
   }
+  updateEntryButton();
+}
+
+function selectPlayMode(playMode, { focus = false } = {}) {
+  if (!playModeCards.some(card => card.dataset.playMode === playMode)) return false;
+  selectedPlayMode = playMode;
+  playModeError.textContent = "";
+  updatePlayModeSelection();
+  if (focus) playModeCards.find(card => card.dataset.playMode === playMode)?.focus();
+  return true;
+}
+
+function updatePlayModeSelection() {
+  for (const card of playModeCards) {
+    const selected = card.dataset.playMode === selectedPlayMode;
+    card.setAttribute("aria-checked", String(selected));
+    card.classList.toggle("selected", selected);
+    card.tabIndex = selected ? 0 : -1;
+  }
+  updateEntryButton();
+}
+
+function updateEntryButton() {
   enterButton.disabled = selectedClassId === null;
-  enterButton.textContent = entryButtonLabel(selectedClassId);
+  if (selectedClassId === null) {
+    enterButton.textContent = entryButtonLabel(null);
+    return;
+  }
+  const action = selectedPlayMode === "online" ? "온라인으로 접속" : "솔로로 시작";
+  enterButton.textContent = `${entryButtonLabel(selectedClassId)} · ${action}`;
 }
 
 function normalizeNickname(value) {

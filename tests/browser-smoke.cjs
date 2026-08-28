@@ -36,6 +36,7 @@ async function expectRegion(page, regionName) {
 
     await page.locator("#nicknameInput").fill("포탈테스터");
     await page.locator('[data-class-id="warrior"]').click();
+    await page.locator('[data-play-mode="solo"]').click();
     await page.locator("#enterButton").click();
     await page.locator("#hud").waitFor({ state: "visible" });
     await expectRegion(page, "중앙 마을");

@@ -33,6 +33,9 @@ export const onValue = (reference, callback) => {
 };
 export const onDisconnect = () => ({ remove: async () => {}, cancel: async () => {} });
 export const serverTimestamp = () => Date.now();
+export const query = reference => reference;
+export const orderByChild = value => value;
+export const equalTo = value => value;
 export const push = reference => ({ path: reference.path + '/message-' + (++state.sequence), key: 'message-' + state.sequence });
 export const get = async reference => ({ val: () => {
   const uid = reference.path.split('/').at(-1);
@@ -49,6 +52,15 @@ export const update = async (reference, values) => {
   } else if (reference.path.includes('/players/')) {
     state.lastPlayer = { ...values };
   }
+};
+export const set = async () => {};
+export const runTransaction = async (reference, updater) => {
+  const current = state.transactions?.[reference.path] ?? null;
+  const next = updater(current);
+  if (next === undefined) return { committed: false, snapshot: { val: () => current } };
+  state.transactions ||= {};
+  state.transactions[reference.path] = next;
+  return { committed: true, snapshot: { val: () => next } };
 };
 export const remove = async reference => {
   if (reference.path.includes('/chat/')) {
@@ -76,6 +88,7 @@ export const remove = async reference => {
     await page.goto(process.env.PIXEL_WORLD_URL || "http://127.0.0.1:4173", { waitUntil: "networkidle" });
     await page.locator("#nicknameInput").fill("채팅테스터");
     await page.locator('[data-class-id="warrior"]').click();
+    await page.locator('[data-play-mode="online"]').click();
     await page.locator("#enterButton").click();
     await page.locator("#hud").waitFor({ state: "visible" });
     await page.locator("#chatInput").waitFor({ state: "attached" });

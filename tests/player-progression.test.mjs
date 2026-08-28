@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as progression from "../src/player-progression.js";
+import { getCoopBossForMap } from "../src/coop-boss-data.js";
 
 const {
   grantProgressReward,
@@ -13,6 +14,18 @@ const base = () => ({ level: 1, exp: 0, nextLevelExp: 100, gold: 0 });
 test("다음 레벨 필요 EXP는 현재 레벨의 100배다", () => {
   assert.equal(nextLevelExp(1), 100);
   assert.equal(nextLevelExp(3), 300);
+});
+
+test("협동 보스 보상은 정의된 EXP와 Gold를 그대로 적용한다", () => {
+  const result = progression.grantCoopBossReward(
+    { ...base(), exp: 90, gold: 10 },
+    getCoopBossForMap("coast"),
+  );
+  assert.equal(result.rewardExp, 150);
+  assert.equal(result.rewardGold, 100);
+  assert.equal(result.progress.level, 2);
+  assert.equal(result.progress.exp, 140);
+  assert.equal(result.progress.gold, 110);
 });
 
 test("초과 EXP는 이월되고 한 보상으로 여러 번 레벨업한다", () => {

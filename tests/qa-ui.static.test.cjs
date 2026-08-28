@@ -4,7 +4,7 @@ const { readFileSync } = require("node:fs");
 const path = require("node:path");
 
 const html = readFileSync(path.join(__dirname, "../index.html"), "utf8");
-const main = readFileSync(path.join(__dirname, "../src/main-20260828-classes.js"), "utf8");
+const main = readFileSync(path.join(__dirname, "../src/main-20260828-coop.js"), "utf8");
 const css = readFileSync(path.join(__dirname, "../styles.css"), "utf8");
 const readme = readFileSync(path.join(__dirname, "../README.md"), "utf8");
 

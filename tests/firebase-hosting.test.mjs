@@ -32,12 +32,21 @@ test("진입 HTML은 CSS와 JavaScript의 실제 파일명으로 기존 배포 �
   assert.ok(existsSync(new URL(`..\/src\/${gameModulePath}`, import.meta.url)));
 });
 
-test("세 직업 배포는 새 물리 엔트리와 게임 모듈만 연결한다", () => {
-  assert.match(index, /src="\.\/src\/main-20260828-classes\.js"/);
+test("협동 보스 배포는 새 물리 엔트리와 게임 모듈만 연결한다", () => {
+  assert.match(index, /src="\.\/src\/main-20260828-coop\.js"/);
+  assert.doesNotMatch(index, /main-20260828-classes\.js/);
   assert.doesNotMatch(index, /main-20260827-2\.js/);
-  assert.ok(existsSync(new URL("../src/main-20260828-classes.js", import.meta.url)));
-  assert.ok(existsSync(new URL("../src/game-20260828-classes.js", import.meta.url)));
-  const entry = readFileSync(new URL("../src/main-20260828-classes.js", import.meta.url), "utf8");
-  assert.match(entry, /from "\.\/game-20260828-classes\.js"/);
+  assert.ok(existsSync(new URL("../src/main-20260828-coop.js", import.meta.url)));
+  assert.ok(existsSync(new URL("../src/game-20260828-coop.js", import.meta.url)));
+  const entry = readFileSync(new URL("../src/main-20260828-coop.js", import.meta.url), "utf8");
+  assert.match(entry, /from "\.\/game-20260828-coop\.js"/);
+  assert.doesNotMatch(entry, /game-20260828-classes\.js/);
   assert.doesNotMatch(entry, /game-20260827-2\.js/);
+});
+
+test("Firebase Hosting 배포 대상에서 개발 문서·테스트·worktree를 제외한다", () => {
+  const ignored = firebase.hosting.ignore;
+  for (const pattern of ["README.md", "docs/**", "tests/**", ".worktrees/**", ".github/**"]) {
+    assert.ok(ignored.includes(pattern), `${pattern} must be ignored`);
+  }
 });

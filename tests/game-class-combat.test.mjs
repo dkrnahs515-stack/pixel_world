@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PixelRPG } from "../src/game-20260828-classes.js";
+import { PixelRPG } from "../src/game-20260828-coop.js";
 import { createEnemyInstance } from "../src/enemies.js";
 import { createInitialProgress } from "../src/quest-state.js";
 

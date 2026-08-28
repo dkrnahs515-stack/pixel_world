@@ -69,6 +69,18 @@ test("입장 검증은 닉네임과 명시적인 세 직업 선택을 모두 요
     ok: true,
     nickname: "용사 일행",
     classId: "mage",
+    playMode: "solo",
+  });
+  assert.deepEqual(validateEntrySelection("모험가", "mage", "online"), {
+    ok: true,
+    nickname: "모험가",
+    classId: "mage",
+    playMode: "online",
+  });
+  assert.deepEqual(validateEntrySelection("모험가", "mage", "invalid"), {
+    ok: false,
+    field: "playMode",
+    error: "플레이 모드를 선택해 주세요.",
   });
 });
 

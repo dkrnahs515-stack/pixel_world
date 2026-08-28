@@ -103,3 +103,15 @@ firebase deploy --only hosting,database
 - GitHub Actions 워크플로에는 `${{ secrets.FIREBASE_SERVICE_ACCOUNT_PIXEL_WORLD_8CB9B }}` 참조만 저장하고 실제 값은 GitHub Actions Secret에서 관리합니다.
 - Realtime Database 규칙은 인증된 사용자만 읽고, 각 사용자가 자신의 UID 아래 데이터만 수정하도록 제한합니다.
 - Google Cloud HTTP 리퍼러 제한, Firebase App Check, GitHub Secret scanning 상태는 각 서비스 콘솔에서 별도로 확인합니다.
+
+## App Check 운영 적용 순서
+
+App Check는 실제 이용자를 차단하지 않도록 관찰 후 강제 적용합니다.
+
+1. Firebase Console의 App Check에서 GitHub Pages 웹 앱을 등록합니다.
+2. 웹 provider로 reCAPTCHA Enterprise를 선택하고 공식 GitHub Pages 일반 주소를 등록합니다.
+3. 공식 주소와 `?qa=1` 점검 주소에서 요청 metric(메트릭)을 먼저 관찰합니다.
+4. 유효 요청 비율과 세 직업·협동 보스 플레이가 정상인지 확인한 뒤 Realtime Database enforcement(강제 적용)를 켭니다.
+5. 강제 적용 전 로컬·CI 검증은 Firebase Emulator 또는 App Check debug token(디버그 토큰)을 사용합니다.
+
+사이트 키가 실제 프로젝트에 등록되기 전에는 임의 키를 저장소에 넣거나 enforcement를 먼저 활성화하지 않습니다.

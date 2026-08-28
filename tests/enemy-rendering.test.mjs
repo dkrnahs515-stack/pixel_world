@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { attackDefinition } from "../src/combat.js";
 import { createEnemyInstance, drawEnemy } from "../src/enemies.js";
-import * as gameModule from "../src/game-20260828-classes.js";
+import * as gameModule from "../src/game-20260828-coop.js";
 
 function recordingContext() {
   const fills = [];

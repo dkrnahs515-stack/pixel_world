@@ -5,12 +5,13 @@ import { filterPlayersForMap, serializePlayerState } from "../src/network-state.
 test("serialized player state keeps existing fields and adds the active region", () => {
   assert.deepEqual(
     serializePlayerState(
-      { x: 10.04, y: 20.06, dir: "left", moving: true, color: "#fff", name: "별" },
+      { x: 10.04, y: 20.06, hp: 73, dir: "left", moving: true, color: "#fff", name: "별" },
       "forest",
     ),
     {
       x: 10,
       y: 20.1,
+      hp: 73,
       dir: "left",
       moving: true,
       color: "#fff",
@@ -20,6 +21,20 @@ test("serialized player state keeps existing fields and adds the active region",
       equippedWeaponId: "starter-sword",
     },
   );
+});
+
+test("온라인 생존 판정을 위해 현재 HP를 직렬화하고 레거시는 100으로 복구한다", () => {
+  const serialized = serializePlayerState({
+    x: 10, y: 20, hp: 0, dir: "down", moving: false, color: "#fff", name: "쓰러짐",
+  }, "coast");
+  assert.equal(serialized.hp, 0);
+
+  const players = filterPlayersForMap({
+    down: { ...serialized, hp: 0 },
+    legacy: { ...serialized, hp: undefined },
+  }, "own", "coast");
+  assert.equal(players.get("down").hp, 0);
+  assert.equal(players.get("legacy").hp, 100);
 });
 
 test("only valid remote players in the active region are visible", () => {

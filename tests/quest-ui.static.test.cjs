@@ -5,7 +5,7 @@ const path = require("node:path");
 
 test("첫 퀘스트 UI와 F 조작 안내가 연결된다", () => {
   const html = readFileSync(path.join(__dirname, "../index.html"), "utf8");
-  const game = readFileSync(path.join(__dirname, "../src/game-20260828-classes.js"), "utf8");
+  const game = readFileSync(path.join(__dirname, "../src/game-20260828-coop.js"), "utf8");
 
   assert.match(html, /id="dialogueOverlay"/);
   assert.match(html, /id="questTracker"/);
@@ -16,7 +16,7 @@ test("첫 퀘스트 UI와 F 조작 안내가 연결된다", () => {
 
 test("HUD는 레벨 진행 EXP 막대와 Gold를 표시한다", () => {
   const html = readFileSync(path.join(__dirname, "../index.html"), "utf8");
-  const main = readFileSync(path.join(__dirname, "../src/main-20260828-classes.js"), "utf8");
+  const main = readFileSync(path.join(__dirname, "../src/main-20260828-coop.js"), "utf8");
   const css = readFileSync(path.join(__dirname, "../styles.css"), "utf8");
 
   assert.match(html, /id="expText">0 \/ 100/);
@@ -28,7 +28,7 @@ test("HUD는 레벨 진행 EXP 막대와 Gold를 표시한다", () => {
 });
 
 test("적 처치 보상과 레벨 능력치가 게임에 연결된다", () => {
-  const game = readFileSync(path.join(__dirname, "../src/game-20260828-classes.js"), "utf8");
+  const game = readFileSync(path.join(__dirname, "../src/game-20260828-coop.js"), "utf8");
   assert.match(game, /grantHuntingReward/);
   assert.match(game, /statsForLevel/);
   assert.match(game, /recordEnemyKill/);
@@ -36,14 +36,14 @@ test("적 처치 보상과 레벨 능력치가 게임에 연결된다", () => {
 });
 
 test("대화 중 Enter는 주요 행동에 남고 Escape만 대화를 닫는다", async () => {
-  const { dialogueKeyAction } = await import("../src/game-20260828-classes.js");
+  const { dialogueKeyAction } = await import("../src/game-20260828-coop.js");
 
   assert.equal(dialogueKeyAction("Enter"), "allow-action");
   assert.equal(dialogueKeyAction("Escape"), "close");
 });
 
 test("대화 포커스는 주요 행동과 닫기 버튼 안에서 순환한다", async () => {
-  const { nextDialogueFocus } = await import("../src/game-20260828-classes.js");
+  const { nextDialogueFocus } = await import("../src/game-20260828-coop.js");
   const actionButton = {};
   const closeButton = {};
   const controls = [actionButton, closeButton];
@@ -54,7 +54,7 @@ test("대화 포커스는 주요 행동과 닫기 버튼 안에서 순환한다"
 });
 
 test("읽기가 차단된 브라우저 저장소는 사용 불가로 구분한다", async () => {
-  const { readableProgressStorage } = await import("../src/game-20260828-classes.js");
+  const { readableProgressStorage } = await import("../src/game-20260828-coop.js");
   const available = { getItem: () => null, setItem: () => {} };
   const blocked = { getItem: () => { throw new Error("blocked"); }, setItem: () => {} };
 

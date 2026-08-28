@@ -21,6 +21,7 @@ export function createInitialProgress() {
     gold: 0,
     inventory: createInitialInventory(),
     equipmentByClass: createInitialEquipmentByClass(),
+    claimedBossRewardIds: [],
     completedQuests: [],
     quests: {
       [ADVENTURE_QUEST.id]: {
@@ -44,6 +45,7 @@ function cloneProgress(progress) {
       }],
     )),
     completedQuests: [...progress.completedQuests],
+    claimedBossRewardIds: [...(progress.claimedBossRewardIds || [])],
     quests: {
       ...progress.quests,
       [ADVENTURE_QUEST.id]: { ...quest },

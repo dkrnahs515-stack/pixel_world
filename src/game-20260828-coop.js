@@ -18,7 +18,9 @@ import {
 } from "./enemies.js";
 import { getEnemyDefinition } from "./enemy-definitions.js";
 import { movementVector } from "./input.js";
-import { createNetworkAdapter } from "./network.js";
+import { createNetworkAdapter, createOfflineNetworkAdapter } from "./network.js";
+import { createCoopBossController } from "./coop-boss-controller.js";
+import { validateBossPlayerDamageEvent } from "./coop-boss-state.js";
 import { getNpcsForWorld } from "./npc-data.js";
 import { drawNpc, findNearbyNpc } from "./npcs.js";
 import {
@@ -31,7 +33,8 @@ import {
   tickPlayerStatus,
 } from "./player-combat.js";
 import { advancePortalTransition, createPortalTransition } from "./portal-transition.js";
-import { grantHuntingReward, statsForLevel } from "./player-progression.js";
+import { grantCoopBossReward, grantHuntingReward, statsForLevel } from "./player-progression.js";
+import { getCoopBossById } from "./coop-boss-data.js";
 import {
   createProjectile,
   updateProjectiles as simulateProjectiles,
@@ -290,6 +293,10 @@ export class PixelRPG {
     this.hitEffects = [];
     this.hitStopRemaining = 0;
     this.network = null;
+    this.sessionMode = "solo";
+    this.coopBossController = null;
+    this.processedBossPlayerDamageIds = new Set();
+    this.processedBossRewardIds = new Set();
     this.running = false;
     this.inputEnabled = false;
     this.eventsBound = false;
@@ -426,7 +433,7 @@ export class PixelRPG {
     this.highFpsSeconds = 0;
   }
 
-  async enter(nickname, classId = DEFAULT_CLASS_ID) {
+  async enter(nickname, classId = DEFAULT_CLASS_ID, playMode = "solo") {
     if (this.running) return;
     if (!this.eventsBound) {
       this.bindEvents();
@@ -434,6 +441,7 @@ export class PixelRPG {
     }
 
     this.player.name = sanitizeName(nickname);
+    this.setSessionMode(playMode, "selected");
     const progressStorage = browserStorage();
     const loadedProgress = loadPlayerProgress(progressStorage, this.player.name);
     this.progress = loadedProgress.progress;
@@ -460,17 +468,42 @@ export class PixelRPG {
     if (this.network) await this.network.stop();
     this.chat.reset();
     this.chatMessages = [];
+    let entryFallbackReason = null;
     this.network = await createNetworkAdapter({
-      onPlayersChanged: players => this.receiveRemotePlayers(players),
+      playMode: this.sessionMode,
+      onPlayersChanged: (players, metadata) => this.receiveRemotePlayers(players, metadata),
       onStatusChanged: (status, label) => this.updateNetworkStatus(status, label),
       onChatMessagesChanged: messages => this.receiveChatMessages(messages),
+      onBossChanged: snapshot => {
+        this.coopBossController?.receiveSnapshot(snapshot);
+        this.updateCoopBossHud(snapshot, Date.now());
+      },
+      onBossAttackRequestsChanged: requests => this.coopBossController?.receiveAttackRequests?.(requests),
+      onBossPlayerDamageChanged: events => this.receiveBossPlayerDamage?.(events),
+      onBossRewardClaimsChanged: claims => this.receiveBossRewardClaims?.(claims),
+      onConnectionLost: reason => this.fallbackToSolo(reason),
     });
+    if (this.network.mode === "solo") {
+      this.setSessionMode("solo", this.network.reason);
+      if (playMode === "online") entryFallbackReason = this.network.reason;
+    } else if (this.network.coopBoss) {
+      this.coopBossController = createCoopBossController({
+        uid: this.network.uid,
+        network: this.network.coopBoss,
+      });
+      await this.coopBossController.setMap(this.mapId, { partySize: this.remotePlayers.size + 1 });
+    }
 
     this.running = true;
     this.lastFrame = 0;
     this.accumulator = 0;
     this.resetPerformanceMeasurement();
     this.notify(loadedProgress.notice);
+    if (entryFallbackReason) {
+      this.notify(entryFallbackReason === "room_full"
+        ? "온라인 인원이 가득 차 솔로 모드로 시작합니다."
+        : "온라인 연결에 실패해 솔로 모드로 시작합니다.");
+    }
     requestAnimationFrame(timestamp => this.loop(timestamp));
   }
 
@@ -489,6 +522,8 @@ export class PixelRPG {
 
     const network = this.network;
     this.network = null;
+    this.coopBossController?.clear();
+    this.coopBossController = null;
     if (network) await network.stop();
 
     this.chat.reset();
@@ -514,6 +549,69 @@ export class PixelRPG {
 
   isRunning() {
     return this.running;
+  }
+
+  setSessionMode(mode, reason = "selected") {
+    this.sessionMode = mode === "online" ? "online" : "solo";
+    const online = this.sessionMode === "online";
+    if (this.ui.chatPanel) this.ui.chatPanel.hidden = !online;
+    if (this.ui.onlinePresence) this.ui.onlinePresence.hidden = !online;
+    if (this.ui.networkBadge) this.ui.networkBadge.hidden = !online;
+    if (!online) {
+      if (this.ui.coopBossHud) this.ui.coopBossHud.hidden = true;
+      this.remotePlayers.clear();
+      this.chatMessages = [];
+      this.chat.setMode("offline", "솔로");
+      this.receiveChatMessages([]);
+      if (this.ui.playerCount) this.ui.playerCount.textContent = "1";
+    }
+    return { mode: this.sessionMode, reason };
+  }
+
+  async fallbackToSolo(reason = "connection_lost") {
+    if (this.sessionMode !== "online") return false;
+    const network = this.network;
+    this.network = createOfflineNetworkAdapter("solo", reason);
+    this.coopBossController?.clear();
+    this.coopBossController = null;
+    await network?.stop?.();
+    this.setSessionMode("solo", reason);
+    this.notify(reason === "room_full"
+      ? "온라인 인원이 가득 차 솔로 모드로 시작합니다."
+      : "온라인 연결이 끊겨 솔로 모드로 전환되었습니다.");
+    return true;
+  }
+
+  updateCoopBossHud(snapshot, now = Date.now()) {
+    const hud = this.ui.coopBossHud;
+    if (!hud) return false;
+    const definition = getCoopBossById(snapshot?.bossId);
+    const hidden = this.sessionMode !== "online"
+      || this.mapId === "village"
+      || !snapshot
+      || !definition;
+    setPropertyIfChanged(hud, "hidden", hidden);
+    if (hidden) return false;
+
+    const hp = Math.max(0, Number(snapshot.hp) || 0);
+    const maxHp = Math.max(1, Number(snapshot.maxHp) || definition.baseHp);
+    const hpRatio = Math.max(0, Math.min(1, hp / maxHp));
+    const participants = Object.keys(snapshot.contributors || {}).length;
+    setTextIfChanged(this.ui.coopBossName, definition.name);
+    setTextIfChanged(this.ui.coopBossHpText, `${Math.ceil(hp)} / ${Math.ceil(maxHp)}`);
+    setTextIfChanged(this.ui.coopBossParticipants, `참여 ${participants}명`);
+    setStyleIfChanged(this.ui.coopBossHpBar, "transform", `scaleX(${hpRatio})`);
+
+    if (snapshot.status === "alive") {
+      const transitioning = Number(snapshot.leaseUntil) <= now;
+      setTextIfChanged(this.ui.coopBossStatus, transitioning ? "관리자 연결 전환 중" : "공동 전투 진행 중");
+    } else {
+      const seconds = Math.max(0, Math.ceil(((Number(snapshot.respawnAt) || now) - now) / 1000));
+      const minutes = Math.floor(seconds / 60);
+      const remainder = String(seconds % 60).padStart(2, "0");
+      setTextIfChanged(this.ui.coopBossStatus, `처치 완료 · ${minutes}:${remainder} 후 재등장`);
+    }
+    return true;
   }
 
   setInputEnabled(enabled) {
@@ -679,6 +777,14 @@ export class PixelRPG {
       });
       this.enemies = simulation.enemies;
       this.applyEnemyEvents(simulation.events);
+      this.coopBossController?.update(dt, {
+        player: { ...this.player, uid: this.network?.uid, mapId: this.mapId },
+        remotePlayers: this.remotePlayers,
+        isBlocked,
+        portals: getWorldDefinition(this.mapId).portals,
+        random: Math.random,
+      }, performance.now());
+      this.updateCoopBossHud(this.coopBossController?.snapshot, Date.now());
 
       if (this.player.respawnTimer <= 0) {
         this.applyEnemyContactDamage();
@@ -744,6 +850,85 @@ export class PixelRPG {
   receiveChatMessages(messages) {
     this.chatMessages = Array.isArray(messages) ? messages : [];
     this.chat.renderMessages(this.chatMessages);
+  }
+
+  receiveBossPlayerDamage(values) {
+    const events = Array.isArray(values) ? values : Object.values(values || {});
+    this.processedBossPlayerDamageIds ||= new Set();
+    for (const event of events) {
+      if (!event?.eventId || this.processedBossPlayerDamageIds.has(event.eventId)) continue;
+      const validation = validateBossPlayerDamageEvent(event, {
+        encounter: this.coopBossController?.snapshot,
+        targetUid: this.network?.uid,
+        now: Date.now(),
+      });
+      if (!validation.ok) continue;
+      this.processedBossPlayerDamageIds.add(event.eventId);
+      this.damagePlayer(event.damage, this.coopBossController?.renderableBoss() || this.player);
+      this.network?.coopBoss?.acknowledgePlayerDamage(event.eventId).catch?.(error => {
+        console.warn("협동 보스 피해 이벤트 정리 실패", error);
+      });
+    }
+  }
+
+  async receiveBossRewardClaims(values) {
+    const claims = [];
+    for (const value of Object.values(values || {})) {
+      if (value?.encounterId) claims.push(value);
+      else for (const claim of Object.values(value || {})) if (claim?.encounterId) claims.push(claim);
+    }
+    this.processedBossRewardIds ||= new Set();
+    const timestamp = this.coopBossNow?.() ?? Date.now();
+    for (const claim of claims) {
+      if (claim.uid !== this.network?.uid || claim.eligible !== true || claim.claimedAt != null) continue;
+      const rewardId = `${claim.encounterId}:${claim.uid}`;
+      if (this.processedBossRewardIds.has(rewardId)) continue;
+      if (!Number.isFinite(claim.expiresAt) || timestamp > claim.expiresAt) {
+        await this.network?.coopBoss?.expireRewardClaim?.(claim.encounterId);
+        continue;
+      }
+      const claimedRewardIds = Array.isArray(this.progress.claimedBossRewardIds)
+        ? this.progress.claimedBossRewardIds
+        : [];
+      if (claimedRewardIds.includes(rewardId)) {
+        try {
+          const claimResult = await this.network.coopBoss.claimReward(claim.encounterId, claim);
+          if (claimResult?.ok) this.processedBossRewardIds.add(rewardId);
+        } catch {
+          // 로컬 영수증이 있으므로 다음 온라인 수신 때 원격 claim만 다시 시도한다.
+        }
+        continue;
+      }
+      const definition = getCoopBossById(claim.bossId);
+      const reward = grantCoopBossReward(this.progress, definition);
+      if (!reward || reward.rewardExp !== claim.exp || reward.rewardGold !== claim.gold) continue;
+      const previousProgress = this.progress;
+      this.progress = {
+        ...reward.progress,
+        // 세 지역이 3분마다 재등장해도 24시간치(최대 1,440건)를 보존한다.
+        claimedBossRewardIds: [...claimedRewardIds, rewardId].slice(-2_000),
+      };
+      this.applyProgressionStats(reward.levelsGained > 0);
+      this.updateProgressHud();
+      this.updateHud();
+      this.updateBiome();
+      if (!this.persistProgress("협동 보상을 브라우저에 저장할 수 없습니다.")) {
+        this.progress = previousProgress;
+        this.applyProgressionStats(false);
+        this.updateProgressHud();
+        this.updateHud();
+        this.updateBiome();
+        continue;
+      }
+      this.notify(`${definition.name} 협동 처치! EXP +${reward.rewardExp} · Gold +${reward.rewardGold}`);
+      if (reward.levelsGained > 0) this.notify(`LEVEL UP! LV.${this.progress.level} · HP와 MP가 회복되었습니다.`);
+      try {
+        const claimResult = await this.network.coopBoss.claimReward(claim.encounterId, claim);
+        if (claimResult?.ok) this.processedBossRewardIds.add(rewardId);
+      } catch {
+        // 저장된 영수증으로 중복 지급을 막고 다음 온라인 수신 때 claim을 재시도한다.
+      }
+    }
   }
 
   isDialogueOpen() {
@@ -1493,6 +1678,10 @@ export class PixelRPG {
     clearPlayerCombatStatuses(this.player);
     this.remotePlayers.clear();
     this.ui.playerCount.textContent = "1";
+    this.updateCoopBossHud(null, Date.now());
+    this.coopBossController?.setMap(this.mapId, { partySize: 1, deferEncounter: true }).catch(error => {
+      console.warn("협동 보스 지역 전환 실패", error);
+    });
 
     const cameraX = clamp(targetX - innerWidth / 2, 0, Math.max(0, world.width - innerWidth));
     const cameraY = clamp(targetY - innerHeight / 2, 0, Math.max(0, world.height - innerHeight));
@@ -1560,6 +1749,7 @@ export class PixelRPG {
       isBlocked: (x, y, radius) => isWorldPositionBlocked(this.mapId, x, y, radius),
       worldBounds: { width: world.width, height: world.height },
       enemies: this.enemies,
+      bosses: [this.coopBossController?.targetableBoss()].filter(Boolean),
     });
     this.projectiles = result.projectiles;
     this.applyProjectileHits(result.hits);
@@ -1578,6 +1768,17 @@ export class PixelRPG {
     for (const event of events || []) {
       const eventId = `${event.projectileId}:${event.enemyId}`;
       if (this.processedProjectileHitIds.has(eventId)) continue;
+      if (event.targetType === "coop-boss") {
+        this.processedProjectileHitIds.add(eventId);
+        this.coopBossController?.requestHit({
+          attackKind: event.attackKind || (event.kind === "piercing-arrow" || event.kind === "explosive-bolt" ? "strong" : "basic"),
+          player: this.player,
+          classId: event.classId || this.classId,
+          weaponId: event.weaponId || this.player.equippedWeaponId,
+          direction: event.direction || this.player.dir,
+        }).catch?.(error => console.warn("협동 보스 공격 요청 실패", error));
+        continue;
+      }
       const enemy = this.enemies.find(candidate => candidate.id === event.enemyId);
       if (!enemy || enemy.state === "dying" || enemy.targetable === false) continue;
       this.processedProjectileHitIds.add(eventId);
@@ -1637,6 +1838,19 @@ export class PixelRPG {
         this.hitEffects ||= [];
         this.hitEffects.push(createHitEffect({ x: enemy.x, y: enemy.y - enemy.radius * 0.2, kind }));
       }
+    }
+    const boss = this.coopBossController?.targetableBoss();
+    if (boss && !this.attackState?.coopBossRequested
+      && isTargetInAttackArc(this.player, this.player.dir, boss, definition.range, definition.arcDegrees)) {
+      if (this.attackState) this.attackState.coopBossRequested = true;
+      this.coopBossController.requestHit({
+        attackKind: kind,
+        player: this.player,
+        classId: this.classId,
+        weaponId: this.player.equippedWeaponId,
+        direction: this.player.dir,
+      }).catch?.(error => console.warn("협동 보스 공격 요청 실패", error));
+      hit = true;
     }
     if (hit) this.requestHitStop(definition.hitStop);
     this.commitEnemyKillEffects(killRewards);
@@ -1854,6 +2068,8 @@ export class PixelRPG {
     const entities = [];
     this.remotePlayers.forEach(remote => entities.push({ ...remote, entityType: "player", remote: true }));
     this.enemies.forEach(enemy => entities.push({ entityType: "enemy", enemy, x: enemy.x, y: enemy.y }));
+    const coopBoss = this.coopBossController?.renderableBoss();
+    if (coopBoss) entities.push({ entityType: "coop-boss", enemy: coopBoss, x: coopBoss.x, y: coopBoss.y });
     this.npcs.forEach(npc => entities.push({ entityType: "npc", npc, x: npc.x, y: npc.y }));
     entities.push({
       ...this.player,
@@ -1868,7 +2084,7 @@ export class PixelRPG {
     const visiblePlayers = [];
     for (const entity of entities) {
       if (entity.x < cameraX - 60 || entity.x > cameraX + viewW + 60 || entity.y < cameraY - 80 || entity.y > cameraY + viewH + 80) continue;
-      if (entity.entityType === "enemy") drawEnemy(ctx, entity.enemy, cameraX, cameraY, alpha, { player: this.player });
+      if (entity.entityType === "enemy" || entity.entityType === "coop-boss") drawEnemy(ctx, entity.enemy, cameraX, cameraY, alpha, { player: this.player });
       else if (entity.entityType === "npc") drawNpc(ctx, entity.npc, cameraX, cameraY);
       else {
         drawPixelCharacter(ctx, entity, cameraX, cameraY, entity.remote ? null : this.attackState);
@@ -1908,7 +2124,7 @@ export class PixelRPG {
     ctx.restore();
   }
 
-  receiveRemotePlayers(players) {
+  receiveRemotePlayers(players, metadata = {}) {
     if (!this.running && !this.network) return;
     const now = performance.now();
     const next = new Map();
@@ -1934,10 +2150,21 @@ export class PixelRPG {
           classId,
         ).id,
         step: current?.step || 0,
+        hp: Number.isFinite(data.hp) ? data.hp : 100,
+        joinedAt: Number.isFinite(data.joinedAt) ? data.joinedAt : Number.POSITIVE_INFINITY,
+        mapId: this.mapId,
       });
     });
     this.remotePlayers = next;
     this.ui.playerCount.textContent = String(this.remotePlayers.size + 1);
+    this.coopBossController?.setPartySize(this.remotePlayers.size + 1);
+    this.coopBossController?.setParticipants?.([
+      { uid: this.network?.uid, joinedAt: metadata.ownJoinedAt ?? this.network?.joinedAt },
+      ...this.remotePlayers.values(),
+    ]);
+    this.coopBossController?.ensureReady?.().catch?.(error => {
+      console.warn("협동 보스 생성 준비 실패", error);
+    });
   }
 
   updateRemoteInterpolation(dt) {
