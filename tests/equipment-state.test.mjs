@@ -2,9 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buyWeapon,
+  createInitialClassEquipment,
   createInitialEquipment,
+  createInitialEquipmentByClass,
   equipWeapon,
+  getClassEquipment,
+  normalizeClassEquipment,
   normalizeEquipment,
+  normalizeEquipmentByClass,
   sellWeapon,
 } from "../src/equipment-state.js";
 
@@ -66,7 +71,7 @@ test("장착 무기를 팔면 다른 상위 무기가 있어도 시작 검을 �
   assert.equal(source.equipment.equippedWeaponId, "masterwork-katana");
 });
 
-test("비장착 무기를 팔아도 판매할 때마다 항상 시작 검으로 교체한다", () => {
+test("비장착 무기를 팔면 현재 장착 무기를 유지한다", () => {
   const result = sellWeapon(progress({
     gold: 10,
     equipment: {
@@ -75,7 +80,77 @@ test("비장착 무기를 팔아도 판매할 때마다 항상 시작 검으로 
     },
   }), "katana");
   assert.equal(result.progress.gold, 50);
-  assert.equal(result.progress.equipment.equippedWeaponId, "starter-sword");
+  assert.equal(result.progress.equipment.equippedWeaponId, "elite-katana");
+});
+
+test("세 직업은 자기 기본 무기만 보유·장착한 독립 장비로 시작한다", () => {
+  assert.deepEqual(createInitialEquipmentByClass(), {
+    warrior: { ownedWeaponIds: ["starter-sword"], equippedWeaponId: "starter-sword" },
+    archer: { ownedWeaponIds: ["training-bow"], equippedWeaponId: "training-bow" },
+    mage: { ownedWeaponIds: ["training-staff"], equippedWeaponId: "training-staff" },
+  });
+  assert.deepEqual(createInitialClassEquipment("invalid"), createInitialEquipment());
+});
+
+test("직업 장비 정규화는 다른 계열과 중복을 제거하고 해당 기본 무기로 복구한다", () => {
+  assert.deepEqual(normalizeClassEquipment("archer", {
+    ownedWeaponIds: ["katana", "hunter-bow", "hunter-bow", "masterwork-bow"],
+    equippedWeaponId: "katana",
+  }), {
+    ownedWeaponIds: ["training-bow", "hunter-bow", "masterwork-bow"],
+    equippedWeaponId: "training-bow",
+  });
+  const normalized = normalizeEquipmentByClass({
+    warrior: { ownedWeaponIds: ["starter-sword", "katana"], equippedWeaponId: "katana" },
+    archer: null,
+    mage: { ownedWeaponIds: ["training-staff", "hunter-bow"], equippedWeaponId: "hunter-bow" },
+  });
+  assert.equal(normalized.warrior.equippedWeaponId, "katana");
+  assert.deepEqual(normalized.archer, createInitialClassEquipment("archer"));
+  assert.deepEqual(normalized.mage, createInitialClassEquipment("mage"));
+});
+
+test("직업별 구매는 대상 장비만 변경하고 다른 직업 장비를 보존한다", () => {
+  const equipmentByClass = createInitialEquipmentByClass();
+  const source = progress({ equipmentByClass });
+  const result = buyWeapon(source, "archer", "hunter-bow");
+  assert.equal(result.ok, true);
+  assert.equal(result.progress.gold, 1920);
+  assert.deepEqual(result.progress.equipmentByClass.archer, {
+    ownedWeaponIds: ["training-bow", "hunter-bow"],
+    equippedWeaponId: "training-bow",
+  });
+  assert.deepEqual(result.progress.equipmentByClass.warrior, equipmentByClass.warrior);
+  assert.deepEqual(result.progress.equipmentByClass.mage, equipmentByClass.mage);
+  assert.equal(result.progress.equipmentByClass.warrior, equipmentByClass.warrior);
+});
+
+test("거래와 장착은 현재 직업과 다른 계열 무기를 거부한다", () => {
+  const source = progress({ equipmentByClass: createInitialEquipmentByClass() });
+  assert.equal(buyWeapon(source, "archer", "katana").reason, "class_mismatch");
+  assert.equal(sellWeapon(source, "mage", "hunter-bow").reason, "class_mismatch");
+  assert.equal(equipWeapon(source, "warrior", "training-staff").reason, "class_mismatch");
+});
+
+test("직업별 판매와 장착은 대상 직업 상태만 갱신한다", () => {
+  const source = progress({
+    gold: 0,
+    equipmentByClass: {
+      ...createInitialEquipmentByClass(),
+      mage: {
+        ownedWeaponIds: ["training-staff", "apprentice-staff", "superior-wand"],
+        equippedWeaponId: "superior-wand",
+      },
+    },
+  });
+  const sold = sellWeapon(source, "mage", "apprentice-staff");
+  assert.equal(sold.ok, true);
+  assert.equal(sold.progress.gold, 40);
+  assert.equal(sold.progress.equipmentByClass.mage.equippedWeaponId, "superior-wand");
+  const equipped = equipWeapon(sold.progress, "mage", "training-staff");
+  assert.equal(equipped.ok, true);
+  assert.equal(equipped.progress.equipmentByClass.mage.equippedWeaponId, "training-staff");
+  assert.deepEqual(getClassEquipment(equipped.progress, "archer"), createInitialClassEquipment("archer"));
 });
 
 test("시작 검과 미보유·미등록 무기는 판매할 수 없다", () => {

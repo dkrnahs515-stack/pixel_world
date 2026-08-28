@@ -35,6 +35,7 @@ async function expectRegion(page, regionName) {
     if (screenshotDirectory) await page.screenshot({ path: path.join(screenshotDirectory, "01-entry.png") });
 
     await page.locator("#nicknameInput").fill("포탈테스터");
+    await page.locator('[data-class-id="warrior"]').click();
     await page.locator("#enterButton").click();
     await page.locator("#hud").waitFor({ state: "visible" });
     await expectRegion(page, "중앙 마을");

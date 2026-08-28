@@ -1,5 +1,13 @@
-import { PixelRPG, interactionKeyAction } from "./game-20260827-2.js";
+import { PixelRPG, interactionKeyAction } from "./game-20260828-classes.js";
 import { chatKeyAction } from "./chat-controller.js";
+import { drawClassPreview } from "./class-rendering.js";
+import {
+  entryButtonLabel,
+  getBrowserStorage,
+  readStoredClassId,
+  storeClassId,
+  validateEntrySelection,
+} from "./class-selection.js";
 import { isQaMode } from "./qa-mode.js";
 
 const qaEnabled = isQaMode(location.search);
@@ -24,6 +32,8 @@ const elements = {
   playerName: document.querySelector("#playerName"),
   respawnOverlay: document.querySelector("#respawnOverlay"),
   strongSlot: document.querySelector("#strongSlot"),
+  strongSkillName: document.querySelector("#strongSkillName"),
+  strongSkillCost: document.querySelector("#strongSkillCost"),
   strongCooldown: document.querySelector("#strongCooldown"),
   portalTransitionOverlay: document.querySelector("#portalTransitionOverlay"),
   portalDestination: document.querySelector("#portalDestination"),
@@ -55,13 +65,8 @@ const elements = {
   blacksmithSellTab: document.querySelector("#blacksmithSellTab"),
   blacksmithBuyPanel: document.querySelector("#blacksmithBuyPanel"),
   blacksmithSellPanel: document.querySelector("#blacksmithSellPanel"),
-  buyWeaponButtons: [...document.querySelectorAll("[data-buy-weapon]")],
-  sellWeaponButtons: [...document.querySelectorAll("[data-sell-weapon]")],
-  buyWeaponCards: [...document.querySelectorAll("[data-buy-weapon-card]")],
-  sellWeaponCards: [...document.querySelectorAll("[data-sell-weapon-card]")],
-  buyWeaponStatuses: [...document.querySelectorAll("[data-buy-weapon-status]")],
-  sellWeaponStatuses: [...document.querySelectorAll("[data-sell-weapon-status]")],
-  weaponPreviewCanvases: [...document.querySelectorAll("[data-weapon-preview]")],
+  blacksmithBuyItems: document.querySelector("#blacksmithBuyItems"),
+  blacksmithSellItems: document.querySelector("#blacksmithSellItems"),
   blacksmithEmptySaleText: document.querySelector("#blacksmithEmptySaleText"),
   weaponSaleConfirmOverlay: document.querySelector("#weaponSaleConfirmOverlay"),
   weaponSaleConfirmText: document.querySelector("#weaponSaleConfirmText"),
@@ -75,8 +80,7 @@ const elements = {
   inventoryMpPotionCount: document.querySelector("#inventoryMpPotionCount"),
   inventoryHpUseButton: document.querySelector("#inventoryHpUseButton"),
   inventoryMpUseButton: document.querySelector("#inventoryMpUseButton"),
-  inventoryWeaponCards: [...document.querySelectorAll("[data-inventory-weapon]")],
-  equipWeaponButtons: [...document.querySelectorAll("[data-equip-weapon]")],
+  inventoryWeaponItems: document.querySelector("#inventoryWeaponItems"),
   qaButton: document.querySelector("#qaButton"),
   qaOverlay: document.querySelector("#qaOverlay"),
   qaCloseButton: document.querySelector("#qaCloseButton"),
@@ -106,14 +110,23 @@ const nicknameForm = document.querySelector("#nicknameForm");
 const nicknameInput = document.querySelector("#nicknameInput");
 const nicknameLength = document.querySelector("#nicknameLength");
 const nicknameError = document.querySelector("#nicknameError");
+const classError = document.querySelector("#classError");
+const classCards = [...document.querySelectorAll("[data-class-id]")];
+const classPreviews = [...document.querySelectorAll("[data-class-preview]")];
 const enterButton = document.querySelector("#enterButton");
 const exitButton = document.querySelector("#exitButton");
 const cancelExitButton = document.querySelector("#cancelExitButton");
 const confirmExitButton = document.querySelector("#confirmExitButton");
+const browserStorage = getBrowserStorage(globalThis);
 
 const storedName = readStoredNickname();
+let selectedClassId = readStoredClassId(browserStorage);
 nicknameInput.value = storedName;
 updateNicknameLength();
+for (const preview of classPreviews) {
+  drawClassPreview(preview.getContext("2d"), preview.dataset.classPreview);
+}
+updateClassSelection();
 queueMicrotask(() => nicknameInput.focus());
 
 nicknameInput.addEventListener("input", () => {
@@ -122,13 +135,42 @@ nicknameInput.addEventListener("input", () => {
   updateNicknameLength();
 });
 
+for (const card of classCards) {
+  card.addEventListener("click", () => selectClass(card.dataset.classId));
+  card.addEventListener("keydown", event => {
+    const currentIndex = classCards.indexOf(card);
+    const previous = event.code === "ArrowLeft" || event.code === "ArrowUp";
+    const next = event.code === "ArrowRight" || event.code === "ArrowDown";
+    let targetIndex = currentIndex;
+    if (previous) targetIndex = (currentIndex - 1 + classCards.length) % classCards.length;
+    else if (next) targetIndex = (currentIndex + 1) % classCards.length;
+    else if (event.code === "Home") targetIndex = 0;
+    else if (event.code === "End") targetIndex = classCards.length - 1;
+    else if (event.code === "Space" || event.code === "Enter") {
+      event.preventDefault();
+      selectClass(card.dataset.classId, { focus: true });
+      return;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    selectClass(classCards[targetIndex].dataset.classId, { focus: true });
+  });
+}
+
 nicknameForm.addEventListener("submit", async event => {
   event.preventDefault();
-  const nickname = normalizeNickname(nicknameInput.value);
-  const error = validateNickname(nickname);
-  if (error) {
+  const selection = validateEntrySelection(nicknameInput.value, selectedClassId);
+  nicknameError.textContent = "";
+  classError.textContent = "";
+  if (!selection.ok) {
+    if (selection.field === "classId") {
+      classError.textContent = selection.error;
+      classCards[0]?.focus();
+      return;
+    }
     nicknameInput.classList.add("invalid");
-    nicknameError.textContent = error;
+    nicknameError.textContent = selection.error;
     nicknameInput.focus();
     return;
   }
@@ -136,16 +178,17 @@ nicknameForm.addEventListener("submit", async event => {
   enterButton.disabled = true;
   enterButton.textContent = "세계에 접속 중...";
   try {
-    storeNickname(nickname);
-    await game.enter(nickname);
+    storeNickname(selection.nickname);
+    storeClassId(browserStorage, selection.classId);
+    await game.enter(selection.nickname, selection.classId);
     entryOverlay.hidden = true;
     hud.hidden = false;
   } catch (error) {
     console.error(error);
     nicknameError.textContent = "게임 접속에 실패했습니다. 잠시 후 다시 시도해 주세요.";
   } finally {
-    enterButton.disabled = false;
-    enterButton.textContent = "게임 입장";
+    enterButton.disabled = selectedClassId === null;
+    enterButton.textContent = entryButtonLabel(selectedClassId);
   }
 });
 
@@ -240,6 +283,28 @@ function updateNicknameLength() {
   nicknameLength.textContent = String(Array.from(nicknameInput.value.trim()).length);
 }
 
+function selectClass(classId, { focus = false } = {}) {
+  if (!classCards.some(card => card.dataset.classId === classId)) return false;
+  selectedClassId = classId;
+  classError.textContent = "";
+  updateClassSelection();
+  if (focus) classCards.find(card => card.dataset.classId === classId)?.focus();
+  return true;
+}
+
+function updateClassSelection() {
+  for (const [index, card] of classCards.entries()) {
+    const selected = card.dataset.classId === selectedClassId;
+    card.setAttribute("aria-checked", String(selected));
+    card.classList.toggle("selected", selected);
+    card.tabIndex = selected || (selectedClassId === null && index === 0) ? 0 : -1;
+    const state = card.querySelector(".selection-state");
+    if (state) state.textContent = selected ? "선택됨" : "선택";
+  }
+  enterButton.disabled = selectedClassId === null;
+  enterButton.textContent = entryButtonLabel(selectedClassId);
+}
+
 function normalizeNickname(value) {
   return value.replace(/\s+/g, " ").trim().slice(0, 12);
 }
@@ -254,7 +319,7 @@ function validateNickname(value) {
 
 function readStoredNickname() {
   try {
-    return localStorage.getItem("pixelWorldNickname") || "";
+    return browserStorage?.getItem?.("pixelWorldNickname") || "";
   } catch {
     return "";
   }
@@ -262,7 +327,7 @@ function readStoredNickname() {
 
 function storeNickname(nickname) {
   try {
-    localStorage.setItem("pixelWorldNickname", nickname);
+    browserStorage?.setItem?.("pixelWorldNickname", nickname);
   } catch {
     // 닉네임 기억 기능이 막혀도 현재 게임 입장은 계속한다.
   }

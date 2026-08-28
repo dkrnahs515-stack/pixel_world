@@ -1,6 +1,9 @@
 import { grantProgressReward } from "./player-progression.js";
 import { createInitialInventory } from "./shop-state.js";
-import { createInitialEquipment, normalizeEquipment } from "./equipment-state.js";
+import {
+  createInitialEquipmentByClass,
+  normalizeEquipmentByClass,
+} from "./equipment-state.js";
 
 export const ADVENTURE_QUEST = Object.freeze({
   id: "adventureStart",
@@ -17,7 +20,7 @@ export function createInitialProgress() {
     nextLevelExp: 100,
     gold: 0,
     inventory: createInitialInventory(),
-    equipment: createInitialEquipment(),
+    equipmentByClass: createInitialEquipmentByClass(),
     completedQuests: [],
     quests: {
       [ADVENTURE_QUEST.id]: {
@@ -30,14 +33,16 @@ export function createInitialProgress() {
 
 function cloneProgress(progress) {
   const quest = progress.quests[ADVENTURE_QUEST.id];
-  const equipment = normalizeEquipment(progress.equipment);
+  const equipmentByClass = normalizeEquipmentByClass(progress.equipmentByClass);
   return {
     ...progress,
     inventory: { ...progress.inventory },
-    equipment: {
-      ...equipment,
-      ownedWeaponIds: [...equipment.ownedWeaponIds],
-    },
+    equipmentByClass: Object.fromEntries(Object.entries(equipmentByClass).map(
+      ([classId, equipment]) => [classId, {
+        ...equipment,
+        ownedWeaponIds: [...equipment.ownedWeaponIds],
+      }],
+    )),
     completedQuests: [...progress.completedQuests],
     quests: {
       ...progress.quests,

@@ -7,12 +7,13 @@ import {
   recordAdventureKill,
 } from "../src/quest-state.js";
 
-test("초기 진행 데이터는 비어 있는 체력·마력 물약 인벤토리를 가진다", () => {
+test("초기 진행 데이터는 공용 물약과 직업별 기본 장비를 가진다", () => {
   const initial = createInitialProgress();
   assert.deepEqual(initial.inventory, { hpPotion: 0, mpPotion: 0 });
-  assert.deepEqual(initial.equipment, {
-    ownedWeaponIds: ["starter-sword"],
-    equippedWeaponId: "starter-sword",
+  assert.deepEqual(initial.equipmentByClass, {
+    warrior: { ownedWeaponIds: ["starter-sword"], equippedWeaponId: "starter-sword" },
+    archer: { ownedWeaponIds: ["training-bow"], equippedWeaponId: "training-bow" },
+    mage: { ownedWeaponIds: ["training-staff"], equippedWeaponId: "training-staff" },
   });
 });
 
@@ -95,11 +96,30 @@ test("잘못된 상태에서의 전이는 보상 없이 복제된 상태를 반�
     nextLevelExp: 100,
     gold: 0,
     inventory: { hpPotion: 0, mpPotion: 0 },
-    equipment: {
-      ownedWeaponIds: ["starter-sword"],
-      equippedWeaponId: "starter-sword",
+    equipmentByClass: {
+      warrior: { ownedWeaponIds: ["starter-sword"], equippedWeaponId: "starter-sword" },
+      archer: { ownedWeaponIds: ["training-bow"], equippedWeaponId: "training-bow" },
+      mage: { ownedWeaponIds: ["training-staff"], equippedWeaponId: "training-staff" },
     },
     completedQuests: [],
     quests: { adventureStart: { status: "completed", progress: 3 } },
   });
+});
+
+test("퀘스트 전이는 세 직업 장비를 값과 참조 모두 독립적으로 복제한다", () => {
+  const initial = createInitialProgress();
+  initial.equipmentByClass.warrior = {
+    ownedWeaponIds: ["starter-sword", "katana"],
+    equippedWeaponId: "katana",
+  };
+  const accepted = acceptAdventureQuest(initial);
+  assert.deepEqual(accepted.equipmentByClass, initial.equipmentByClass);
+  assert.notEqual(accepted.equipmentByClass, initial.equipmentByClass);
+  for (const classId of ["warrior", "archer", "mage"]) {
+    assert.notEqual(accepted.equipmentByClass[classId], initial.equipmentByClass[classId]);
+    assert.notEqual(
+      accepted.equipmentByClass[classId].ownedWeaponIds,
+      initial.equipmentByClass[classId].ownedWeaponIds,
+    );
+  }
 });

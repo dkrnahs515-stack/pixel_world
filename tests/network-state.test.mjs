@@ -16,6 +16,7 @@ test("serialized player state keeps existing fields and adds the active region",
       color: "#fff",
       name: "별",
       mapId: "forest",
+      classId: "warrior",
       equippedWeaponId: "starter-sword",
     },
   );
@@ -31,6 +32,7 @@ test("only valid remote players in the active region are visible", () => {
   const players = filterPlayersForMap(raw, "own", "forest");
   assert.deepEqual([...players.keys()], ["same"]);
   assert.equal(players.get("same").name, "숲");
+  assert.equal(players.get("same").classId, "warrior");
   assert.equal(players.get("same").equippedWeaponId, "starter-sword");
 });
 
@@ -74,4 +76,52 @@ test("장착 무기 ID는 직렬화되고 잘못되거나 누락된 원격 ID는
   assert.equal(players.get("invalid").equippedWeaponId, "starter-sword");
   assert.equal(players.get("legacy").equippedWeaponId, "starter-sword");
   assert.equal(serializePlayerState({ ...serialized, equippedWeaponId: "unknown" }, "village").equippedWeaponId, "starter-sword");
+});
+
+test("직업과 해당 직업 장착 무기를 함께 직렬화한다", () => {
+  const serialized = serializePlayerState({
+    x: 10,
+    y: 20,
+    dir: "right",
+    moving: false,
+    color: "#fff",
+    name: "궁수",
+    classId: "archer",
+    equippedWeaponId: "hunter-bow",
+  }, "village");
+  assert.deepEqual({
+    classId: serialized.classId,
+    equippedWeaponId: serialized.equippedWeaponId,
+  }, {
+    classId: "archer",
+    equippedWeaponId: "hunter-bow",
+  });
+});
+
+test("원격 레거시는 검사로, 잘못된 직업·무기 조합은 직업 기본 무기로 정규화한다", () => {
+  const base = {
+    x: 10,
+    y: 20,
+    dir: "down",
+    moving: false,
+    color: "#fff",
+    name: "원격",
+    mapId: "village",
+  };
+  const players = filterPlayersForMap({
+    legacy: { ...base, equippedWeaponId: "katana" },
+    invalidClass: { ...base, classId: "rogue", equippedWeaponId: "hunter-bow" },
+    wrongArcherWeapon: { ...base, classId: "archer", equippedWeaponId: "training-staff" },
+    mage: { ...base, classId: "mage", equippedWeaponId: "archmage-staff" },
+  }, "self", "village");
+  assert.deepEqual({
+    classId: players.get("legacy").classId,
+    weaponId: players.get("legacy").equippedWeaponId,
+  }, { classId: "warrior", weaponId: "katana" });
+  assert.deepEqual({
+    classId: players.get("invalidClass").classId,
+    weaponId: players.get("invalidClass").equippedWeaponId,
+  }, { classId: "warrior", weaponId: "starter-sword" });
+  assert.equal(players.get("wrongArcherWeapon").equippedWeaponId, "training-bow");
+  assert.equal(players.get("mage").equippedWeaponId, "archmage-staff");
 });

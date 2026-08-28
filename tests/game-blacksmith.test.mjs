@@ -4,7 +4,7 @@ import {
   PixelRPG,
   interactionKeyAction,
   npcInteractionKeyAction,
-} from "../src/game-20260827-2.js";
+} from "../src/game-20260828-classes.js";
 import { getNpcsForWorld } from "../src/npc-data.js";
 import { createInitialProgress } from "../src/quest-state.js";
 
@@ -55,6 +55,7 @@ function blacksmithHarness(overrides = {}) {
   globalThis.localStorage = storage;
   const notifications = [];
   const initial = createInitialProgress();
+  const { equipment: warriorEquipmentOverrides, ...progressOverrides } = overrides;
   const weaponIds = [
     "katana",
     "reinforced-katana",
@@ -88,6 +89,7 @@ function blacksmithHarness(overrides = {}) {
   game.keys = new Set();
   game.messageTimer = 0;
   game.qaEnabled = false;
+  game.classId = "warrior";
   game.npcs = getNpcsForWorld("village");
   game.nearbyNpc = null;
   game.pendingWeaponSaleId = null;
@@ -105,15 +107,21 @@ function blacksmithHarness(overrides = {}) {
   };
   game.progress = {
     ...initial,
-    ...overrides,
+    ...progressOverrides,
     inventory: { ...initial.inventory, ...(overrides.inventory || {}) },
-    equipment: {
-      ...initial.equipment,
-      ...(overrides.equipment || {}),
-      ownedWeaponIds: [...(overrides.equipment?.ownedWeaponIds || initial.equipment.ownedWeaponIds)],
+    equipmentByClass: {
+      ...initial.equipmentByClass,
+      warrior: {
+        ...initial.equipmentByClass.warrior,
+        ...(warriorEquipmentOverrides || {}),
+        ownedWeaponIds: [...(
+          warriorEquipmentOverrides?.ownedWeaponIds
+          || initial.equipmentByClass.warrior.ownedWeaponIds
+        )],
+      },
     },
   };
-  game.player.equippedWeaponId = game.progress.equipment.equippedWeaponId;
+  game.player.equippedWeaponId = game.progress.equipmentByClass.warrior.equippedWeaponId;
   const message = fakeNode(documentRef);
   Object.defineProperty(message, "textContent", {
     get() { return notifications.at(-1) ?? ""; },
@@ -205,7 +213,7 @@ test("대장간 상단은 시작 검을 포함한 현재 장착 무기를 항상
   game.openBlacksmith(game.npcs.find(npc => npc.id === "brann"));
   assert.equal(elements.blacksmithEquippedWeaponText.textContent, "정예 카타나");
 
-  game.progress.equipment.equippedWeaponId = "starter-sword";
+  game.progress.equipmentByClass.warrior.equippedWeaponId = "starter-sword";
   game.updateBlacksmithHud();
   assert.equal(elements.blacksmithEquippedWeaponText.textContent, "시작 검");
 });
@@ -216,8 +224,8 @@ test("상위 무기 구매는 이전 단계 없이 Gold와 보유 목록만 바�
   game.openBlacksmith(brann);
   assert.equal(game.buyBlacksmithWeapon("masterwork-katana"), true);
   assert.equal(game.progress.gold, 0);
-  assert.deepEqual(game.progress.equipment.ownedWeaponIds, ["starter-sword", "masterwork-katana"]);
-  assert.equal(game.progress.equipment.equippedWeaponId, "starter-sword");
+  assert.deepEqual(game.progress.equipmentByClass.warrior.ownedWeaponIds, ["starter-sword", "masterwork-katana"]);
+  assert.equal(game.progress.equipmentByClass.warrior.equippedWeaponId, "starter-sword");
   assert.equal(storage.writes.length, 1);
   assert.equal(notifications.at(-1), "명검을 구매했습니다. Gold -900");
 });
@@ -271,12 +279,12 @@ test("판매는 확인 전까지 변경하지 않고 장착 무기 확정 판매
   assert.equal(elements.weaponSaleConfirmText.textContent, "정예 카타나를 300 G에 판매할까요?");
   assert.equal(game.confirmWeaponSale(), true);
   assert.equal(game.progress.gold, 300);
-  assert.equal(game.progress.equipment.equippedWeaponId, "starter-sword");
+  assert.equal(game.progress.equipmentByClass.warrior.equippedWeaponId, "starter-sword");
   assert.equal(game.player.equippedWeaponId, "starter-sword");
   assert.equal(storage.writes.length, 1);
 });
 
-test("비장착 상위 무기를 판매해도 캐릭터는 항상 시작 검으로 교체된다", () => {
+test("비장착 상위 무기를 판매하면 현재 장착 무기를 유지한다", () => {
   const { game } = blacksmithHarness({
     equipment: {
       ownedWeaponIds: ["starter-sword", "katana", "elite-katana"],
@@ -286,8 +294,8 @@ test("비장착 상위 무기를 판매해도 캐릭터는 항상 시작 검으�
   game.openBlacksmith(game.npcs.find(npc => npc.id === "brann"));
   game.requestWeaponSale("katana");
   assert.equal(game.confirmWeaponSale(), true);
-  assert.equal(game.progress.equipment.equippedWeaponId, "starter-sword");
-  assert.equal(game.player.equippedWeaponId, "starter-sword");
+  assert.equal(game.progress.equipmentByClass.warrior.equippedWeaponId, "elite-katana");
+  assert.equal(game.player.equippedWeaponId, "elite-katana");
 });
 
 test("판매 취소는 변경하지 않고 판매한 무기는 정가로 재구매할 수 있다", () => {
@@ -380,7 +388,7 @@ test("보유 장비를 인벤토리에서 직접 장착하면 외형 ID와 저�
   });
   assert.equal(game.openInventory(), true);
   assert.equal(game.equipInventoryWeapon("reinforced-katana"), true);
-  assert.equal(game.progress.equipment.equippedWeaponId, "reinforced-katana");
+  assert.equal(game.progress.equipmentByClass.warrior.equippedWeaponId, "reinforced-katana");
   assert.equal(game.player.equippedWeaponId, "reinforced-katana");
   assert.equal(elements.equipWeaponButtons[2].textContent, "장착 중");
   assert.equal(elements.equipWeaponButtons[2].disabled, true);
@@ -394,7 +402,7 @@ test("미보유·동일 무기 장착은 상태나 저장을 변경하지 않는
   game.openInventory();
   assert.equal(game.equipInventoryWeapon("masterwork-katana"), false);
   assert.equal(game.equipInventoryWeapon("katana"), false);
-  assert.equal(game.progress.equipment.equippedWeaponId, "katana");
+  assert.equal(game.progress.equipmentByClass.warrior.equippedWeaponId, "katana");
   assert.equal(storage.writes.length, 0);
 });
 
@@ -434,7 +442,7 @@ test("인벤토리 포커스는 보유 중이며 장착 가능하게 표시된 �
   ]);
 });
 
-test("원격 플레이어 보간 상태는 정규화된 장착 무기 ID를 유지한다", () => {
+test("원격 플레이어 보간 상태는 직업과 정규화된 장착 무기를 함께 유지한다", () => {
   const { game } = blacksmithHarness();
   game.remotePlayers = new Map();
   game.receiveRemotePlayers(new Map([["remote", {
@@ -444,7 +452,9 @@ test("원격 플레이어 보간 상태는 정규화된 장착 무기 ID를 유�
     moving: false,
     color: "#fff",
     name: "원격",
-    equippedWeaponId: "masterwork-katana",
+    classId: "archer",
+    equippedWeaponId: "masterwork-bow",
   }]]));
-  assert.equal(game.remotePlayers.get("remote").equippedWeaponId, "masterwork-katana");
+  assert.equal(game.remotePlayers.get("remote").classId, "archer");
+  assert.equal(game.remotePlayers.get("remote").equippedWeaponId, "masterwork-bow");
 });

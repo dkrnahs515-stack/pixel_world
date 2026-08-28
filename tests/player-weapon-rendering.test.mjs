@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { drawPixelCharacter } from "../src/game-20260827-2.js";
+import { drawPixelCharacter } from "../src/game-20260828-classes.js";
 
 function recordingContext() {
   const fills = [];
@@ -49,4 +49,32 @@ test("원격 캐릭터도 전달된 강화 명검을 그리고 잘못된 ID는 �
   const fallback = recordingContext();
   drawPixelCharacter(fallback, player({ remote: true, equippedWeaponId: "unknown" }), 0, 0);
   assert.ok(fallback.fills.some(fill => fill.fillStyle === "#bec9d4" && fill.width === 21));
+});
+
+test("로컬·원격 궁수는 장착 활과 화살통을 그린다", () => {
+  for (const remote of [false, true]) {
+    const context = recordingContext();
+    drawPixelCharacter(context, player({
+      classId: "archer",
+      remote,
+      equippedWeaponId: "hunter-bow",
+    }), 0, 0);
+    assert.ok(context.fills.some(fill => fill.fillStyle === "#7d542f"));
+    assert.ok(context.fills.some(fill => fill.fillStyle === "#795548"));
+    assert.equal(context.fills.some(fill => fill.fillStyle === "#bec9d4" && fill.width === 21), false);
+  }
+});
+
+test("로컬·원격 마법사는 장착 지팡이와 발광 코어를 그린다", () => {
+  for (const remote of [false, true]) {
+    const context = recordingContext();
+    drawPixelCharacter(context, player({
+      classId: "mage",
+      remote,
+      equippedWeaponId: "apprentice-staff",
+    }), 0, 0);
+    assert.ok(context.fills.some(fill => fill.fillStyle === "#6d4c41"));
+    assert.ok(context.fills.some(fill => fill.fillStyle === "#93c5fd"));
+    assert.equal(context.fills.some(fill => fill.fillStyle === "#bec9d4" && fill.width === 21), false);
+  }
 });

@@ -1,9 +1,4 @@
-export const PROGRESSION_RULES = Object.freeze({
-  baseMaxHp: 100,
-  baseMaxMp: 100,
-  maxHpPerLevel: 10,
-  maxMpPerLevel: 5,
-});
+import { DEFAULT_CLASS_ID, getClassDefinition, normalizeClassId } from "./class-data.js";
 
 export const MONSTER_REWARDS = Object.freeze({
   "fire-slime": Object.freeze({ label: "불꽃 슬라임", exp: 3, goldMin: 1, goldMax: 3 }),
@@ -24,10 +19,11 @@ export function nextLevelExp(level) {
   return level * 100;
 }
 
-export function statsForLevel(level) {
+export function statsForLevel(level, classId = DEFAULT_CLASS_ID) {
+  const rules = getClassDefinition(normalizeClassId(classId)).stats;
   return {
-    maxHp: PROGRESSION_RULES.baseMaxHp + (level - 1) * PROGRESSION_RULES.maxHpPerLevel,
-    maxMp: PROGRESSION_RULES.baseMaxMp + (level - 1) * PROGRESSION_RULES.maxMpPerLevel,
+    maxHp: rules.baseMaxHp + (level - 1) * rules.maxHpPerLevel,
+    maxMp: rules.baseMaxMp + (level - 1) * rules.maxMpPerLevel,
   };
 }
 

@@ -212,6 +212,7 @@ kbd { min-width: 23px; padding: 2px 5px; border: 1px solid rgba(255,255,255,.35)
 .modal-card h1, .modal-card h2 { margin: 5px 0 8px; }
 .modal-card h1 { font-size: 28px; }
 .modal-card h2 { font-size: 22px; }
+.modal-card.entry-card { width: min(100%,780px); max-height: calc(100vh - 40px); overflow-y: auto; }
 .modal-emblem { display: grid; place-items: center; width: 58px; height: 58px; margin: 0 auto 9px; border: 1px solid rgba(129,230,217,.5); border-radius: 16px; background: rgba(20,83,72,.45); color: #ccfbf1; font-size: 29px; }
 .modal-emblem.danger { border-color: rgba(248,113,113,.45); background: rgba(127,29,29,.42); color: #fecaca; }
 .eyebrow { margin: 0; color: var(--accent); font-size: 10px; font-weight: 900; letter-spacing: .18em; }
@@ -222,6 +223,21 @@ kbd { min-width: 23px; padding: 2px 5px; border: 1px solid rgba(255,255,255,.35)
 #nicknameInput.invalid { border-color: #f87171; box-shadow: 0 0 0 3px rgba(248,113,113,.12); }
 .input-meta { display: flex; justify-content: space-between; margin-top: 6px; color: var(--muted); }
 .form-error { min-height: 20px; margin: 7px 0 3px; color: #fca5a5; font-size: 12px; font-weight: 700; text-align: left; }
+.class-selection-label { margin: 5px 0 10px !important; color: #dbe6f4; text-align: left; font-size: 14px !important; }
+.class-card-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
+.class-card { position: relative; display: grid; grid-template-columns: 72px minmax(0,1fr); gap: 4px 10px; align-items: center; min-width: 0; padding: 10px; border: 2px solid rgba(148,163,184,.25); border-radius: 14px; outline: none; background: linear-gradient(145deg,rgba(30,41,59,.86),rgba(3,8,18,.72)); color: #e5edf7; cursor: pointer; text-align: left; transition: border-color .16s ease, background .16s ease, transform .16s ease; }
+.class-card:hover { border-color: rgba(129,230,217,.52); transform: translateY(-2px); }
+.class-card:focus-visible { box-shadow: 0 0 0 3px rgba(45,212,191,.2); }
+.class-card.selected { border: 2px solid #5eead4; background: linear-gradient(145deg,rgba(15,118,110,.5),rgba(30,41,59,.94)); }
+.class-card canvas { grid-row: 1 / span 4; width: 72px; height: 54px; border: 1px solid rgba(255,255,255,.14); border-radius: 9px; image-rendering: pixelated; }
+.class-card-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+.class-card-heading strong { font-size: 15px; }
+.class-card-heading small { color: #99f6e4; font-size: 10px; }
+.class-card-combat { color: #b8c4d5; font-size: 10px; }
+.class-card-combat b { display: inline-grid; place-items: center; min-width: 26px; margin-right: 3px; padding: 2px 4px; border-radius: 5px; background: rgba(76,29,149,.7); color: #ede9fe; font-size: 9px; }
+.selection-state { justify-self: start; padding: 2px 7px; border-radius: 999px; background: rgba(71,85,105,.62); color: #cbd5e1; font-size: 9px; font-weight: 900; }
+.class-card.selected .selection-state { background: #2dd4bf; color: #062721; }
+.class-error { margin-top: 5px; }
 .primary-button, .secondary-button, .danger-button { border: 0; border-radius: 10px; padding: 12px 17px; cursor: pointer; font-weight: 900; }
 .primary-button { width: 100%; background: linear-gradient(135deg,#2dd4bf,#22c55e); color: #07221c; }
 .primary-button:hover { filter: brightness(1.08); }
@@ -245,8 +261,12 @@ kbd { min-width: 23px; padding: 2px 5px; border: 1px solid rgba(255,255,255,.35)
   .blacksmith-items { grid-template-columns: 1fr; }
 }
 @media (max-width: 620px) {
+  .class-card-grid { grid-template-columns: 1fr; }
   .performance-panel { display: none; }
   .quest-tracker { top: var(--player-panel-stack-top); left: 14px; right: auto; width: calc(100% - 28px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .class-card { transition: none; }
 }
 @media (max-width: 520px) {
   .player-panel { width: calc(100% - 28px); }

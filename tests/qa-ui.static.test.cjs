@@ -4,8 +4,9 @@ const { readFileSync } = require("node:fs");
 const path = require("node:path");
 
 const html = readFileSync(path.join(__dirname, "../index.html"), "utf8");
-const main = readFileSync(path.join(__dirname, "../src/main-20260827-2.js"), "utf8");
+const main = readFileSync(path.join(__dirname, "../src/main-20260828-classes.js"), "utf8");
 const css = readFileSync(path.join(__dirname, "../styles.css"), "utf8");
+const readme = readFileSync(path.join(__dirname, "../README.md"), "utf8");
 
 test("QA 도구는 기본 문서에서 숨겨진 버튼과 모달로 제공된다", () => {
   assert.match(html, /id="qaButton"[^>]*hidden/);
@@ -19,6 +20,19 @@ test("QA 도구는 기본 문서에서 숨겨진 버튼과 모달로 제공된�
   assert.equal((html.match(/data-qa-weapons="prepare"/g) || []).length, 1);
   assert.equal((html.match(/data-qa-blacksmith="travel"/g) || []).length, 1);
   assert.match(html, /id="qaOverlay"[^>]*hidden[\s\S]*?data-qa-weapons="prepare"/);
+  assert.match(html, /현재 직업 7종 무기 준비/);
+});
+
+test("README는 세 직업 전투·저장·21종 장비·온라인 동기화 범위를 설명한다", () => {
+  assert.match(readme, /검사[·\s]+궁수[·\s]+마법사/);
+  assert.match(readme, /재접속[\s\S]*직업.*변경/);
+  assert.match(readme, /레벨[·\s]+Gold[·\s]+퀘스트[\s\S]*유지/);
+  assert.match(readme, /직업별[\s\S]*보유[\s\S]*장착/);
+  assert.match(readme, /Ctrl[\s\S]*Q[\s\S]*MP/);
+  assert.match(readme, /검 7종[\s\S]*활 7종[\s\S]*지팡이 7종/);
+  assert.match(readme, /현재 직업[\s\S]*무기만 표시/);
+  assert.match(readme, /직업[·\s]+장착 무기[\s\S]*동기화/);
+  assert.match(readme, /원격 공격[\s\S]*피해.*동기화하지/);
 });
 
 test("main은 qa=1 판정 결과만으로 QA 도구를 활성화한다", () => {

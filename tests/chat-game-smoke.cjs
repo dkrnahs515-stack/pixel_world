@@ -75,6 +75,7 @@ export const remove = async reference => {
     }));
     await page.goto(process.env.PIXEL_WORLD_URL || "http://127.0.0.1:4173", { waitUntil: "networkidle" });
     await page.locator("#nicknameInput").fill("채팅테스터");
+    await page.locator('[data-class-id="warrior"]').click();
     await page.locator("#enterButton").click();
     await page.locator("#hud").waitFor({ state: "visible" });
     await page.locator("#chatInput").waitFor({ state: "attached" });

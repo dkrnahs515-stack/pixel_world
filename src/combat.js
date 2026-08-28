@@ -1,31 +1,105 @@
-import { STARTER_WEAPON_ID, resolveWeaponDefinition } from "./weapon-data.js";
+import { CLASS_IDS, DEFAULT_CLASS_ID, normalizeClassId } from "./class-data.js";
+import { resolveWeaponDefinition } from "./weapon-data.js";
 
-const ATTACK_DEFINITIONS = Object.freeze({
-  basic: Object.freeze({
-    damage: 1,
-    cooldown: 0.5,
-    range: 64,
-    arcDegrees: 120,
-    windup: 0,
-    duration: 0.18,
-    mpCost: 0,
-    knockback: 230,
-    hitStun: 0.1,
-    hitStop: 0.035,
-  }),
-  strong: Object.freeze({
-    damage: 3,
-    cooldown: 4,
-    range: 96,
-    arcDegrees: 150,
-    windup: 0.22,
-    duration: 0.4,
-    mpCost: 20,
-    knockback: 520,
-    hitStun: 0.18,
-    hitStop: 0.065,
-  }),
+const BASIC_HIT_EFFECT = Object.freeze({
+  windup: 0,
+  duration: 0.18,
+  mpCost: 0,
+  knockback: 230,
+  hitStun: 0.1,
+  hitStop: 0.035,
 });
+
+const STRONG_HIT_EFFECT = Object.freeze({
+  windup: 0.22,
+  duration: 0.4,
+  knockback: 520,
+  hitStun: 0.18,
+  hitStop: 0.065,
+});
+
+function combatNumber(value) {
+  return Number(value.toFixed(4));
+}
+
+function attackArguments(classId, weaponId) {
+  if (weaponId === undefined && !CLASS_IDS.includes(classId)) {
+    return { classId: DEFAULT_CLASS_ID, weaponId: classId };
+  }
+  return { classId: normalizeClassId(classId), weaponId };
+}
+
+function warriorAttack(kind, weapon) {
+  if (kind === "strong") {
+    return {
+      delivery: "melee",
+      damage: combatNumber(weapon.damage * 2),
+      cooldown: weapon.strongCooldown,
+      range: weapon.range + 28,
+      arcDegrees: 360,
+      ...STRONG_HIT_EFFECT,
+      mpCost: 20,
+    };
+  }
+  return {
+    delivery: "melee",
+    damage: weapon.damage,
+    cooldown: 0.5,
+    range: weapon.range,
+    arcDegrees: 120,
+    ...BASIC_HIT_EFFECT,
+  };
+}
+
+function archerAttack(kind, weapon) {
+  if (kind === "strong") {
+    return {
+      delivery: "projectile",
+      projectileKind: "piercing-arrow",
+      damage: combatNumber(weapon.damage * 2.2),
+      cooldown: weapon.strongCooldown,
+      range: combatNumber(weapon.range * 1.35),
+      speed: combatNumber(weapon.projectileSpeed * 1.1),
+      maxHits: 5,
+      ...STRONG_HIT_EFFECT,
+      mpCost: 25,
+    };
+  }
+  return {
+    delivery: "projectile",
+    projectileKind: "arrow",
+    damage: weapon.damage,
+    cooldown: 0.55,
+    range: weapon.range,
+    speed: weapon.projectileSpeed,
+    ...BASIC_HIT_EFFECT,
+  };
+}
+
+function mageAttack(kind, weapon) {
+  if (kind === "strong") {
+    return {
+      delivery: "projectile",
+      projectileKind: "explosive-bolt",
+      damage: combatNumber(weapon.damage * 2.4),
+      cooldown: weapon.strongCooldown,
+      range: combatNumber(weapon.range * 1.25),
+      speed: weapon.projectileSpeed,
+      explosionRadius: weapon.explosionRadius,
+      ...STRONG_HIT_EFFECT,
+      mpCost: 30,
+    };
+  }
+  return {
+    delivery: "projectile",
+    projectileKind: "magic-bolt",
+    damage: weapon.damage,
+    cooldown: 0.65,
+    range: weapon.range,
+    speed: weapon.projectileSpeed,
+    ...BASIC_HIT_EFFECT,
+  };
+}
 
 export function directionVector(direction) {
   return {
@@ -36,11 +110,13 @@ export function directionVector(direction) {
   }[direction] || { x: 0, y: 1 };
 }
 
-export function attackDefinition(kind, weaponId = STARTER_WEAPON_ID) {
-  const base = ATTACK_DEFINITIONS[kind] || ATTACK_DEFINITIONS.basic;
-  const weapon = resolveWeaponDefinition(weaponId);
-  if (kind === "strong") return { ...base, cooldown: weapon.strongCooldown };
-  return { ...base, damage: weapon.damage, range: weapon.range };
+export function attackDefinition(kind, classId = DEFAULT_CLASS_ID, weaponId) {
+  const normalizedKind = kind === "strong" ? "strong" : "basic";
+  const args = attackArguments(classId, weaponId);
+  const weapon = resolveWeaponDefinition(args.weaponId, args.classId);
+  if (args.classId === "archer") return archerAttack(normalizedKind, weapon);
+  if (args.classId === "mage") return mageAttack(normalizedKind, weapon);
+  return warriorAttack(normalizedKind, weapon);
 }
 
 export function isTargetInAttackArc(origin, direction, target, range, arcDegrees) {

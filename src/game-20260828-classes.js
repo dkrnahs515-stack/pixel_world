@@ -1,4 +1,6 @@
 import { GAME_CONFIG as C } from "./config.js";
+import { DEFAULT_CLASS_ID, getClassDefinition, normalizeClassId } from "./class-data.js";
+import { drawClassEquipment } from "./class-rendering.js";
 import { layoutChatBubble, worldToScreen } from "./chat-bubble-layout.js";
 import { ChatController } from "./chat-controller.js";
 import { latestBubblesByUid } from "./chat-state.js";
@@ -30,6 +32,11 @@ import {
 } from "./player-combat.js";
 import { advancePortalTransition, createPortalTransition } from "./portal-transition.js";
 import { grantHuntingReward, statsForLevel } from "./player-progression.js";
+import {
+  createProjectile,
+  updateProjectiles as simulateProjectiles,
+} from "./projectile-combat.js";
+import { drawExplosionEffect, drawProjectile } from "./projectile-rendering.js";
 import { loadProgressWithStatus, saveProgress } from "./progress-storage.js";
 import {
   createPerformanceMetrics,
@@ -46,9 +53,15 @@ import { SHOP_ITEMS, buyShopItem, usePotion } from "./shop-state.js";
 import {
   buyWeapon,
   equipWeapon,
-  normalizeEquipment,
+  getClassEquipment,
+  normalizeEquipmentByClass,
   sellWeapon,
 } from "./equipment-state.js";
+import {
+  equipmentUiModel,
+  renderBlacksmithEquipment,
+  renderInventoryEquipment,
+} from "./equipment-ui.js";
 import {
   STARTER_WEAPON_ID,
   getWeaponDefinition,
@@ -57,7 +70,6 @@ import {
 import {
   drawScabbard,
   drawWeapon,
-  drawWeaponPreview,
 } from "./weapon-rendering.js";
 import {
   ADVENTURE_QUEST,
@@ -78,6 +90,7 @@ import {
 } from "./world.js";
 
 const PLAYER_RADIUS = 14;
+const PROJECTILE_SPAWN_OFFSET = PLAYER_RADIUS + 18;
 const MINIMAP_FRAME_MS = 100;
 
 export { advanceHitEffects, createHitEffect, drawHitEffects, hitShakeOffset } from "./combat-effects.js";
@@ -242,6 +255,7 @@ export class PixelRPG {
     this.minimapBaseImage = null;
     this.lastMinimapRender = Number.NEGATIVE_INFINITY;
     this.ui = elements;
+    this.classId = DEFAULT_CLASS_ID;
     this.keys = new Set();
     this.mapId = "village";
     this.worldLayer = createWorldLayer(this.mapId);
@@ -253,6 +267,8 @@ export class PixelRPG {
       invulnerable: 0, hitFlash: 0, respawnTimer: 0,
       statusEffects: createCombatStatusEffects(),
       color: "#4f8e5b", name: "모험가",
+      classId: DEFAULT_CLASS_ID,
+      speed: getClassDefinition(DEFAULT_CLASS_ID).stats.moveSpeed,
       equippedWeaponId: STARTER_WEAPON_ID,
     };
     this.camera = { x: 0, y: 0, prevX: 0, prevY: 0 };
@@ -264,6 +280,10 @@ export class PixelRPG {
     this.portalTransition = null;
     this.portalCooldown = 0;
     this.attackState = null;
+    this.projectiles = [];
+    this.explosionEffects = [];
+    this.projectileSequence = 0;
+    this.processedProjectileHitIds = new Set();
     this.basicCooldown = 0;
     this.strongCooldown = 0;
     this.damageNumbers = [];
@@ -288,9 +308,6 @@ export class PixelRPG {
     this.nearbyNpc = null;
     this.blacksmithTab = "buy";
     this.pendingWeaponSaleId = null;
-    for (const preview of elements.weaponPreviewCanvases || []) {
-      drawWeaponPreview(preview, preview.dataset.weaponPreview);
-    }
     this.dialogue = new DialogueController({
       overlay: elements.dialogueOverlay,
       title: elements.dialogueTitle,
@@ -329,6 +346,14 @@ export class PixelRPG {
     for (const button of elements.sellWeaponButtons || []) {
       button.addEventListener("click", () => this.requestWeaponSale(button.dataset.sellWeapon));
     }
+    elements.blacksmithBuyItems?.addEventListener("click", event => {
+      const button = event.target.closest?.("[data-buy-weapon]");
+      if (button) this.buyBlacksmithWeapon(button.dataset.buyWeapon);
+    });
+    elements.blacksmithSellItems?.addEventListener("click", event => {
+      const button = event.target.closest?.("[data-sell-weapon]");
+      if (button) this.requestWeaponSale(button.dataset.sellWeapon);
+    });
     elements.weaponSaleCancelButton?.addEventListener("click", () => this.cancelWeaponSale());
     elements.weaponSaleConfirmButton?.addEventListener("click", () => this.confirmWeaponSale());
     const trapBlacksmithFocus = event => {
@@ -347,6 +372,10 @@ export class PixelRPG {
     for (const button of elements.equipWeaponButtons || []) {
       button.addEventListener("click", () => this.equipInventoryWeapon(button.dataset.equipWeapon));
     }
+    elements.inventoryWeaponItems?.addEventListener("click", event => {
+      const button = event.target.closest?.("[data-equip-weapon]");
+      if (button) this.equipInventoryWeapon(button.dataset.equipWeapon);
+    });
     elements.inventoryOverlay?.addEventListener("keydown", event => {
       if (event.code !== "Tab") return;
       const controls = this.activeInventoryFocusControls();
@@ -397,7 +426,7 @@ export class PixelRPG {
     this.highFpsSeconds = 0;
   }
 
-  async enter(nickname) {
+  async enter(nickname, classId = DEFAULT_CLASS_ID) {
     if (this.running) return;
     if (!this.eventsBound) {
       this.bindEvents();
@@ -408,8 +437,7 @@ export class PixelRPG {
     const progressStorage = browserStorage();
     const loadedProgress = loadPlayerProgress(progressStorage, this.player.name);
     this.progress = loadedProgress.progress;
-    this.syncEquippedWeapon();
-    this.applyProgressionStats(true);
+    this.configureClassSession(classId);
     this.ui.playerName.textContent = this.player.name;
     this.ui.playerCount.textContent = "1";
     this.remotePlayers.clear();
@@ -447,13 +475,17 @@ export class PixelRPG {
   }
 
   async leave({ silent = false } = {}) {
-    if (!this.running && !this.network) return;
+    if (!this.running && !this.network) {
+      this.clearProjectiles();
+      return;
+    }
     this.running = false;
     this.inputEnabled = false;
     this.keys.clear();
     this.player.moving = false;
     this.lastFrame = 0;
     this.accumulator = 0;
+    this.clearProjectiles();
 
     const network = this.network;
     this.network = null;
@@ -637,6 +669,8 @@ export class PixelRPG {
     } else {
       this.updateAttack(dt);
       if (this.hitStopRemaining > 0) return;
+      this.updateProjectiles(dt);
+      if (this.hitStopRemaining > 0) return;
       const isBlocked = (x, y, radius) => isWorldPositionBlocked(this.mapId, x, y, radius);
       const simulation = updateEnemies(this.enemies, this.player, dt, {
         isBlocked,
@@ -654,6 +688,9 @@ export class PixelRPG {
     }
     this.updateDamageNumbers(dt);
     this.hitEffects = advanceHitEffects(this.hitEffects, dt);
+    this.explosionEffects = (this.explosionEffects || [])
+      .map(effect => ({ ...effect, age: effect.age + dt }))
+      .filter(effect => effect.age < effect.duration);
 
     this.updateCamera(dt);
     this.network?.publish(this.player, this.mapId);
@@ -673,7 +710,7 @@ export class PixelRPG {
     this.player.moving = Boolean(dx || dy);
 
     if (!this.player.moving) return;
-    const speed = C.PLAYER_SPEED * playerMovementMultiplier(this.player);
+    const speed = (this.player.speed ?? C.PLAYER_SPEED) * playerMovementMultiplier(this.player);
     const nextX = this.player.x + dx * speed * dt;
     if (!isWorldPositionBlocked(this.mapId, nextX, this.player.y, PLAYER_RADIUS)) this.player.x = nextX;
     const nextY = this.player.y + dy * speed * dt;
@@ -779,7 +816,7 @@ export class PixelRPG {
 
   qaPrepareWeaponShop() {
     if (!this.qaEnabled || !this.running || !this.isQaOpen()) return false;
-    this.progress = prepareWeaponQaProgress(this.progress);
+    this.progress = prepareWeaponQaProgress(this.progress, this.classId);
     this.syncEquippedWeapon();
     this.applyProgressionStats(true);
     this.updateQuestHud();
@@ -790,7 +827,7 @@ export class PixelRPG {
     this.updateBiome();
     this.persistProgress("장비 점검 상태를 저장할 수 없습니다.");
     this.closeQaPanel();
-    this.notify("장비 점검 준비 완료 · Lv.30 · 5000 G");
+    this.notify(`${getClassDefinition(this.classId).name} 7종 무기 준비 완료 · Lv.30 · 5000 G`);
     return true;
   }
 
@@ -1108,7 +1145,19 @@ export class PixelRPG {
     if (this.ui.inventoryMpUseButton) {
       this.ui.inventoryMpUseButton.disabled = inventory.mpPotion === 0 || this.player.mp >= this.player.maxMp;
     }
-    const equipment = normalizeEquipment(this.progress.equipment);
+    const equipment = getClassEquipment(this.progress, this.classId);
+    if (this.ui.inventoryWeaponItems) {
+      const model = equipmentUiModel({
+        classId: this.classId,
+        level: this.progress.level,
+        gold: this.progress.gold,
+        equipment,
+      });
+      renderInventoryEquipment(this.ui, model);
+      this.ui.inventoryWeaponCards = [...this.ui.inventoryWeaponItems.querySelectorAll("[data-inventory-weapon]")];
+      this.ui.equipWeaponButtons = [...this.ui.inventoryWeaponItems.querySelectorAll("[data-equip-weapon]")];
+      return;
+    }
     const owned = new Set(equipment.ownedWeaponIds);
     for (const button of this.ui.equipWeaponButtons || []) {
       const weapon = getWeaponDefinition(button.dataset.equipWeapon);
@@ -1124,19 +1173,31 @@ export class PixelRPG {
   }
 
   syncEquippedWeapon() {
-    const equipment = normalizeEquipment(this.progress.equipment);
-    this.progress.equipment = {
-      ...equipment,
-      ownedWeaponIds: [...equipment.ownedWeaponIds],
-    };
-    const weapon = resolveWeaponDefinition(equipment.equippedWeaponId);
+    const equipmentByClass = normalizeEquipmentByClass(this.progress.equipmentByClass);
+    const equipment = equipmentByClass[this.classId];
+    this.progress.equipmentByClass = Object.fromEntries(Object.entries(equipmentByClass).map(
+      ([classId, classEquipment]) => [classId, {
+        ...classEquipment,
+        ownedWeaponIds: [...classEquipment.ownedWeaponIds],
+      }],
+    ));
+    const weapon = resolveWeaponDefinition(equipment.equippedWeaponId, this.classId);
     this.player.equippedWeaponId = weapon.id;
     return weapon;
   }
 
+  configureClassSession(classId) {
+    this.classId = normalizeClassId(classId);
+    this.player.classId = this.classId;
+    this.player.speed = getClassDefinition(this.classId).stats.moveSpeed;
+    this.syncEquippedWeapon();
+    this.applyProgressionStats(true);
+    return this.classId;
+  }
+
   equipInventoryWeapon(weaponId) {
     if (!this.isInventoryOpen()) return false;
-    const result = equipWeapon(this.progress, weaponId);
+    const result = equipWeapon(this.progress, this.classId, weaponId);
     if (!result.ok) return false;
     this.progress = result.progress;
     const weapon = this.syncEquippedWeapon();
@@ -1164,10 +1225,28 @@ export class PixelRPG {
     this.ui.blacksmithGoldText.textContent = `${this.progress.gold} G`;
     if (this.ui.blacksmithEquippedWeaponText) {
       this.ui.blacksmithEquippedWeaponText.textContent = resolveWeaponDefinition(
-        this.progress.equipment.equippedWeaponId,
+        getClassEquipment(this.progress, this.classId).equippedWeaponId,
+        this.classId,
       ).name;
     }
-    const owned = new Set(this.progress.equipment.ownedWeaponIds);
+    const equipment = getClassEquipment(this.progress, this.classId);
+    if (this.ui.blacksmithBuyItems && this.ui.blacksmithSellItems) {
+      const model = equipmentUiModel({
+        classId: this.classId,
+        level: this.progress.level,
+        gold: this.progress.gold,
+        equipment,
+      });
+      renderBlacksmithEquipment(this.ui, model);
+      this.ui.buyWeaponButtons = [...this.ui.blacksmithBuyItems.querySelectorAll("[data-buy-weapon]")];
+      this.ui.sellWeaponButtons = [...this.ui.blacksmithSellItems.querySelectorAll("[data-sell-weapon]")];
+      this.ui.buyWeaponCards = [...this.ui.blacksmithBuyItems.querySelectorAll("[data-buy-weapon-card]")];
+      this.ui.sellWeaponCards = [...this.ui.blacksmithSellItems.querySelectorAll("[data-sell-weapon-card]")];
+      this.ui.buyWeaponStatuses = [...this.ui.blacksmithBuyItems.querySelectorAll("[data-buy-weapon-status]")];
+      this.ui.sellWeaponStatuses = [...this.ui.blacksmithSellItems.querySelectorAll("[data-sell-weapon-status]")];
+      return;
+    }
+    const owned = new Set(equipment.ownedWeaponIds);
     for (const button of this.ui.buyWeaponButtons || []) {
       const weapon = getWeaponDefinition(button.dataset.buyWeapon);
       if (!weapon) continue;
@@ -1200,7 +1279,7 @@ export class PixelRPG {
       const weapon = getWeaponDefinition(button.dataset.sellWeapon);
       if (!weapon) continue;
       const isOwned = owned.has(weapon.id);
-      const equipped = this.progress.equipment.equippedWeaponId === weapon.id;
+      const equipped = equipment.equippedWeaponId === weapon.id;
       const status = findByDataset(this.ui.sellWeaponStatuses, "sellWeaponStatus", weapon.id);
       const card = findByDataset(this.ui.sellWeaponCards, "sellWeaponCard", weapon.id);
       button.hidden = !isOwned;
@@ -1215,7 +1294,7 @@ export class PixelRPG {
 
   buyBlacksmithWeapon(weaponId) {
     if (!this.isBlacksmithOpen()) return false;
-    const result = buyWeapon(this.progress, weaponId);
+    const result = buyWeapon(this.progress, this.classId, weaponId);
     if (!result.ok) {
       this.notify(blacksmithFailureMessage(result.reason, result.weapon));
       return false;
@@ -1231,7 +1310,7 @@ export class PixelRPG {
 
   requestWeaponSale(weaponId) {
     if (!this.isBlacksmithOpen() || this.isSaleConfirmOpen()) return false;
-    const result = sellWeapon(this.progress, weaponId);
+    const result = sellWeapon(this.progress, this.classId, weaponId);
     if (!result.ok) {
       this.notify(blacksmithFailureMessage(result.reason, result.weapon));
       return false;
@@ -1259,7 +1338,7 @@ export class PixelRPG {
   confirmWeaponSale() {
     if (!this.isSaleConfirmOpen() || !this.pendingWeaponSaleId) return false;
     const weaponId = this.pendingWeaponSaleId;
-    const result = sellWeapon(this.progress, weaponId);
+    const result = sellWeapon(this.progress, this.classId, weaponId);
     if (!result.ok) {
       this.cancelWeaponSale();
       this.notify(blacksmithFailureMessage(result.reason, result.weapon));
@@ -1354,6 +1433,7 @@ export class PixelRPG {
     }
 
     this.portalTransition = createPortalTransition(portal);
+    this.clearProjectiles();
     this.inputEnabled = false;
     this.keys.clear();
     this.player.moving = false;
@@ -1384,6 +1464,7 @@ export class PixelRPG {
   }
 
   switchWorld(mapId, x, y, announce = true) {
+    this.clearProjectiles();
     let world = getWorldDefinition(normalizeWorldId(mapId));
     let targetX = x;
     let targetY = y;
@@ -1426,29 +1507,110 @@ export class PixelRPG {
 
   tryAttack(kind) {
     if (!this.running || !this.inputEnabled || this.isInteractionOpen() || this.player.respawnTimer > 0 || this.attackState) return;
-    const definition = attackDefinition(kind, this.player.equippedWeaponId);
+    const definition = attackDefinition(kind, this.classId, this.player.equippedWeaponId);
     const cooldown = kind === "strong" ? this.strongCooldown : this.basicCooldown;
     if (cooldown > 0) {
-      if (kind === "strong") this.notify(`강한 공격 재사용까지 ${cooldown.toFixed(1)}초`);
-      return;
+      if (kind === "strong") this.notify(`Q 스킬 재사용까지 ${cooldown.toFixed(1)}초`);
+      return false;
     }
     if (this.player.mp < definition.mpCost) {
-      this.notify("강한 공격에 필요한 MP가 부족합니다.");
-      return;
+      this.notify("Q 스킬에 필요한 MP가 부족합니다.");
+      return false;
     }
 
     this.player.mp -= definition.mpCost;
     if (kind === "strong") this.strongCooldown = definition.cooldown;
     else this.basicCooldown = definition.cooldown;
-    this.attackState = { kind, elapsed: 0, applied: false, definition };
+    if (definition.delivery === "melee") {
+      this.attackState = { kind, elapsed: 0, applied: false, definition };
+    } else {
+      const direction = directionVector(this.player.dir);
+      this.projectiles ||= [];
+      this.projectiles.push(createProjectile({
+        id: this.nextProjectileId(),
+        kind: definition.projectileKind,
+        classId: this.classId,
+        weaponId: this.player.equippedWeaponId,
+        x: this.player.x + direction.x * PROJECTILE_SPAWN_OFFSET,
+        y: this.player.y + direction.y * PROJECTILE_SPAWN_OFFSET,
+        direction: this.player.dir,
+      }));
+      this.attackState = { kind, elapsed: 0, applied: true, definition };
+    }
     this.player.moving = false;
     this.updateHud();
+    return true;
+  }
+
+  nextProjectileId() {
+    this.projectileSequence = (this.projectileSequence || 0) + 1;
+    return `local-projectile-${this.projectileSequence}`;
+  }
+
+  clearProjectiles() {
+    this.projectiles = [];
+    this.explosionEffects = [];
+    this.processedProjectileHitIds = new Set();
+  }
+
+  updateProjectiles(dt) {
+    if (!(this.projectiles?.length > 0)) return;
+    const world = getWorldDefinition(this.mapId);
+    const result = simulateProjectiles(this.projectiles, dt, {
+      isBlocked: (x, y, radius) => isWorldPositionBlocked(this.mapId, x, y, radius),
+      worldBounds: { width: world.width, height: world.height },
+      enemies: this.enemies,
+    });
+    this.projectiles = result.projectiles;
+    this.applyProjectileHits(result.hits);
+    this.explosionEffects ||= [];
+    this.explosionEffects.push(...result.explosions.map(explosion => ({
+      ...explosion,
+      age: 0,
+      duration: 0.35,
+    })));
+  }
+
+  applyProjectileHits(events) {
+    this.processedProjectileHitIds ||= new Set();
+    const killRewards = [];
+    let hitStop = 0;
+    for (const event of events || []) {
+      const eventId = `${event.projectileId}:${event.enemyId}`;
+      if (this.processedProjectileHitIds.has(eventId)) continue;
+      const enemy = this.enemies.find(candidate => candidate.id === event.enemyId);
+      if (!enemy || enemy.state === "dying" || enemy.targetable === false) continue;
+      this.processedProjectileHitIds.add(eventId);
+      const direction = { x: event.directionX || 0, y: event.directionY || 0 };
+      const result = damageEnemy(enemy, event.damage, direction, event.knockback);
+      if (!result.killed) applyEnemyHitStun(enemy, event.hitStun);
+      if (result.killed) {
+        const reward = this.recordEnemyKill(enemy.kind, { deferEffects: true });
+        if (reward) killRewards.push(reward);
+      }
+      if (!result.damageNumber) continue;
+      const attackKind = event.kind === "piercing-arrow" || event.kind === "explosive-bolt"
+        ? "strong"
+        : "basic";
+      this.damageNumbers.push({ ...result.damageNumber, kind: attackKind, age: 0, duration: 0.55 });
+      this.hitEffects ||= [];
+      this.hitEffects.push(createHitEffect({
+        x: enemy.x,
+        y: enemy.y - enemy.radius * 0.2,
+        kind: attackKind,
+      }));
+      hitStop = Math.max(hitStop, event.hitStop || 0);
+    }
+    if (hitStop > 0) this.requestHitStop(hitStop);
+    this.commitEnemyKillEffects(killRewards);
   }
 
   updateAttack(dt) {
     if (!this.attackState) return;
     this.attackState.elapsed += dt;
-    if (!this.attackState.applied && this.attackState.elapsed >= this.attackState.definition.windup) {
+    if (this.attackState.definition.delivery === "melee"
+      && !this.attackState.applied
+      && this.attackState.elapsed >= this.attackState.definition.windup) {
       this.attackState.applied = true;
       this.applyAttackHits(this.attackState.definition, this.attackState.kind);
     }
@@ -1546,6 +1708,7 @@ export class PixelRPG {
       this.inputEnabled = false;
       this.keys.clear();
       this.attackState = null;
+      this.clearProjectiles();
       this.player.moving = false;
       this.closeQaPanel();
       this.closeBlacksmith();
@@ -1559,6 +1722,7 @@ export class PixelRPG {
 
   finishRespawn() {
     const village = getWorldDefinition("village");
+    this.clearProjectiles();
     respawnPlayer(this.player, village.spawn);
     this.switchWorld("village", village.spawn.x, village.spawn.y, false);
     this.ui.respawnOverlay.hidden = true;
@@ -1576,6 +1740,7 @@ export class PixelRPG {
     this.processedEnemySpawnIds = new Set();
     this.dynamicEnemySequence = 0;
     this.attackState = null;
+    this.clearProjectiles();
     this.basicCooldown = 0;
     this.strongCooldown = 0;
     this.damageNumbers = [];
@@ -1620,7 +1785,7 @@ export class PixelRPG {
   }
 
   applyProgressionStats(restore = false) {
-    const { maxHp, maxMp } = statsForLevel(this.progress.level);
+    const { maxHp, maxMp } = statsForLevel(this.progress.level, this.classId);
     this.player.maxHp = maxHp;
     this.player.maxMp = maxMp;
     if (restore) {
@@ -1638,7 +1803,15 @@ export class PixelRPG {
     setStyleIfChanged(this.ui.hpBar, "transform", `scaleX(${this.player.hp / this.player.maxHp})`);
     setStyleIfChanged(this.ui.mpBar, "transform", `scaleX(${this.player.mp / this.player.maxMp})`);
 
-    const unavailable = this.strongCooldown > 0 || this.player.mp < 20 || this.player.respawnTimer > 0;
+    const strongDefinition = attackDefinition("strong", this.classId, this.player.equippedWeaponId);
+    const classDefinition = getClassDefinition(normalizeClassId(this.classId));
+    const strongSkillName = this.ui.strongSkillName || this.ui.strongSlot?.querySelector?.(".skill-name");
+    const strongSkillCost = this.ui.strongSkillCost || this.ui.strongSlot?.querySelector?.(".skill-cost");
+    if (strongSkillName) setTextIfChanged(strongSkillName, classDefinition.strongLabel);
+    if (strongSkillCost) setTextIfChanged(strongSkillCost, `MP ${strongDefinition.mpCost}`);
+    const unavailable = this.strongCooldown > 0
+      || this.player.mp < strongDefinition.mpCost
+      || this.player.respawnTimer > 0;
     toggleClassIfChanged(this.ui.strongSlot, "unavailable", unavailable);
     setTextIfChanged(this.ui.strongCooldown, this.strongCooldown > 0 ? this.strongCooldown.toFixed(1) : "");
   }
@@ -1668,6 +1841,16 @@ export class PixelRPG {
       height: viewH,
     });
 
+    for (const projectile of this.projectiles || []) {
+      drawProjectile(ctx, projectile, {
+        alpha,
+        cameraX,
+        cameraY,
+        viewWidth: viewW,
+        viewHeight: viewH,
+      });
+    }
+
     const entities = [];
     this.remotePlayers.forEach(remote => entities.push({ ...remote, entityType: "player", remote: true }));
     this.enemies.forEach(enemy => entities.push({ entityType: "enemy", enemy, x: enemy.x, y: enemy.y }));
@@ -1694,8 +1877,13 @@ export class PixelRPG {
     }
 
     drawPlayerSlowEffect(ctx, this.player, cameraX, cameraY);
-    if (this.attackState) drawAttackEffect(ctx, this.player, this.attackState, cameraX, cameraY, alpha);
+    if (this.attackState?.definition.delivery === "melee") {
+      drawAttackEffect(ctx, this.player, this.attackState, cameraX, cameraY, alpha);
+    }
     drawHitEffects(ctx, this.hitEffects, cameraX, cameraY);
+    for (const effect of this.explosionEffects || []) {
+      drawExplosionEffect(ctx, effect, { cameraX, cameraY });
+    }
     this.drawDamageNumbers(ctx, cameraX, cameraY);
     const bubbles = latestBubblesByUid(this.chatMessages, { mapId: this.mapId, now: Date.now() });
     for (const entity of visiblePlayers) {
@@ -1726,6 +1914,7 @@ export class PixelRPG {
     const next = new Map();
     players.forEach((data, uid) => {
       const current = this.remotePlayers.get(uid);
+      const classId = normalizeClassId(data.classId);
       next.set(uid, {
         uid,
         x: current?.x ?? data.x,
@@ -1739,7 +1928,11 @@ export class PixelRPG {
         moving: Boolean(data.moving),
         color: data.color || "#7585d8",
         name: sanitizeName(data.name),
-        equippedWeaponId: resolveWeaponDefinition(data.equippedWeaponId).id,
+        classId,
+        equippedWeaponId: resolveWeaponDefinition(
+          data.equippedWeaponId,
+          classId,
+        ).id,
         step: current?.step || 0,
       });
     });
@@ -1961,7 +2154,12 @@ export function drawPixelCharacter(ctx, player, cameraX, cameraY, attackState = 
 
   ctx.fillStyle = "rgba(0,0,0,.28)";
   ctx.fillRect(-13, 14, 26, 7);
-  drawScabbard(ctx, { direction: player.dir, weaponId: player.equippedWeaponId });
+  drawClassEquipment(ctx, { classId: player.classId, direction: player.dir });
+  drawScabbard(ctx, {
+    classId: player.classId,
+    direction: player.dir,
+    weaponId: player.equippedWeaponId,
+  });
   ctx.fillStyle = "#5b3b2a";
   ctx.fillRect(-9, 6, 7, 12);
   ctx.fillRect(2, 6, 7, 12);
@@ -1981,6 +2179,7 @@ export function drawPixelCharacter(ctx, player, cameraX, cameraY, attackState = 
   else if (player.dir === "right") ctx.fillRect(5, -18, 2, 2);
   else { ctx.fillRect(-5, -18, 2, 2); ctx.fillRect(3, -18, 2, 2); }
   drawWeapon(ctx, {
+    classId: player.classId,
     direction: player.dir,
     attackState,
     weaponId: player.equippedWeaponId,

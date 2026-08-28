@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PixelRPG } from "../src/game-20260827-2.js";
+import { PixelRPG } from "../src/game-20260828-classes.js";
 import { legacyProgressStorageKey } from "../src/progress-storage.js";
 import { acceptAdventureQuest, createInitialProgress } from "../src/quest-state.js";
 
@@ -175,8 +175,8 @@ test("a level-crossing kill restores stats and refreshes HUD before saving", asy
       onWrite() {
         assert.equal(game.ui.expText.textContent, "2 / 200");
         assert.equal(game.ui.goldText.textContent, "1 G");
-        assert.equal(game.ui.hpText.textContent, "110 / 110");
-        assert.equal(game.ui.mpText.textContent, "105 / 105");
+        assert.equal(game.ui.hpText.textContent, "132 / 132");
+        assert.equal(game.ui.mpText.textContent, "84 / 84");
         assert.equal(game.ui.playerSubtitle.textContent, "LV. 2 · 끓어오르는 활화산");
       },
     });
@@ -189,8 +189,8 @@ test("a level-crossing kill restores stats and refreshes HUD before saving", asy
 
     assert.equal(game.progress.level, 2);
     assert.equal(game.progress.exp, 2);
-    assert.equal(game.player.hp, 110);
-    assert.equal(game.player.mp, 105);
+    assert.equal(game.player.hp, 132);
+    assert.equal(game.player.mp, 84);
     assert.equal(harness.storage.writes.length, 1);
     assert.match(harness.notifications.at(-1), /^LEVEL UP! LV\.2/);
   });
@@ -218,7 +218,7 @@ test("multi-kill attacks leave a level-up notification last and save once", asyn
 });
 
 test("a write-failing v1 migration surfaces the existing save-failure notice", async () => {
-  const { loadPlayerProgress } = await import("../src/game-20260827-2.js");
+  const { loadPlayerProgress } = await import("../src/game-20260828-classes.js");
   assert.equal(typeof loadPlayerProgress, "function");
   const legacy = JSON.stringify({
     version: 1,

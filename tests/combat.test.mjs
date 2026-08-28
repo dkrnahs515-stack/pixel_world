@@ -19,8 +19,9 @@ test("basic attack includes a close target in front and rejects one behind", () 
   assert.equal(isTargetInAttackArc(origin, "right", { x: 70, y: 100 }, 52, 100), false);
 });
 
-test("기본 공격은 확정된 64픽셀·120도 범위를 제공한다", () => {
-  assert.deepEqual(attackDefinition("basic"), {
+test("검사 기본 공격은 장착 검의 피해·사거리와 기존 전방 부채꼴을 사용한다", () => {
+  assert.deepEqual(attackDefinition("basic", "warrior", "starter-sword"), {
+    delivery: "melee",
     damage: 1,
     cooldown: 0.5,
     range: 64,
@@ -72,12 +73,13 @@ test("attack arc rejects targets outside its range and angle", () => {
   assert.equal(isTargetInAttackArc(origin, "right", { x: 100, y: 145 }, 52, 100), false);
 });
 
-test("strong attack exposes the approved combat behavior", () => {
-  assert.deepEqual(attackDefinition("strong"), {
-    damage: 3,
+test("검사 Q는 장착 검 피해의 두 배로 360도 회전 베기를 한다", () => {
+  assert.deepEqual(attackDefinition("strong", "warrior", "starter-sword"), {
+    delivery: "melee",
+    damage: 2,
     cooldown: 4,
-    range: 96,
-    arcDegrees: 150,
+    range: 92,
+    arcDegrees: 360,
     windup: 0.22,
     duration: 0.4,
     mpCost: 20,
@@ -88,7 +90,7 @@ test("strong attack exposes the approved combat behavior", () => {
 });
 
 test("장착 무기는 기본 공격 피해·사거리와 강공격 쿨다운만 바꾼다", () => {
-  const basic = attackDefinition("basic", "reinforced-masterwork-katana");
+  const basic = attackDefinition("basic", "warrior", "reinforced-masterwork-katana");
   assert.deepEqual(
     {
       damage: basic.damage,
@@ -107,7 +109,7 @@ test("장착 무기는 기본 공격 피해·사거리와 강공격 쿨다운만
       hitStop: 0.035,
     },
   );
-  const strong = attackDefinition("strong", "reinforced-katana");
+  const strong = attackDefinition("strong", "warrior", "reinforced-katana");
   assert.deepEqual(
     {
       damage: strong.damage,
@@ -118,14 +120,105 @@ test("장착 무기는 기본 공격 피해·사거리와 강공격 쿨다운만
       hitStop: strong.hitStop,
     },
     {
-      damage: 3,
-      range: 96,
+      damage: 2.6,
+      range: 104,
       cooldown: 3.8,
       mpCost: 20,
       hitStun: 0.18,
       hitStop: 0.065,
     },
   );
-  assert.equal(attackDefinition("basic", "unknown").range, 64);
-  assert.equal(attackDefinition("strong", "unknown").cooldown, 4);
+  assert.equal(attackDefinition("basic", "warrior", "unknown").range, 64);
+  assert.equal(attackDefinition("strong", "warrior", "unknown").cooldown, 4);
+});
+
+test("궁수 기본 공격과 Q는 활의 투사체 수치를 사용한다", () => {
+  const basic = attackDefinition("basic", "archer", "hunter-bow");
+  assert.deepEqual({
+    delivery: basic.delivery,
+    projectileKind: basic.projectileKind,
+    cooldown: basic.cooldown,
+    damage: basic.damage,
+    range: basic.range,
+    speed: basic.speed,
+    mpCost: basic.mpCost,
+  }, {
+    delivery: "projectile",
+    projectileKind: "arrow",
+    cooldown: 0.55,
+    damage: 1,
+    range: 380,
+    speed: 580,
+    mpCost: 0,
+  });
+
+  const strong = attackDefinition("strong", "archer", "training-bow");
+  assert.deepEqual({
+    delivery: strong.delivery,
+    projectileKind: strong.projectileKind,
+    damage: strong.damage,
+    range: strong.range,
+    speed: strong.speed,
+    maxHits: strong.maxHits,
+    mpCost: strong.mpCost,
+    cooldown: strong.cooldown,
+  }, {
+    delivery: "projectile",
+    projectileKind: "piercing-arrow",
+    damage: 1.98,
+    range: 486,
+    speed: 616,
+    maxHits: 5,
+    mpCost: 25,
+    cooldown: 4.5,
+  });
+});
+
+test("마법사 기본 공격과 Q는 지팡이의 마법탄·폭발 수치를 사용한다", () => {
+  const basic = attackDefinition("basic", "mage", "apprentice-staff");
+  assert.deepEqual({
+    delivery: basic.delivery,
+    projectileKind: basic.projectileKind,
+    cooldown: basic.cooldown,
+    damage: basic.damage,
+    range: basic.range,
+    speed: basic.speed,
+    mpCost: basic.mpCost,
+  }, {
+    delivery: "projectile",
+    projectileKind: "magic-bolt",
+    cooldown: 0.65,
+    damage: 1.1,
+    range: 315,
+    speed: 440,
+    mpCost: 0,
+  });
+
+  const strong = attackDefinition("strong", "mage", "training-staff");
+  assert.deepEqual({
+    delivery: strong.delivery,
+    projectileKind: strong.projectileKind,
+    damage: strong.damage,
+    range: strong.range,
+    speed: strong.speed,
+    explosionRadius: strong.explosionRadius,
+    mpCost: strong.mpCost,
+    cooldown: strong.cooldown,
+  }, {
+    delivery: "projectile",
+    projectileKind: "explosive-bolt",
+    damage: 2.4,
+    range: 375,
+    speed: 420,
+    explosionRadius: 96,
+    mpCost: 30,
+    cooldown: 5,
+  });
+});
+
+test("알 수 없는 직업과 다른 직업 무기는 검사 기본 장비로 안전하게 복구한다", () => {
+  const definition = attackDefinition("basic", "unknown", "training-bow");
+  assert.equal(definition.delivery, "melee");
+  assert.equal(definition.damage, 1);
+  assert.equal(definition.range, 64);
 });

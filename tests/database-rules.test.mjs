@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { WEAPON_ORDER } from "../src/weapon-data.js";
+import { WEAPON_ORDER, WEAPON_ORDER_BY_CLASS } from "../src/weapon-data.js";
 
 function snapshot(value) {
   return {
@@ -60,4 +60,30 @@ test("플레이어 규칙은 레거시 무기 누락과 알려진 ID만 허용�
   }
   assert.equal(validate(snapshot({ ...player, equippedWeaponId: "unknown" })), false);
   assert.equal(validate(snapshot({ ...player, equippedWeaponId: 7 })), false);
+});
+
+test("플레이어 규칙은 직업별 일곱 무기 조합만 허용한다", async () => {
+  const rules = JSON.parse(await readFile(new URL("../database.rules.json", import.meta.url), "utf8"));
+  const expression = rules.rules.rooms.$roomId.players.$uid[".validate"];
+  const validate = Function("newData", `return (${expression});`);
+  const player = {
+    x: 100,
+    y: 100,
+    dir: "down",
+    moving: false,
+    name: "직업",
+    color: "#ffffff",
+    mapId: "village",
+  };
+  for (const [classId, weaponIds] of Object.entries(WEAPON_ORDER_BY_CLASS)) {
+    for (const equippedWeaponId of weaponIds) {
+      assert.equal(validate(snapshot({ ...player, classId, equippedWeaponId })), true, `${classId}:${equippedWeaponId}`);
+    }
+  }
+  assert.equal(validate(snapshot({ ...player, classId: "warrior", equippedWeaponId: "hunter-bow" })), false);
+  assert.equal(validate(snapshot({ ...player, classId: "archer", equippedWeaponId: "training-staff" })), false);
+  assert.equal(validate(snapshot({ ...player, classId: "mage", equippedWeaponId: "starter-sword" })), false);
+  assert.equal(validate(snapshot({ ...player, classId: "rogue", equippedWeaponId: "starter-sword" })), false);
+  assert.equal(validate(snapshot({ ...player, equippedWeaponId: "hunter-bow" })), false);
+  assert.equal(validate(snapshot({ ...player, classId: "archer" })), false);
 });

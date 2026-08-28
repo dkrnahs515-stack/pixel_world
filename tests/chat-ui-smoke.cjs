@@ -14,6 +14,7 @@ const { chromium } = require("playwright");
     assert.equal(await page.locator("#chatInput").getAttribute("maxlength"), "1024");
     assert.equal(await page.locator("#chatInput").isDisabled(), true);
     await page.locator("#nicknameInput").fill("채팅UI검사");
+    await page.locator('[data-class-id="warrior"]').click();
     await page.locator("#enterButton").click();
     await page.locator("#hud").waitFor({ state: "visible" });
     const desktopBox = await page.locator("#chatPanel").boundingBox();
