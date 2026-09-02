@@ -63,7 +63,7 @@ firebase init hosting:github
 
 저장소는 `dkrnahs515-stack/pixel_world`, 배포 브랜치는 `main`을 선택합니다.
 
-푸른 해안의 변경되지 않은 ES 모듈은 `-20260829-coast.js` 물리 파일명을 유지합니다. 만료 lease hotfix에서 변경된 controller와 캐시 의존 상위 모듈은 `coop-boss-controller-20260902-lease.js` → `game-20260902-lease.js` → `main-20260902-lease.js` 체인을 사용하며, HTML의 CSS 버전도 `20260902-lease`로 맞춥니다. 새 릴리스에서 모듈을 수정할 때는 엔트리만이 아니라 변경 모듈부터 엔트리까지 재귀 import 상위 그래프의 물리 버전을 함께 올리고 `tests/coast-cache-contract.test.mjs`를 통과시켜야 합니다.
+푸른 해안의 변경되지 않은 ES 모듈은 `-20260829-coast.js` 물리 파일명을 유지하고, 만료 lease controller는 `coop-boss-controller-20260902-lease.js`를 사용합니다. Firebase 상태 게시 hotfix의 변경 모듈과 캐시 의존 상위 모듈은 `coop-boss-network-20260902-publish.js` → `network-20260902-publish.js` → `game-20260902-publish.js` → `main-20260902-publish.js` 체인을 사용하며, HTML의 CSS 버전도 `20260902-publish`로 맞춥니다. 새 릴리스에서 모듈을 수정할 때는 엔트리만이 아니라 변경 모듈부터 엔트리까지 재귀 import 상위 그래프의 물리 버전을 함께 올리고 `tests/coast-cache-contract.test.mjs`를 통과시켜야 합니다.
 
 ## 5. 수동 배포
 

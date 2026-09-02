@@ -13,6 +13,16 @@ function matchesImmutableRewardClaim(current, intended) {
     .every(field => current[field] === intended[field]);
 }
 
+function withoutUndefined(value) {
+  if (Array.isArray(value)) {
+    return value.filter(entry => entry !== undefined).map(withoutUndefined);
+  }
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value)
+    .filter(([, entry]) => entry !== undefined)
+    .map(([key, entry]) => [key, withoutUndefined(entry)]));
+}
+
 export function createCoopBossNetwork({
   dbModule, db, roomId, uid,
   onBossChanged = () => {},
@@ -131,7 +141,7 @@ export function createCoopBossNetwork({
 
     async publishState(snapshot) {
       if (!snapshot || snapshot.authorityUid !== uid) return { ok: false, reason: "not_authority" };
-      await dbModule.update(pathRef("state"), snapshot);
+      await dbModule.update(pathRef("state"), withoutUndefined(snapshot));
       return { ok: true };
     },
 

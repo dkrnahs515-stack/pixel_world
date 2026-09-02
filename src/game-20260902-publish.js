@@ -18,7 +18,7 @@ import {
 } from "./enemies-20260829-coast.js";
 import { getEnemyDefinition } from "./enemy-definitions.js";
 import { movementVector } from "./input.js";
-import { createNetworkAdapter, createOfflineNetworkAdapter } from "./network-20260829-coast.js";
+import { createNetworkAdapter, createOfflineNetworkAdapter } from "./network-20260902-publish.js";
 import { createCoopBossController } from "./coop-boss-controller-20260902-lease.js";
 import { createLocalBossController } from "./local-boss-controller-20260829-coast.js";
 import { validateBossPlayerDamageEvent } from "./coop-boss-state-20260829-coast.js";

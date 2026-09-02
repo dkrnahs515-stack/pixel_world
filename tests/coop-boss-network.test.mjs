@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createCoopBossNetwork } from "../src/coop-boss-network-20260829-coast.js";
+import { createCoopBossNetwork } from "../src/coop-boss-network-20260902-publish.js";
 import { createBossEncounter } from "../src/coop-boss-state-20260829-coast.js";
 import { getCoopBossForMap } from "../src/coop-boss-data-20260829-coast.js";
 
@@ -59,6 +59,39 @@ test("공격은 자기 UID와 증가 sequence 경로에만 기록한다", async 
   assert.equal(fake.writes.at(-1).path, "rooms/public/bosses/coast-tide-core-cave/attacks/me/7");
   await adapter.acknowledgeAttack("other", 7);
   assert.equal(fake.removes.at(-1), "rooms/public/bosses/coast-tide-core-cave/attacks/other/7");
+});
+
+test("alive 보스 상태 게시 전에 Firebase가 거부하는 undefined 필드를 재귀적으로 제거한다", async () => {
+  const fake = fixture();
+  const containsUndefined = value => value && typeof value === "object"
+    && Object.values(value).some(entry => entry === undefined || containsUndefined(entry));
+  fake.options.dbModule.update = async (ref, value) => {
+    if (containsUndefined(value)) throw new Error("Firebase rejects undefined values");
+    fake.writes.push({ path: ref.path, value });
+  };
+  const adapter = createCoopBossNetwork(fake.options);
+  await adapter.setMap("coast-tide-core-cave");
+  const encounter = {
+    ...createBossEncounter(getCoopBossForMap("coast-tide-core-cave"), {
+      encounterId: "alive", partySize: 1, now: 0, authorityUid: "me", authorityEpoch: 1,
+    }),
+    defeatedAt: undefined,
+    respawnAt: undefined,
+    contributors: { me: { firstHitAt: 1_000, lastHitAt: undefined } },
+  };
+
+  await assert.doesNotReject(adapter.publishState(encounter));
+  const { defeatedAt: _defeatedAt, respawnAt: _respawnAt, ...definedEncounter } = encounter;
+
+  assert.deepEqual(fake.writes.at(-1), {
+    path: "rooms/public/bosses/coast-tide-core-cave/state",
+    value: {
+      ...definedEncounter,
+      contributors: { me: { firstHitAt: 1_000 } },
+    },
+  });
+  assert.equal(Object.hasOwn(fake.writes.at(-1).value, "defeatedAt"), false);
+  assert.equal(Object.hasOwn(fake.writes.at(-1).value, "respawnAt"), false);
 });
 
 test("만료된 lease만 transaction으로 인수하고 epoch를 올린다", async () => {

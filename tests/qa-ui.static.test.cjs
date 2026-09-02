@@ -4,7 +4,7 @@ const { readFileSync } = require("node:fs");
 const path = require("node:path");
 
 const html = readFileSync(path.join(__dirname, "../index.html"), "utf8");
-const main = readFileSync(path.join(__dirname, "../src/main-20260902-lease.js"), "utf8");
+const main = readFileSync(path.join(__dirname, "../src/main-20260902-publish.js"), "utf8");
 const css = readFileSync(path.join(__dirname, "../styles.css"), "utf8");
 const readme = readFileSync(path.join(__dirname, "../README.md"), "utf8");
 const coastSmoke = readFileSync(path.join(__dirname, "coast-browser-smoke.cjs"), "utf8");

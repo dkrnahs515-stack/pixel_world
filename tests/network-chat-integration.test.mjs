@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createNetworkAdapter } from "../src/network-20260829-coast.js";
+import { createNetworkAdapter } from "../src/network-20260902-publish.js";
 
 function firebaseModulesFake() {
   const callbacks = new Map();
