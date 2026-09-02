@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PixelRPG, interactionKeyAction } from "../src/game-20260902-lease.js";
+import { PixelRPG, interactionKeyAction } from "../src/game-20260902-publish.js";
 import { createCombatStatusEffects } from "../src/player-combat.js";
 import { createInitialProgress } from "../src/quest-state-20260829-coast.js";
 import { WEAPON_ORDER_BY_CLASS } from "../src/weapon-data.js";

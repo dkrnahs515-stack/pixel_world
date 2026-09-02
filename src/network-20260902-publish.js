@@ -3,7 +3,7 @@ import { createFirebaseChatAdapter, createOfflineChatAdapter } from "./chat-netw
 import { filterPlayersForMap, serializePlayerState } from "./network-state-20260829-coast.js";
 import { createPublishPolicyState, nextPublishDecision } from "./network-publish-policy.js";
 import { claimRoomSlot } from "./room-capacity.js";
-import { createCoopBossNetwork } from "./coop-boss-network-20260829-coast.js";
+import { createCoopBossNetwork } from "./coop-boss-network-20260902-publish.js";
 
 export function createOfflineNetworkAdapter(mode = "solo", reason = "selected") {
   return {

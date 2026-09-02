@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PixelRPG } from "../src/game-20260902-lease.js";
+import { PixelRPG } from "../src/game-20260902-publish.js";
 import { createEnemyInstance } from "../src/enemies-20260829-coast.js";
 import { createInitialProgress } from "../src/quest-state-20260829-coast.js";
 
