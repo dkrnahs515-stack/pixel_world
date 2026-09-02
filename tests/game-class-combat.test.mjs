@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PixelRPG } from "../src/game-20260828-coop.js";
-import { createEnemyInstance } from "../src/enemies.js";
-import { createInitialProgress } from "../src/quest-state.js";
+import { PixelRPG } from "../src/game-20260829-coast.js";
+import { createEnemyInstance } from "../src/enemies-20260829-coast.js";
+import { createInitialProgress } from "../src/quest-state-20260829-coast.js";
 
 function fakeNode() {
   return {

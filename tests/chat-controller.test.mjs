@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ChatController, chatKeyAction } from "../src/chat-controller.js";
+import { ChatController, chatKeyAction } from "../src/chat-controller-20260829-coast.js";
 
 function element(documentRef, tagName = "div") {
   const listeners = new Map();

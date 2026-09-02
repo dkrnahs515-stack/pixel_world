@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createInitialProgress } from "../src/quest-state.js";
+import { createInitialProgress } from "../src/quest-state-20260829-coast.js";
 import { WEAPON_ORDER_BY_CLASS } from "../src/weapon-data.js";
 
 async function qaModule() {

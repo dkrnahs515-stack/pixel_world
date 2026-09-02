@@ -1,15 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getCoopBossForMap } from "../src/coop-boss-data.js";
+import { getCoopBossForMap } from "../src/coop-boss-data-20260829-coast.js";
 import {
   acquireAuthority, applyBossAttack, claimReward, createBossEncounter,
   createRewardClaims, normalizeBossEncounter, renewAuthority, validateBossAttack,
   createBossPlayerDamageEvent, validateBossPlayerDamageEvent,
-} from "../src/coop-boss-state.js";
+} from "../src/coop-boss-state-20260829-coast.js";
 
 function encounter(overrides = {}) {
   return {
-    ...createBossEncounter(getCoopBossForMap("coast"), {
+    ...createBossEncounter(getCoopBossForMap("coast-tide-core-cave"), {
       encounterId: "coast-1000-a", partySize: 3, now: 1000,
       authorityUid: "host", authorityEpoch: 1,
     }),
@@ -20,9 +20,9 @@ function encounter(overrides = {}) {
 function request(overrides = {}) {
   return {
     attackId: "archer:e:1", sequence: 1, uid: "archer",
-    encounterId: "coast-1000-a", bossId: "coast-core-shark", mapId: "coast",
+    encounterId: "coast-1000-a", bossId: "coast-core-shark", mapId: "coast-tide-core-cave",
     classId: "archer", weaponId: "training-bow", attackKind: "basic",
-    playerX: 2100, playerY: 2400, direction: "right", createdAt: 2000,
+    playerX: 1540, playerY: 1280, direction: "right", createdAt: 2000,
     ...overrides,
   };
 }
@@ -52,9 +52,9 @@ test("공격 피해는 요청값이 아니라 직업과 무기 정의로 계산�
   const current = encounter();
   const validation = {
     encounter: current,
-    bossDefinition: getCoopBossForMap("coast"),
+    bossDefinition: getCoopBossForMap("coast-tide-core-cave"),
     authenticatedUid: "archer",
-    player: { uid: "archer", x: 2100, y: 2400, mapId: "coast", classId: "archer", equippedWeaponId: "training-bow" },
+    player: { uid: "archer", x: 1540, y: 1280, mapId: "coast-tide-core-cave", classId: "archer", equippedWeaponId: "training-bow" },
     lastSequence: 0,
     lastAttackAt: Number.NEGATIVE_INFINITY,
     now: 2000,
@@ -69,6 +69,27 @@ test("공격 피해는 요청값이 아니라 직업과 무기 정의로 계산�
   assert.equal(validateBossAttack(request({ weaponId: "training-staff" }), validation).reason, "invalid_weapon");
 });
 
+test("공격 검증은 플레이어가 같은 해안 지역의 다른 물리 맵에 있으면 거부한다", () => {
+  const current = encounter();
+  const result = validateBossAttack(request(), {
+    encounter: current,
+    bossDefinition: getCoopBossForMap("coast-tide-core-cave"),
+    authenticatedUid: "archer",
+    player: {
+      uid: "archer",
+      x: 1540,
+      y: 1280,
+      mapId: "coast-flooded-station",
+      classId: "archer",
+      equippedWeaponId: "training-bow",
+    },
+    lastSequence: 0,
+    lastAttackAt: Number.NEGATIVE_INFINITY,
+    now: 2000,
+  });
+  assert.deepEqual(result, { ok: false, reason: "invalid_player" });
+});
+
 test("오래되거나 미래인 공격은 거부하고 수신 시각으로 재생 쿨다운을 판정한다", () => {
   const current = encounter();
   const base = {
@@ -77,8 +98,8 @@ test("오래되거나 미래인 공격은 거부하고 수신 시각으로 재�
     playerX: current.x - 40, playerY: current.y, sequence: 1,
   };
   const validation = {
-    encounter: current, bossDefinition: getCoopBossForMap("coast"), authenticatedUid: "a",
-    player: { uid: "a", x: current.x - 40, y: current.y, hp: 100, mapId: "coast", classId: "warrior", equippedWeaponId: "starter-sword" },
+    encounter: current, bossDefinition: getCoopBossForMap("coast-tide-core-cave"), authenticatedUid: "a",
+    player: { uid: "a", x: current.x - 40, y: current.y, hp: 100, mapId: "coast-tide-core-cave", classId: "warrior", equippedWeaponId: "starter-sword" },
     lastSequence: 0, lastAttackAt: Number.NEGATIVE_INFINITY, now: 10_000,
   };
   assert.equal(validateBossAttack({ ...base, createdAt: 4_999 }, validation).reason, "stale_attack");

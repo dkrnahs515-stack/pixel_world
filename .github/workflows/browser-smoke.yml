@@ -40,3 +40,4 @@ jobs:
           PIXEL_WORLD_URL=http://127.0.0.1:4173 node tests/solo-mode-smoke.cjs
           PIXEL_WORLD_URL=http://127.0.0.1:4173 node tests/browser-smoke.cjs
           PIXEL_WORLD_URL=http://127.0.0.1:4173 node tests/chat-game-smoke.cjs
+          PIXEL_WORLD_URL=http://127.0.0.1:4173 node tests/coast-browser-smoke.cjs

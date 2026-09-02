@@ -4,9 +4,9 @@ import {
   PixelRPG,
   interactionKeyAction,
   npcInteractionKeyAction,
-} from "../src/game-20260828-coop.js";
-import { getNpcsForWorld } from "../src/npc-data.js";
-import { createInitialProgress } from "../src/quest-state.js";
+} from "../src/game-20260829-coast.js";
+import { getNpcsForWorld } from "../src/npc-data-20260829-coast.js";
+import { createInitialProgress } from "../src/quest-state-20260829-coast.js";
 
 function fakeNode(documentRef, overrides = {}) {
   const attributes = new Map();

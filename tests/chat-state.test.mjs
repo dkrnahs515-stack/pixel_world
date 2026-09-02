@@ -7,7 +7,7 @@ import {
   messageIdsToPrune,
   normalizeChatText,
   validateChatDraft,
-} from "../src/chat-state.js";
+} from "../src/chat-state-20260829-coast.js";
 
 test("채팅 문자열은 복합 이모지를 유지하면서 공백을 정규화한다", () => {
   assert.equal(normalizeChatText("   안녕\n\t월드 👨‍👩‍👧‍👦   "), "안녕 월드 👨‍👩‍👧‍👦");
@@ -63,4 +63,34 @@ test("최신 말풍선은 현재 지역에서 4초 이내에 생성된 메시지
   const bubbles = latestBubblesByUid(messages, { mapId: "village", now: 5000 });
   assert.equal(bubbles.size, 1);
   assert.equal(bubbles.get("a").text, "new");
+});
+
+test("채팅은 네 해안 물리 맵을 정확히 보존하고 레거시 coast를 거부한다", () => {
+  const coastMapIds = [
+    "coast-beach",
+    "coast-wreck-bay",
+    "coast-flooded-station",
+    "coast-tide-core-cave",
+  ];
+  const raw = { player: {} };
+  coastMapIds.forEach((mapId, index) => {
+    raw.player[`m${index}`] = {
+      text: mapId,
+      name: "해안",
+      mapId,
+      createdAt: 100 + index,
+    };
+  });
+  raw.player.legacy = { text: "legacy", name: "해안", mapId: "coast", createdAt: 200 };
+  raw.player.unknown = { text: "unknown", name: "해안", mapId: "unknown", createdAt: 201 };
+
+  const messages = flattenChatMessages(raw);
+  assert.deepEqual(messages.map(message => message.mapId), coastMapIds);
+  for (const mapId of coastMapIds) {
+    assert.deepEqual(
+      [...latestBubblesByUid(messages, { mapId, now: 500 }).values()].map(message => message.mapId),
+      [mapId],
+      mapId,
+    );
+  }
 });

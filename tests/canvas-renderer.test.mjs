@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import * as gameModule from "../src/game-20260828-coop.js";
+import * as gameModule from "../src/game-20260829-coast.js";
 
 test("게임 캔버스는 desynchronized 힌트 없이 동기화된 2D context를 요청한다", () => {
   assert.equal(typeof gameModule.createGameCanvasContext, "function");

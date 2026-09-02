@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { filterPlayersForMap, serializePlayerState } from "../src/network-state.js";
+import { filterPlayersForMap, serializePlayerState } from "../src/network-state-20260829-coast.js";
+import { WORLD_IDS, getWorldDefinition } from "../src/world-data-20260829-coast.js";
 
 test("serialized player state keeps existing fields and adds the active region", () => {
   assert.deepEqual(
@@ -26,13 +27,13 @@ test("serialized player state keeps existing fields and adds the active region",
 test("온라인 생존 판정을 위해 현재 HP를 직렬화하고 레거시는 100으로 복구한다", () => {
   const serialized = serializePlayerState({
     x: 10, y: 20, hp: 0, dir: "down", moving: false, color: "#fff", name: "쓰러짐",
-  }, "coast");
+  }, "coast-beach");
   assert.equal(serialized.hp, 0);
 
   const players = filterPlayersForMap({
     down: { ...serialized, hp: 0 },
     legacy: { ...serialized, hp: undefined },
-  }, "own", "coast");
+  }, "own", "coast-beach");
   assert.equal(players.get("down").hp, 0);
   assert.equal(players.get("legacy").hp, 100);
 });
@@ -51,23 +52,66 @@ test("only valid remote players in the active region are visible", () => {
   assert.equal(players.get("same").equippedWeaponId, "starter-sword");
 });
 
-test("legacy snapshots without a region remain visible in the village", () => {
+test("legacy snapshots without a physical map are rejected", () => {
   const players = filterPlayersForMap(
     { legacy: { x: 100, y: 100, dir: "down", moving: false, color: "#fff", name: "이전" } },
     "own",
     "village",
   );
-  assert.equal(players.has("legacy"), true);
-  assert.equal(players.get("legacy").mapId, "village");
+  assert.equal(players.has("legacy"), false);
 });
 
-test("unknown active region values safely fall back to the village", () => {
+test("unknown active physical map values show no remote players", () => {
   const players = filterPlayersForMap(
     { villagePlayer: { x: 100, y: 100, mapId: "village", name: "마을" } },
     "own",
     "unknown",
   );
-  assert.equal(players.has("villagePlayer"), true);
+  assert.equal(players.size, 0);
+});
+
+test("presence filtering uses each exact coast map and its 2160×1800 bounds", () => {
+  const coastMapIds = [
+    "coast-beach",
+    "coast-wreck-bay",
+    "coast-flooded-station",
+    "coast-tide-core-cave",
+  ];
+  for (const mapId of coastMapIds) {
+    const players = filterPlayersForMap({
+      boundary: { x: 2160, y: 1800, mapId, name: "경계" },
+      xOutside: { x: 2160.1, y: 900, mapId, name: "가로 밖" },
+      yOutside: { x: 1080, y: 1800.1, mapId, name: "세로 밖" },
+      legacy: { x: 1080, y: 900, mapId: "coast", name: "레거시" },
+      unknown: { x: 1080, y: 900, mapId: "unknown", name: "미등록" },
+    }, "own", mapId);
+    assert.deepEqual([...players.keys()], ["boundary"], mapId);
+    assert.equal(players.get("boundary").mapId, mapId);
+    assert.equal(serializePlayerState({
+      x: 1080, y: 900, dir: "down", moving: false, color: "#fff", name: "해안",
+    }, mapId).mapId, mapId);
+  }
+});
+
+test("outbound presence rejects legacy, unknown, and missing physical map IDs", () => {
+  const player = { x: 10, y: 20, dir: "down", moving: false, color: "#fff", name: "검증" };
+  for (const mapId of ["coast", "unknown", undefined, null, ""]) {
+    assert.equal(serializePlayerState(player, mapId), null, String(mapId));
+  }
+});
+
+test("outbound presence accepts exact boundaries and rejects coordinates outside each physical map", () => {
+  for (const mapId of WORLD_IDS) {
+    const world = getWorldDefinition(mapId);
+    const player = { x: world.width, y: world.height, dir: "down", moving: false, color: "#fff", name: "경계" };
+    assert.equal(serializePlayerState(player, mapId)?.mapId, mapId, `${mapId} boundary`);
+    assert.equal(serializePlayerState({ ...player, x: -0.1 }, mapId), null, `${mapId} negative x`);
+    assert.equal(serializePlayerState({ ...player, y: -0.1 }, mapId), null, `${mapId} negative y`);
+    assert.equal(serializePlayerState({ ...player, x: world.width + 0.1 }, mapId), null, `${mapId} x overflow`);
+    assert.equal(serializePlayerState({ ...player, y: world.height + 0.1 }, mapId), null, `${mapId} y overflow`);
+  }
+  assert.equal(serializePlayerState({ y: 20 }, "village"), null);
+  assert.equal(serializePlayerState({ x: 10 }, "village"), null);
 });
 
 test("장착 무기 ID는 직렬화되고 잘못되거나 누락된 원격 ID는 시작 검으로 복구된다", () => {

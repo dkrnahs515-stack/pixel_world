@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PixelRPG, interactionKeyAction } from "../src/game-20260828-coop.js";
+import { PixelRPG, interactionKeyAction } from "../src/game-20260829-coast.js";
 import { createCombatStatusEffects } from "../src/player-combat.js";
-import { createInitialProgress } from "../src/quest-state.js";
+import { createInitialProgress } from "../src/quest-state-20260829-coast.js";
 import { WEAPON_ORDER_BY_CLASS } from "../src/weapon-data.js";
 
 function fakeNode(overrides = {}) {
@@ -363,7 +363,7 @@ test("QA 장비 준비는 Lv.30·5000G와 최대 HP·MP를 반영하고 한 번 
   assert.equal(game.ui.goldText.textContent, "5000 G");
   assert.equal(game.ui.qaOverlay.hidden, true);
   assert.equal(storage.writes.length, 1);
-  assert.equal(storage.writes[0].value.version, 5);
+  assert.equal(storage.writes[0].value.version, 6);
   assert.equal(game.lastNotice, "검사 7종 무기 준비 완료 · Lv.30 · 5000 G");
   delete globalThis.localStorage;
 });
@@ -444,8 +444,8 @@ test("QA 몬스터 소환은 고유 지역으로 이동한 뒤 플레이어 앞 
   assert.equal(typeof game.qaSpawnMonster, "function");
   const enemy = game.qaSpawnMonster("fang-shark");
 
-  assert.equal(game.mapId, "coast");
-  assert.equal(game.enemies.length, 15);
+  assert.equal(game.mapId, "coast-beach");
+  assert.equal(game.enemies.length, 5);
   assert.equal(enemy, game.enemies.at(-1));
   assert.deepEqual({
     id: enemy.id,
@@ -455,12 +455,12 @@ test("QA 몬스터 소환은 고유 지역으로 이동한 뒤 플레이어 앞 
     x: enemy.x,
     y: enemy.y,
   }, {
-    id: "coast-qa-1",
+    id: "coast-beach-qa-1",
     kind: "fang-shark",
     hp: 25,
     maxHp: 25,
-    x: 2160,
-    y: 480,
+    x: 1080,
+    y: 460,
   });
   assert.equal(game.ui.qaOverlay.hidden, true);
   assert.equal(game.inputEnabled, true);
@@ -494,7 +494,7 @@ test("다른 지역 QA 소환의 안전 위치가 없으면 현재 지역과 전
   assert.equal(game.ui.qaOverlay.hidden, false);
 });
 
-test("QA 소환 몬스터 처치 보상은 일반 진행 데이터에 지급되고 v5 저장소에 기록된다", () => {
+test("QA 소환 몬스터 처치 보상은 일반 진행 데이터에 지급되고 v6 저장소에 기록된다", () => {
   const game = qaGame();
   const storage = memoryStorage();
   globalThis.localStorage = storage;
@@ -508,7 +508,7 @@ test("QA 소환 몬스터 처치 보상은 일반 진행 데이터에 지급되�
   assert.equal(game.progress.exp, 20);
   assert.equal(game.progress.gold, 15);
   assert.equal(storage.writes.length, 1);
-  assert.equal(storage.writes[0].value.version, 5);
+  assert.equal(storage.writes[0].value.version, 6);
   assert.equal(storage.writes[0].value.exp, 20);
   assert.equal(storage.writes[0].value.gold, 15);
   delete globalThis.localStorage;

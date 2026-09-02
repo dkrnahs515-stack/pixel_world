@@ -4,7 +4,7 @@ const { readFileSync } = require("node:fs");
 const path = require("node:path");
 
 const html = readFileSync(path.join(__dirname, "../index.html"), "utf8");
-const main = readFileSync(path.join(__dirname, "../src/main-20260828-coop.js"), "utf8");
+const main = readFileSync(path.join(__dirname, "../src/main-20260829-coast.js"), "utf8");
 const css = readFileSync(path.join(__dirname, "../styles.css"), "utf8");
 const readme = readFileSync(path.join(__dirname, "../README.md"), "utf8");
 
@@ -13,7 +13,15 @@ test("QA 도구는 기본 문서에서 숨겨진 버튼과 모달로 제공된�
   assert.match(html, /id="qaOverlay"[^>]*hidden/);
   assert.match(html, /aria-labelledby="qaTitle"/);
   assert.match(html, /data-qa-world="village"/);
-  assert.match(html, /data-qa-world="coast"/);
+  for (const mapId of [
+    "coast-beach",
+    "coast-wreck-bay",
+    "coast-flooded-station",
+    "coast-tide-core-cave",
+  ]) {
+    assert.match(html, new RegExp(`data-qa-world="${mapId}"`));
+  }
+  assert.doesNotMatch(html, /data-qa-world="coast"/);
   assert.match(html, /data-qa-world="volcano"/);
   assert.match(html, /data-qa-world="forest"/);
   assert.equal((html.match(/data-qa-monster=/g) || []).length, 7);
@@ -33,6 +41,14 @@ test("README는 세 직업 전투·저장·21종 장비·온라인 동기화 범
   assert.match(readme, /현재 직업[\s\S]*무기만 표시/);
   assert.match(readme, /직업[·\s]+장착 무기[\s\S]*동기화/);
   assert.match(readme, /원격 공격[\s\S]*피해.*동기화하지/);
+  for (const mapName of ["푸른 해변", "난파선 만", "침수된 통신소", "조수 코어 동굴"]) {
+    assert.match(readme, new RegExp(mapName));
+  }
+  assert.match(readme, /통신 기록[\s\S]*F[\s\S]*세라[·\s]+에코[·\s]+마리/);
+  assert.match(readme, /솔로[\s\S]*로컬 보스[\s\S]*온라인[\s\S]*협동 보스/);
+  assert.match(readme, /연결[\s\S]*끊[\s\S]*최대 체력[\s\S]*로컬 보스/);
+  assert.match(readme, /pixel-world\.progress\.v6/);
+  assert.match(readme, /v1[~–-]+v5[\s\S]*이전/);
 });
 
 test("main은 qa=1 판정 결과만으로 QA 도구를 활성화한다", () => {
