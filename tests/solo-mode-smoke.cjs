@@ -14,6 +14,9 @@ const { chromium } = require("playwright");
       }
     });
     page.on("pageerror", error => errors.push(error.message));
+    page.on("console", message => {
+      if (message.type() === "error") errors.push(message.text());
+    });
     await page.goto(process.env.PIXEL_WORLD_URL || "http://127.0.0.1:4173", { waitUntil: "networkidle" });
     await page.locator("#nicknameInput").fill("솔로테스터");
     await page.locator('[data-class-id="mage"]').click();

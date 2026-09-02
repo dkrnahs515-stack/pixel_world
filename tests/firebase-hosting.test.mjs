@@ -32,14 +32,19 @@ test("진입 HTML은 CSS와 JavaScript의 실제 파일명으로 기존 배포 �
   assert.ok(existsSync(new URL(`..\/src\/${gameModulePath}`, import.meta.url)));
 });
 
-test("협동 보스 배포는 새 물리 엔트리와 게임 모듈만 연결한다", () => {
-  assert.match(index, /src="\.\/src\/main-20260828-coop\.js"/);
+test("푸른 해안 배포는 새 물리 엔트리와 게임 모듈만 연결한다", () => {
+  assert.match(index, /href="\.\/styles\.css\?v=20260829-coast"/);
+  assert.match(index, /src="\.\/src\/main-20260829-coast\.js"/);
+  assert.doesNotMatch(index, /main-20260828-coop\.js/);
   assert.doesNotMatch(index, /main-20260828-classes\.js/);
   assert.doesNotMatch(index, /main-20260827-2\.js/);
-  assert.ok(existsSync(new URL("../src/main-20260828-coop.js", import.meta.url)));
-  assert.ok(existsSync(new URL("../src/game-20260828-coop.js", import.meta.url)));
-  const entry = readFileSync(new URL("../src/main-20260828-coop.js", import.meta.url), "utf8");
-  assert.match(entry, /from "\.\/game-20260828-coop\.js"/);
+  assert.ok(existsSync(new URL("../src/main-20260829-coast.js", import.meta.url)));
+  assert.ok(existsSync(new URL("../src/game-20260829-coast.js", import.meta.url)));
+  assert.equal(existsSync(new URL("../src/main-20260828-coop.js", import.meta.url)), false);
+  assert.equal(existsSync(new URL("../src/game-20260828-coop.js", import.meta.url)), false);
+  const entry = readFileSync(new URL("../src/main-20260829-coast.js", import.meta.url), "utf8");
+  assert.match(entry, /from "\.\/game-20260829-coast\.js"/);
+  assert.doesNotMatch(entry, /game-20260828-coop\.js/);
   assert.doesNotMatch(entry, /game-20260828-classes\.js/);
   assert.doesNotMatch(entry, /game-20260827-2\.js/);
 });

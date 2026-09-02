@@ -63,6 +63,8 @@ firebase init hosting:github
 
 저장소는 `dkrnahs515-stack/pixel_world`, 배포 브랜치는 `main`을 선택합니다.
 
+푸른 해안 배포의 변경된 ES 모듈과 그 캐시 의존 상위 모듈은 모두 `-20260829-coast.js` 물리 파일명을 사용합니다. 새 릴리스에서 이 파일들을 수정할 때는 엔트리만이 아니라 재귀 import 그래프 전체의 물리 버전을 함께 올리고 `tests/coast-cache-contract.test.mjs`를 통과시켜야 합니다.
+
 ## 5. 수동 배포
 
 Firebase CLI가 설치된 컴퓨터에서 저장소 루트 기준으로 실행합니다.
@@ -94,7 +96,23 @@ firebase deploy --only hosting,database
 - 재연결 시 플레이어와 채팅의 `onDisconnect().remove()`를 다시 예약
 - `database.rules.json`에서 본인 데이터만 수정 가능
 
-지역 ID는 `village`, `volcano`, `forest`, `coast`만 허용됩니다. 보안 규칙은 중앙 마을 좌표를 `2,880 × 1,800`, 외부 지역 좌표를 `4,320 × 3,600` 안으로 제한합니다. 월드 확장 코드를 배포할 때 갱신된 `database.rules.json`도 함께 게시해야 온라인 이동이 거부되지 않습니다.
+허용되는 물리 `mapId`는 정확히 `village`, `forest`, `volcano`, `coast-beach`, `coast-wreck-bay`, `coast-flooded-station`, `coast-tide-core-cave` 일곱 개입니다. 레거시 `coast`, 빈 값, 미등록 ID는 규칙에서 거부합니다.
+
+맵별 좌표 경계는 다음과 같습니다.
+
+- `village`: `2,880 × 1,800`
+- `forest`: `4,320 × 3,600`
+- `volcano`: `4,320 × 3,600`
+- `coast-beach`, `coast-wreck-bay`, `coast-flooded-station`, `coast-tide-core-cave`: 각각 `2,160 × 1,800`
+
+좌표가 음수이거나 해당 맵의 최대 경계를 넘으면 플레이어 쓰기와 보스 공격 요청을 거부합니다. 월드 확장 코드를 배포할 때 갱신된 `database.rules.json`도 함께 게시해야 온라인 이동이 거부되지 않습니다.
+
+### 협동 보스 동기화와 거부 조건
+
+- 관리자 브라우저는 보스 상태를 `2Hz`(초당 2회)로 게시하며 3분 재등장과 lease 기반 관리자 승계를 유지합니다.
+- 공격 요청의 경로 `sequence`와 숫자 payload `sequence`가 정확히 대응하지 않으면 규칙과 관리자 클라이언트가 요청을 거부하고 실제 경로만 정리합니다.
+- 보상 claim 생성은 현재 처치(`defeated`) 상태인 `encounter`와 경로 ID가 다르면 거부합니다. 이미 생성된 24시간 claim은 이후 보스가 재등장해도 해당 기여자가 수령할 수 있습니다.
+- 처치 상태와 contributor별 claim은 하나의 교차 경로 transaction으로 저장되지 않습니다. 상태 게시 뒤 각 UID claim을 독립적인 멱등 transaction으로 기록하고, 부분 실패·재연결·관리자 승계 시 누락 claim만 재조정합니다.
 
 ## Firebase 키와 보안 점검
 

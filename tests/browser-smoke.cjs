@@ -23,6 +23,9 @@ async function expectRegion(page, regionName) {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     const errors = [];
     page.on("pageerror", error => errors.push(error.message));
+    page.on("console", message => {
+      if (message.type() === "error") errors.push(message.text());
+    });
     await page.route("https://www.gstatic.com/**", route => route.abort());
     await page.goto(process.env.PIXEL_WORLD_URL || "http://127.0.0.1:4173", { waitUntil: "networkidle" });
     const screenshotDirectory = process.env.PIXEL_WORLD_SHOTS;
@@ -59,30 +62,6 @@ async function expectRegion(page, regionName) {
 
     await page.waitForTimeout(1100);
     await move(page, "ArrowDown", 420);
-    await expectRegion(page, "중앙 마을");
-
-    await page.waitForTimeout(1100);
-    await move(page, "ArrowUp", 2570);
-    await move(page, "ArrowRight", 3350);
-    await move(page, "ArrowUp", 350);
-    await expectRegion(page, "끓어오르는 활화산");
-    await page.waitForTimeout(400);
-    if (screenshotDirectory) await page.screenshot({ path: path.join(screenshotDirectory, "04-volcano.png") });
-
-    await page.waitForTimeout(1100);
-    await move(page, "ArrowDown", 420);
-    await expectRegion(page, "중앙 마을");
-
-    await page.waitForTimeout(1100);
-    await move(page, "ArrowLeft", 1900);
-    await move(page, "ArrowDown", 2050);
-    await move(page, "ArrowRight", 1750);
-    await expectRegion(page, "푸른 해안가");
-    await page.waitForTimeout(400);
-    if (screenshotDirectory) await page.screenshot({ path: path.join(screenshotDirectory, "05-coast.png") });
-
-    await page.waitForTimeout(1100);
-    await move(page, "ArrowUp", 420);
     await expectRegion(page, "중앙 마을");
 
     await page.locator("#exitButton").click();

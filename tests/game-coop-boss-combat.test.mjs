@@ -1,12 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PixelRPG } from "../src/game-20260828-coop.js";
+import { PixelRPG } from "../src/game-20260829-coast.js";
 
 function fixture(classId, weaponId) {
   const requests = [];
   const boss = { id: "coast-core-shark", x: 100, y: 100, radius: 32, hp: 120, targetable: true, isCoopBoss: true };
   const game = Object.create(PixelRPG.prototype);
   game.classId = classId;
+  game.mapId = "coast-tide-core-cave";
   game.player = { x: 50, y: 100, dir: "right", equippedWeaponId: weaponId };
   game.enemies = [];
   game.damageNumbers = [];
@@ -28,6 +29,8 @@ test("검사 근접 적중은 보스 공격 요청을 한 번 보내고 로컬 H
   value.game.applyAttackHits({ damage: 1, range: 70, arcDegrees: 120, knockback: 0, hitStun: 0, hitStop: 0 }, "basic");
   assert.equal(value.requests.length, 1);
   assert.equal(value.requests[0].classId, "warrior");
+  assert.equal(value.requests[0].player.mapId, "coast-tide-core-cave");
+  assert.equal(Object.hasOwn(value.game.player, "mapId"), false);
   assert.equal(Object.hasOwn(value.requests[0], "damage"), false);
   assert.equal(value.boss.hp, 120);
 });
@@ -45,6 +48,8 @@ for (const scenario of [
     }]);
     assert.equal(value.requests.length, 1);
     assert.equal(value.requests[0].attackKind, scenario.attackKind);
+    assert.equal(value.requests[0].player.mapId, "coast-tide-core-cave");
+    assert.equal(Object.hasOwn(value.game.player, "mapId"), false);
     assert.equal(value.boss.hp, 120);
   });
 }
@@ -52,7 +57,7 @@ for (const scenario of [
 test("같은 보스 피해 eventId는 플레이어 HP에 한 번만 적용하고 삭제한다", async () => {
   const acknowledged = [];
   const current = {
-    encounterId: "e", bossId: "coast-core-shark", mapId: "coast", status: "alive",
+    encounterId: "e", bossId: "coast-core-shark", mapId: "coast-tide-core-cave", status: "alive",
     x: 100, y: 100, hp: 120, maxHp: 120, authorityUid: "host", authorityEpoch: 2,
     leaseUntil: 7000, partySize: 2, contributors: {},
   };

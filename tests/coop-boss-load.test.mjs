@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createPublishPolicyState, nextPublishDecision } from "../src/network-publish-policy.js";
-import { createCoopBossController } from "../src/coop-boss-controller.js";
-import { createBossEncounter } from "../src/coop-boss-state.js";
-import { getCoopBossForMap } from "../src/coop-boss-data.js";
+import { createCoopBossController } from "../src/coop-boss-controller-20260829-coast.js";
+import { createBossEncounter } from "../src/coop-boss-state-20260829-coast.js";
+import { getCoopBossForMap } from "../src/coop-boss-data-20260829-coast.js";
 
 function countPlayerWrites({ moving }) {
   let total = 0;
@@ -36,15 +36,15 @@ test("관리자 보스 상태는 60초 동안 2Hz인 120회만 게시한다", ()
     network: { publishState: async () => { writes += 1; } },
     simulate: enemies => ({ enemies, events: [] }),
   });
-  controller.receiveSnapshot(createBossEncounter(getCoopBossForMap("coast"), {
+  controller.receiveSnapshot(createBossEncounter(getCoopBossForMap("coast-tide-core-cave"), {
     encounterId: "load", partySize: 10, now: 0, authorityUid: "host", authorityEpoch: 1,
   }));
   const remotePlayers = new Map(Array.from({ length: 9 }, (_, index) => [`p${index}`, {
-    uid: `p${index}`, x: 2100 + index, y: 2400, hp: 100, mapId: "coast",
+    uid: `p${index}`, x: 1540 + index, y: 1280, hp: 100, mapId: "coast-tide-core-cave",
   }]));
   for (let frame = 0; frame < 60 * 60; frame += 1) {
     controller.update(1 / 60, {
-      player: { uid: "host", x: 2100, y: 2400, hp: 100, mapId: "coast" },
+      player: { uid: "host", x: 1540, y: 1280, hp: 100, mapId: "coast-tide-core-cave" },
       remotePlayers,
       isBlocked: () => false,
     }, frame * (1000 / 60));

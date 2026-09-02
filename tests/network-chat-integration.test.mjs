@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createNetworkAdapter } from "../src/network.js";
+import { createNetworkAdapter } from "../src/network-20260829-coast.js";
 
 function firebaseModulesFake() {
   const callbacks = new Map();
   const disconnects = [];
+  const queries = [];
   const updates = [];
   const transactionValues = new Map();
   let offlineCalls = 0;
@@ -15,7 +16,11 @@ function firebaseModulesFake() {
     goOffline: () => { offlineCalls += 1; },
     goOnline: () => { onlineCalls += 1; },
     ref: (_db, path) => ({ path, key: path.split("/").at(-1) }),
-    query: (ref, ...constraints) => ({ ...ref, constraints }),
+    query: (ref, ...constraints) => {
+      const query = { ...ref, constraints };
+      queries.push(query);
+      return query;
+    },
     orderByChild: child => ({ type: "orderByChild", child }),
     equalTo: value => ({ type: "equalTo", value }),
     runTransaction: async (ref, update) => {
@@ -46,6 +51,7 @@ function firebaseModulesFake() {
   return {
     callbacks,
     disconnects,
+    queries,
     updates,
     modules: {
       appModule: { getApps: () => [], initializeApp: () => ({}) },
@@ -150,19 +156,34 @@ test("네트워크 게시에는 현재 직업과 해당 장착 무기가 포함�
   }
 });
 
-test("플레이어 listener는 현재 맵 query로 구독하고 맵 변경 때 교체한다", async () => {
+test("플레이어 publish는 검증된 동일 물리 맵으로만 query와 write를 교체한다", async () => {
   const fake = firebaseModulesFake();
   const adapter = await createNetworkAdapter({ playMode: "online", onPlayersChanged: () => {} }, {
     firebaseConfig: { apiKey: "public-id", databaseURL: "https://example.invalid" },
     loadFirebaseModules: async () => fake.modules,
     now: (() => { let value = 0; return () => value += 500; })(),
   });
-  const firstQuery = [...fake.callbacks.keys()].find(key => key === "rooms/public/players");
-  assert.equal(firstQuery, "rooms/public/players");
-  adapter.publish({ x: 1, y: 1, dir: "down", moving: false, name: "맵", color: "#fff" }, "coast");
+  assert.equal(fake.queries.length, 1);
+  assert.equal(fake.queries[0].constraints[1].value, "village");
+
+  const player = { x: 1, y: 1, dir: "down", moving: false, name: "맵", color: "#fff" };
+  for (const invalidMapId of ["coast", "unknown", undefined, null]) {
+    adapter.publish(player, invalidMapId);
+  }
+  adapter.publish({ ...player, x: 2160.1 }, "coast-beach");
+  adapter.publish({ ...player, y: 1800.1 }, "coast-beach");
   await new Promise(resolve => setTimeout(resolve, 0));
-  assert.equal(fake.callbacks.has("rooms/public/players"), true);
-  assert.equal(fake.updates.at(-1).value.mapId, "coast");
+  assert.equal(fake.queries.length, 1);
+  assert.equal(fake.updates.length, 0);
+
+  adapter.publish(player, "coast-beach");
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(fake.queries.length, 2);
+  assert.equal(fake.updates.length, 1);
+  const subscribedMapId = fake.queries.at(-1).constraints[1].value;
+  const writtenMapId = fake.updates.at(-1).value.mapId;
+  assert.equal(subscribedMapId, "coast-beach");
+  assert.equal(writtenMapId, subscribedMapId);
   await adapter.stop();
 });
 

@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PixelRPG } from "../src/game-20260828-coop.js";
-import { createInitialProgress } from "../src/quest-state.js";
+import { PixelRPG } from "../src/game-20260829-coast.js";
+import { completeRegion } from "../src/chapter-progress-20260829-coast.js";
+import { createInitialProgress } from "../src/quest-state-20260829-coast.js";
 
 function fixture({ saveOk = true, claimResults = [true], now = 2000 } = {}) {
   const claimed = [];
@@ -25,6 +26,7 @@ function fixture({ saveOk = true, claimResults = [true], now = 2000 } = {}) {
   game.updateProgressHud = () => {};
   game.updateHud = () => {};
   game.updateBiome = () => {};
+  game.updateChapterUi = () => {};
   game.notify = text => notices.push(text);
   game.coopBossNow = () => now;
   game.processedBossRewardIds = new Set();
@@ -70,4 +72,27 @@ test("24시간이 지난 미수령 보상은 지급하지 않고 만료 처리�
   await value.game.receiveBossRewardClaims({ e: { me: value.claim } });
   assert.equal(value.game.progress.gold, 10);
   assert.deepEqual(value.expired, ["e"]);
+});
+
+test("온라인 숲 기여 보상도 보상 영수증과 해안 개방을 한 번에 저장한다", async () => {
+  const value = fixture();
+  value.claim.encounterId = "forest-online-1";
+  value.claim.bossId = "forest-core-troll";
+  value.claim.exp = 300;
+  value.claim.gold = 200;
+  value.game.mapId = "forest";
+  let saved = null;
+  let saves = 0;
+  value.game.persistProgress = () => {
+    saves += 1;
+    saved = structuredClone(value.game.progress);
+    return true;
+  };
+
+  await value.game.receiveBossRewardClaims({ forest: { me: value.claim } });
+
+  assert.equal(saves, 1);
+  assert.deepEqual(saved.claimedBossRewardIds, ["forest-online-1:me"]);
+  assert.equal(saved.worldProgress.completedRegionIds.includes("forest"), true);
+  assert.equal(saved.worldProgress.unlockedMapIds.includes("coast-beach"), true);
 });

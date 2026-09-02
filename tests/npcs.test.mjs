@@ -1,8 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getNpcsForWorld } from "../src/npc-data.js";
+import { getNpcsForWorld } from "../src/npc-data-20260829-coast.js";
 import { drawNpc, findNearbyNpc } from "../src/npcs.js";
-import { isWorldPositionBlocked } from "../src/world.js";
+import { isWorldPositionBlocked } from "../src/world-20260829-coast.js";
+import {
+  createInitialWorldProgress,
+  rescueSera,
+} from "../src/chapter-progress-20260829-coast.js";
 
 test("아렌·미아·브란은 역할이 분리되어 중앙 마을에만 배치된다", () => {
   const village = getNpcsForWorld("village");
@@ -43,6 +47,42 @@ test("두 NPC 상호작용 범위가 겹치면 더 가까운 NPC를 선택한다
     { id: "mia", x: 40, y: 0, interactionRadius: 100 },
   ];
   assert.equal(findNearbyNpc(npcs, { x: 35, y: 0 }).id, "mia");
+});
+
+test("마리는 지정된 해안 지도에 actorId로 배치되고 에코는 물리 NPC가 아니다", () => {
+  const beach = getNpcsForWorld("coast-beach");
+  const station = getNpcsForWorld("coast-flooded-station");
+
+  assert.deepEqual(
+    beach.map(npc => ({ actorId: npc.actorId, x: npc.x, y: npc.y, role: npc.role })),
+    [{ actorId: "mari", x: 850, y: 620, role: "guide" }],
+  );
+  assert.deepEqual(
+    station.map(npc => ({ actorId: npc.actorId, x: npc.x, y: npc.y, role: npc.role })),
+    [{ actorId: "mari", x: 620, y: 1160, role: "guide" }],
+  );
+  assert.equal(getNpcsForWorld("coast-wreck-bay").some(npc => npc.actorId === "echo"), false);
+  assert.equal(getNpcsForWorld("coast-tide-core-cave").some(npc => npc.actorId === "echo"), false);
+});
+
+test("세라는 구조 완료 뒤에만 조수 코어 동굴의 상호작용 NPC가 된다", () => {
+  const initial = createInitialWorldProgress();
+  const bossDefeated = {
+    ...initial,
+    chapters: {
+      ...initial.chapters,
+      coast: { ...initial.chapters.coast, coopBossDefeated: true },
+    },
+  };
+  const rescued = rescueSera(bossDefeated);
+
+  assert.deepEqual(getNpcsForWorld("coast-tide-core-cave", initial), []);
+  const [sera] = getNpcsForWorld("coast-tide-core-cave", rescued.progress);
+  assert.deepEqual(
+    { actorId: sera.actorId, name: sera.name, role: sera.role, x: sera.x, y: sera.y, interactionRadius: sera.interactionRadius },
+    { actorId: "sera", name: "세라", role: "rescued", x: 1580, y: 720, interactionRadius: 80 },
+  );
+  assert.equal(findNearbyNpc([sera], { x: 1620, y: 720 }), sera);
 });
 
 test("NPC 렌더러는 카메라 기준 좌표에 이름을 그린다", () => {

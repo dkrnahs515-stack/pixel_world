@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import * as enemies from "../src/enemies.js";
+import * as enemies from "../src/enemies-20260829-coast.js";
 
 const { createEnemyInstance, damageEnemy, updateEnemies } = enemies;
 

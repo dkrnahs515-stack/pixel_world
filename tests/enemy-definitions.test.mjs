@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { getEnemyDefinition } from "../src/enemy-definitions.js";
-import { createEnemyInstance } from "../src/enemies.js";
+import { createEnemyInstance } from "../src/enemies-20260829-coast.js";
 
 const expected = {
   "fang-shark": ["송곳니 상어", 25, 50, 100, 20, "fang-charge"],

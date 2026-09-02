@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createInitialProgress } from "../src/quest-state.js";
+import { createInitialProgress } from "../src/quest-state-20260829-coast.js";
 import { WEAPON_ORDER_BY_CLASS } from "../src/weapon-data.js";
 
 async function qaModule() {
@@ -71,6 +71,37 @@ test("QA 소환 후보가 모두 막히면 위치를 만들지 않는다", async
   assert.equal(findQaSpawnPosition({
     player: { x: 100, y: 100, dir: "up" },
     radius: 20,
+    portals: [],
+    isBlocked: () => true,
+  }), null);
+});
+
+test("QA 보스 접근 위치는 보스 아래에서 장애물과 포탈을 피한 첫 공격 가능 후보를 고른다", async () => {
+  const { findQaBossApproachPosition } = await qaModule();
+  const checked = [];
+
+  assert.equal(typeof findQaBossApproachPosition, "function");
+  const position = findQaBossApproachPosition({
+    boss: { x: 100, y: 100 },
+    radius: 14,
+    portals: [{ x: 98, y: 162, w: 4, h: 4 }],
+    isBlocked(x, y, radius) {
+      checked.push([x, y, radius]);
+      return false;
+    },
+  });
+
+  assert.deepEqual(checked.slice(0, 2), [[100, 164, 14], [52, 164, 14]]);
+  assert.deepEqual(position, { x: 52, y: 164 });
+});
+
+test("QA 보스 접근 후보가 모두 막히면 위치를 만들지 않는다", async () => {
+  const { findQaBossApproachPosition } = await qaModule();
+
+  assert.equal(typeof findQaBossApproachPosition, "function");
+  assert.equal(findQaBossApproachPosition({
+    boss: { x: 100, y: 100 },
+    radius: 14,
     portals: [],
     isBlocked: () => true,
   }), null);

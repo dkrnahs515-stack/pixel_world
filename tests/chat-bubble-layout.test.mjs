@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { layoutChatBubble, worldToScreen, wrapChatText } from "../src/chat-bubble-layout.js";
+import { layoutChatBubble, worldToScreen, wrapChatText } from "../src/chat-bubble-layout-20260829-coast.js";
 
 const graphemes = text => typeof Intl.Segmenter === "function"
   ? [...new Intl.Segmenter("ko", { granularity: "grapheme" }).segment(text)].map(part => part.segment)

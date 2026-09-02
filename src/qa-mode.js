@@ -86,3 +86,22 @@ export function findQaSpawnPosition({ player, radius, isBlocked, portals = [] })
   }
   return null;
 }
+
+export function findQaBossApproachPosition({ boss, radius, isBlocked, portals = [] }) {
+  if (!Number.isFinite(boss?.x) || !Number.isFinite(boss?.y)) return null;
+  const offsets = [
+    { x: 0, y: 64 },
+    { x: -48, y: 64 },
+    { x: 48, y: 64 },
+    { x: 0, y: 76 },
+  ];
+
+  for (const offset of offsets) {
+    const x = boss.x + offset.x;
+    const y = boss.y + offset.y;
+    if (isBlocked(x, y, radius)) continue;
+    if (overlapsPortal(x, y, radius, portals)) continue;
+    return { x, y };
+  }
+  return null;
+}

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PixelRPG } from "../src/game-20260828-coop.js";
+import { PixelRPG } from "../src/game-20260829-coast.js";
 
 function node() {
   return { hidden: false, textContent: "", className: "", style: {}, classList: { add() {}, remove() {} } };
@@ -50,7 +50,7 @@ test("온라인 세션은 온라인 전용 UI를 표시한다", () => {
   assert.equal(game.ui.networkBadge.hidden, false);
 });
 
-test("연결 해제 fallback은 현재 플레이 상태를 유지하고 온라인 자원만 한 번 정리한다", async () => {
+test("연결 해제 fallback은 현재 플레이 상태를 유지하고 협동 보스를 새 로컬 보스로 교체한다", async () => {
   const { game } = fixture();
   let stops = 0;
   let clears = 0;
@@ -62,6 +62,9 @@ test("연결 해제 fallback은 현재 플레이 상태를 유지하고 온라�
   game.sessionMode = "online";
   game.network = { stop: async () => { stops += 1; } };
   game.coopBossController = { clear: () => { clears += 1; } };
+  const local = { setMap: async () => true, clear() {} };
+  game.createLocalBossController = () => local;
+  game.mapId = "forest";
   game.notify = text => notices.push(text);
   assert.equal(await game.fallbackToSolo("connection_lost"), true);
   assert.equal(await game.fallbackToSolo("connection_lost"), false);
@@ -70,7 +73,53 @@ test("연결 해제 fallback은 현재 플레이 상태를 유지하고 온라�
   assert.equal(game.player, player);
   assert.equal(game.progress, progress);
   assert.equal(game.sessionMode, "solo");
+  assert.equal(game.coopBossController, local);
   assert.match(notices[0], /솔로 모드로 전환/);
+});
+
+test("fallback immediately installs a fresh local boss even when network stop never settles", async () => {
+  const { game } = fixture();
+  const order = [];
+  game.mapId = "forest";
+  game.network = { stop: () => new Promise(() => {}) };
+  game.coopBossController = { clear: () => order.push("clear-coop") };
+  game.setSessionMode = mode => { order.push(`mode-${mode}`); game.sessionMode = mode; };
+  const local = {
+    snapshot: null,
+    async setMap(mapId) {
+      order.push(`local-${mapId}`);
+      this.snapshot = { hp: 200, maxHp: 200 };
+      return true;
+    },
+    clear() {},
+  };
+  game.createLocalBossController = () => local;
+  game.updateCoopBossHud = () => {};
+  game.notify = () => {};
+
+  let settled = false;
+  game.fallbackToSolo("connection_lost").then(value => { settled = value; });
+  for (let turn = 0; turn < 4; turn += 1) await Promise.resolve();
+
+  assert.equal(settled, true);
+  assert.equal(game.sessionMode, "solo");
+  assert.equal(game.coopBossController, local);
+  assert.deepEqual(local.snapshot, { hp: 200, maxHp: 200 });
+  assert.deepEqual(order, ["clear-coop", "mode-solo", "local-forest"]);
+});
+
+test("fallback contains a rejected best-effort network stop after the local mode transition", async () => {
+  const { game } = fixture();
+  game.mapId = "forest";
+  game.network = { stop: async () => { throw new Error("offline"); } };
+  game.coopBossController = { clear() {} };
+  game.createLocalBossController = () => ({ snapshot: { hp: 200, maxHp: 200 }, async setMap() { return true; }, clear() {} });
+  game.updateCoopBossHud = () => {};
+  game.notify = () => {};
+
+  await assert.doesNotReject(game.fallbackToSolo("connection_lost"));
+  assert.equal(game.sessionMode, "solo");
+  assert.deepEqual(game.coopBossController.snapshot, { hp: 200, maxHp: 200 });
 });
 
 test("살아 있는 협동 보스와 처치 후 재등장 시간을 HUD에 표시한다", () => {

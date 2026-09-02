@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import * as gameModule from "../src/game-20260828-coop.js";
-import { getNpcsForWorld } from "../src/npc-data.js";
-import { createInitialProgress } from "../src/quest-state.js";
+import * as gameModule from "../src/game-20260829-coast.js";
+import { getNpcsForWorld } from "../src/npc-data-20260829-coast.js";
+import { createInitialProgress } from "../src/quest-state-20260829-coast.js";
 
 const { PixelRPG } = gameModule;
 
@@ -520,6 +520,38 @@ test("인벤토리가 열려 있으면 이동·공격·채팅·단축 물약 입
   assert.equal(game.useItem("hpPotion"), false);
   assert.equal(game.progress.inventory.hpPotion, 1);
   assert.equal(storage.writes.length, 0);
+});
+
+test("통신 기록을 열면 입력을 비우고 게임 상호작용을 막았다가 안전하게 복구한다", () => {
+  const { game } = shopHarness({ inventory: { hpPotion: 1 } });
+  let communicationLogOpen = false;
+  game.ui.isCommunicationLogOpen = () => communicationLogOpen;
+  game.ui.openCommunicationLogOverlay = () => { communicationLogOpen = true; };
+  game.ui.closeCommunicationLogOverlay = () => { communicationLogOpen = false; };
+  game.keys.add("ArrowRight");
+  game.player.moving = true;
+  game.attackState = { kind: "basic" };
+  game.basicCooldown = 0;
+  game.strongCooldown = 0;
+  game.chat = { open() { return true; } };
+
+  assert.equal(game.openCommunicationLog(), true);
+  assert.equal(game.isInteractionOpen(), true);
+  assert.equal(game.inputEnabled, false);
+  assert.equal(game.keys.size, 0);
+  assert.equal(game.player.moving, false);
+  assert.equal(game.attackState, null);
+  assert.equal(game.openInventory(), false);
+  assert.equal(game.openNpcInteraction(), false);
+  assert.equal(game.openChatInput(), false);
+  game.tryAttack("basic");
+  assert.equal(game.attackState, null);
+
+  assert.equal(game.closeCommunicationLog(), true);
+  assert.equal(game.isInteractionOpen(), false);
+  assert.equal(game.inputEnabled, true);
+  assert.equal(game.keys.size, 0);
+  assert.equal(game.player.moving, false);
 });
 
 test("Escape 입력은 나가기보다 인벤토리를 먼저 닫는다", () => {

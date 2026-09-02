@@ -58,13 +58,26 @@ button, input { font: inherit; }
 .quest-tracker small { display: block; color: #fde68a; font-size: 9px; font-weight: 900; letter-spacing: .16em; }
 .quest-tracker strong { display: block; margin-top: 3px; font-size: 14px; }
 .quest-tracker span { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
+.quest-tracker .chapter-objective { color: #bae6fd; font-size: 11px; font-weight: 800; }
+.communication-log-button { pointer-events: auto; width: 100%; margin-top: 9px; padding: 7px 9px; border: 1px solid rgba(125,211,252,.36); border-radius: 8px; background: rgba(8,47,73,.48); color: #e0f2fe; cursor: pointer; font-size: 11px; font-weight: 900; }
+.communication-log-button:hover { background: rgba(14,116,144,.52); }
 .npc-prompt { position: absolute; left: 50%; bottom: 112px; z-index: 12; display: flex; align-items: center; gap: 8px; transform: translateX(-50%); padding: 9px 13px; border: 1px solid rgba(253,230,138,.42); border-radius: 999px; background: rgba(15,23,42,.92); color: #fef3c7; font-size: 12px; font-weight: 900; }
 .npc-prompt kbd { border-color: rgba(253,230,138,.55); background: #78350f; }
 .dialogue-overlay { pointer-events: auto; position: absolute; inset: 0; z-index: 35; display: grid; place-items: center; padding: 20px; background: rgba(5,9,17,.78); backdrop-filter: blur(5px); }
 .dialogue-card { position: relative; }
 .dialogue-card .modal-description { min-height: 44px; white-space: pre-line; }
+.dialogue-actions { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; margin-top: 16px; }
+.dialogue-actions .primary-button { width: 100%; }
+.dialogue-choice-button { min-width: 0; }
 .dialogue-close { position: absolute; top: 12px; right: 14px; width: 34px; height: 34px; padding: 0; border: 1px solid rgba(255,255,255,.18); border-radius: 9px; background: rgba(51,65,85,.68); color: #e2e8f0; cursor: pointer; font-size: 24px; line-height: 1; }
 .dialogue-close:hover { background: rgba(71,85,105,.9); }
+.communication-log-overlay { pointer-events: auto; position: absolute; inset: 0; z-index: 34; display: grid; place-items: center; padding: 20px; background: rgba(5,9,17,.78); backdrop-filter: blur(5px); }
+.communication-log-card { position: relative; width: min(100%,620px); max-height: calc(100vh - 40px); overflow: auto; text-align: left; }
+.communication-log-card .modal-emblem { margin-left: 0; }
+.communication-log-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin: 16px 0 0; padding: 0; list-style: none; }
+.communication-log-entry, .communication-log-empty { padding: 11px; border: 1px solid rgba(125,211,252,.28); border-radius: 10px; background: rgba(8,47,73,.26); color: #e0f2fe; font-size: 12px; line-height: 1.45; }
+.communication-log-entry small { display: block; margin-bottom: 4px; color: #7dd3fc; font-weight: 900; }
+.communication-log-empty { grid-column: 1 / -1; color: var(--muted); }
 .shop-overlay { pointer-events: auto; position: absolute; inset: 0; z-index: 36; display: grid; place-items: center; padding: 20px; background: rgba(5,9,17,.8); backdrop-filter: blur(5px); }
 .shop-card { position: relative; width: min(100%,560px); text-align: left; }
 .shop-card .modal-emblem { margin-left: 0; }
@@ -282,6 +295,8 @@ kbd { min-width: 23px; padding: 2px 5px; border: 1px solid rgba(255,255,255,.35)
   .class-card-grid { grid-template-columns: 1fr; }
   .performance-panel { display: none; }
   .quest-tracker { top: var(--player-panel-stack-top); left: 14px; right: auto; width: calc(100% - 28px); }
+  .dialogue-actions { grid-template-columns: 1fr; }
+  .communication-log-list { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
   .class-card { transition: none; }

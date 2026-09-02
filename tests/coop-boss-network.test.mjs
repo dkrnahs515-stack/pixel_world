@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createCoopBossNetwork } from "../src/coop-boss-network.js";
-import { createBossEncounter } from "../src/coop-boss-state.js";
-import { getCoopBossForMap } from "../src/coop-boss-data.js";
+import { createCoopBossNetwork } from "../src/coop-boss-network-20260829-coast.js";
+import { createBossEncounter } from "../src/coop-boss-state-20260829-coast.js";
+import { getCoopBossForMap } from "../src/coop-boss-data-20260829-coast.js";
 
 function fixture() {
   const listenedPaths = [];
@@ -42,33 +42,33 @@ function fixture() {
 test("setMap은 이전 listener를 해제하고 현재 지역 보스 경로만 구독한다", async () => {
   const fake = fixture();
   const adapter = createCoopBossNetwork(fake.options);
-  await adapter.setMap("coast");
+  await adapter.setMap("coast-tide-core-cave");
   await adapter.setMap("forest");
   assert.deepEqual(fake.listenedPaths.filter(path => path.endsWith("/state")), [
-    "rooms/public/bosses/coast/state",
+    "rooms/public/bosses/coast-tide-core-cave/state",
     "rooms/public/bosses/forest/state",
   ]);
-  assert.equal(fake.unsubscribedPaths.filter(path => path.includes("/coast/")).length, 4);
+  assert.equal(fake.unsubscribedPaths.filter(path => path.includes("/coast-tide-core-cave/")).length, 4);
 });
 
 test("공격은 자기 UID와 증가 sequence 경로에만 기록한다", async () => {
   const fake = fixture();
   const adapter = createCoopBossNetwork(fake.options);
-  await adapter.setMap("coast");
+  await adapter.setMap("coast-tide-core-cave");
   await adapter.sendAttack({ sequence: 7, encounterId: "e", bossId: "coast-core-shark" });
-  assert.equal(fake.writes.at(-1).path, "rooms/public/bosses/coast/attacks/me/7");
+  assert.equal(fake.writes.at(-1).path, "rooms/public/bosses/coast-tide-core-cave/attacks/me/7");
   await adapter.acknowledgeAttack("other", 7);
-  assert.equal(fake.removes.at(-1), "rooms/public/bosses/coast/attacks/other/7");
+  assert.equal(fake.removes.at(-1), "rooms/public/bosses/coast-tide-core-cave/attacks/other/7");
 });
 
 test("만료된 lease만 transaction으로 인수하고 epoch를 올린다", async () => {
   const fake = fixture();
-  const current = createBossEncounter(getCoopBossForMap("coast"), {
+  const current = createBossEncounter(getCoopBossForMap("coast-tide-core-cave"), {
     encounterId: "e", partySize: 2, now: 0, authorityUid: "host", authorityEpoch: 3,
   });
-  fake.values.set("rooms/public/bosses/coast/state", current);
+  fake.values.set("rooms/public/bosses/coast-tide-core-cave/state", current);
   const adapter = createCoopBossNetwork(fake.options);
-  await adapter.setMap("coast");
+  await adapter.setMap("coast-tide-core-cave");
   const result = await adapter.tryAcquireAuthority();
   assert.equal(result.ok, true);
   assert.equal(result.encounter.authorityUid, "me");
@@ -84,46 +84,118 @@ test("stop은 보스 관련 listener와 timer를 한 번만 정리한다", async
   assert.equal(fake.unsubscribedPaths.length, 4);
 });
 
-test("처치 후 180초가 되어야 새 encounter가 생성된다", async () => {
+test("처치 후 180초와 reward claim 조정이 모두 끝나야 새 encounter가 생성된다", async () => {
   let timestamp = 180999;
   const fake = fixture();
   fake.options.now = () => timestamp;
-  fake.values.set("rooms/public/bosses/coast/state", {
-    ...createBossEncounter(getCoopBossForMap("coast"), {
+  fake.values.set("rooms/public/bosses/coast-tide-core-cave/state", {
+    ...createBossEncounter(getCoopBossForMap("coast-tide-core-cave"), {
       encounterId: "old", partySize: 1, now: 0, authorityUid: "host", authorityEpoch: 1,
     }),
     status: "defeated", hp: 0, defeatedAt: 1000, respawnAt: 181000,
   });
   const adapter = createCoopBossNetwork(fake.options);
-  await adapter.setMap("coast");
+  await adapter.setMap("coast-tide-core-cave");
   assert.equal(await adapter.ensureEncounter({ partySize: 1 }), null);
   timestamp = 181000;
   assert.equal(await adapter.ensureEncounter({ partySize: 4 }), null);
   const acquired = await adapter.tryAcquireAuthority();
   assert.equal(acquired.ok, true);
-  const spawned = await adapter.ensureEncounter({ partySize: 4 });
+  assert.equal(await adapter.ensureEncounter({ partySize: 4 }), null);
+  const spawned = await adapter.ensureEncounter({ partySize: 4, reconciledEncounterId: "old" });
   assert.notEqual(spawned.encounterId, "old");
   assert.equal(spawned.authorityEpoch, acquired.encounter.authorityEpoch);
   assert.equal(spawned.partySize, 4);
 });
 
+test("배포 rules에서 기존 immutable claim은 성공으로 보고 누락 claim만 생성한다", async () => {
+  const fake = fixture();
+  const existingPath = "rooms/public/bosses/coast-tide-core-cave/rewardClaims/e/earlier";
+  const missingPath = "rooms/public/bosses/coast-tide-core-cave/rewardClaims/e/finisher";
+  const immutableClaim = {
+    encounterId: "e", bossId: "coast-core-shark", uid: "earlier",
+    exp: 150, gold: 100, eligible: true, claimedAt: null, expiresAt: 86_402_000,
+  };
+  fake.values.set(existingPath, { ...immutableClaim, claimedAt: 8_000 });
+  fake.options.dbModule.runTransaction = async (ref, update) => {
+    const current = fake.values.get(ref.path) ?? null;
+    const next = update(current);
+    if (current !== null && next !== undefined) {
+      throw new Error("PERMISSION_DENIED: authority cannot rewrite an existing reward claim");
+    }
+    if (next === undefined) return { committed: false, snapshot: { val: () => current } };
+    fake.values.set(ref.path, next);
+    return { committed: true, snapshot: { val: () => next } };
+  };
+  const adapter = createCoopBossNetwork(fake.options);
+  await adapter.setMap("coast-tide-core-cave");
+
+  const result = await adapter.writeRewardClaims("e", {
+    earlier: immutableClaim,
+    finisher: { ...immutableClaim, uid: "finisher" },
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.failedUids, []);
+  assert.equal(fake.values.get(existingPath).claimedAt, 8_000);
+  assert.deepEqual(fake.values.get(missingPath), { ...immutableClaim, uid: "finisher" });
+});
+
 test("cleanup은 24시간 만료 claim과 10초 지난 처리 이벤트만 삭제한다", async () => {
   const fake = fixture();
   fake.options.now = () => 100000;
-  fake.values.set("rooms/public/bosses/coast/rewardClaims", {
+  fake.values.set("rooms/public/bosses/coast-tide-core-cave/rewardClaims", {
     old: { me: { expiresAt: 99999 } }, keep: { me: { expiresAt: 100001 } },
   });
-  fake.values.set("rooms/public/bosses/coast/attacks", {
+  fake.values.set("rooms/public/bosses/coast-tide-core-cave/attacks", {
     a: { 1: { createdAt: 89999 }, 2: { createdAt: 90001 } },
   });
-  fake.values.set("rooms/public/bosses/coast/playerDamage", {
+  fake.values.set("rooms/public/bosses/coast-tide-core-cave/playerDamage", {
     me: { old: { createdAt: 89999 }, keep: { createdAt: 90001 } },
   });
   const adapter = createCoopBossNetwork(fake.options);
-  await adapter.setMap("coast");
+  await adapter.setMap("coast-tide-core-cave");
   await adapter.cleanupExpired();
-  assert.ok(fake.removes.includes("rooms/public/bosses/coast/rewardClaims/old/me"));
-  assert.ok(fake.removes.includes("rooms/public/bosses/coast/attacks/a/1"));
-  assert.ok(fake.removes.includes("rooms/public/bosses/coast/playerDamage/me/old"));
+  assert.ok(fake.removes.includes("rooms/public/bosses/coast-tide-core-cave/rewardClaims/old/me"));
+  assert.ok(fake.removes.includes("rooms/public/bosses/coast-tide-core-cave/attacks/a/1"));
+  assert.ok(fake.removes.includes("rooms/public/bosses/coast-tide-core-cave/playerDamage/me/old"));
   assert.equal(fake.removes.some(path => path.endsWith("/keep") || path.endsWith("/2")), false);
+});
+
+test("부분 실패한 contributor claim 쓰기는 나머지를 계속 기록하고 재시도로 빈 claim만 보완한다", async () => {
+  const fake = fixture();
+  const originalTransaction = fake.options.dbModule.runTransaction;
+  let failFinisher = true;
+  fake.options.dbModule.runTransaction = async (ref, update) => {
+    if (failFinisher && ref.path.endsWith("/rewardClaims/e/finisher")) {
+      throw new Error("simulated claim failure");
+    }
+    return originalTransaction(ref, update);
+  };
+  const adapter = createCoopBossNetwork(fake.options);
+  await adapter.setMap("coast-tide-core-cave");
+  const claims = {
+    earlier: { encounterId: "e", uid: "earlier", claimedAt: null },
+    finisher: { encounterId: "e", uid: "finisher", claimedAt: null },
+    later: { encounterId: "e", uid: "later", claimedAt: null },
+  };
+
+  const partial = await adapter.writeRewardClaims("e", claims);
+
+  assert.equal(partial.ok, false);
+  assert.deepEqual(partial.failedUids, ["finisher"]);
+  assert.equal(fake.values.has("rooms/public/bosses/coast-tide-core-cave/rewardClaims/e/earlier"), true);
+  assert.equal(fake.values.has("rooms/public/bosses/coast-tide-core-cave/rewardClaims/e/later"), true);
+  assert.equal(fake.values.has("rooms/public/bosses/coast-tide-core-cave/rewardClaims/e/finisher"), false);
+
+  fake.values.set("rooms/public/bosses/coast-tide-core-cave/rewardClaims/e/earlier", {
+    ...claims.earlier,
+    claimedAt: 8_000,
+  });
+  failFinisher = false;
+  const retried = await adapter.writeRewardClaims("e", claims);
+
+  assert.equal(retried.ok, true);
+  assert.equal(fake.values.get("rooms/public/bosses/coast-tide-core-cave/rewardClaims/e/earlier").claimedAt, 8_000);
+  assert.deepEqual(fake.values.get("rooms/public/bosses/coast-tide-core-cave/rewardClaims/e/finisher"), claims.finisher);
 });

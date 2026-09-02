@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createFirebaseChatAdapter, createOfflineChatAdapter } from "../src/chat-network.js";
+import { createFirebaseChatAdapter, createOfflineChatAdapter } from "../src/chat-network-20260829-coast.js";
 
 function validMessages(count) {
   return Object.fromEntries(Array.from({ length: count }, (_, index) => [

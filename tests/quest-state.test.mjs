@@ -5,7 +5,7 @@ import {
   completeAdventureQuest,
   createInitialProgress,
   recordAdventureKill,
-} from "../src/quest-state.js";
+} from "../src/quest-state-20260829-coast.js";
 
 test("초기 진행 데이터는 공용 물약과 직업별 기본 장비를 가진다", () => {
   const initial = createInitialProgress();
@@ -15,6 +15,31 @@ test("초기 진행 데이터는 공용 물약과 직업별 기본 장비를 가
     archer: { ownedWeaponIds: ["training-bow"], equippedWeaponId: "training-bow" },
     mage: { ownedWeaponIds: ["training-staff"], equippedWeaponId: "training-staff" },
   });
+});
+
+test("초기 진행은 직렬화 가능한 월드 챕터 상태를 만들고 퀘스트 전이마다 이를 독립 복제한다", () => {
+  const initial = createInitialProgress();
+  const accepted = acceptAdventureQuest(initial);
+
+  assert.deepEqual(initial.worldProgress, {
+    unlockedRegionIds: ["village", "forest"],
+    completedRegionIds: [],
+    unlockedMapIds: ["village", "forest"],
+    chapters: {
+      coast: {
+        repairedDeviceIds: [],
+        collectedRecordIds: [],
+        supportChoice: null,
+        seraRescued: false,
+        coopBossDefeated: false,
+        coreFragmentObtained: false,
+        shortcutUnlocked: false,
+      },
+    },
+  });
+  assert.notStrictEqual(accepted.worldProgress, initial.worldProgress);
+  assert.notStrictEqual(accepted.worldProgress.chapters, initial.worldProgress.chapters);
+  assert.notStrictEqual(accepted.worldProgress.chapters.coast, initial.worldProgress.chapters.coast);
 });
 
 test("퀘스트는 수락 후 승인된 슬라임 세 마리로 보고 가능 상태가 된다", () => {
@@ -102,6 +127,22 @@ test("잘못된 상태에서의 전이는 보상 없이 복제된 상태를 반�
       mage: { ownedWeaponIds: ["training-staff"], equippedWeaponId: "training-staff" },
     },
     claimedBossRewardIds: [],
+    worldProgress: {
+      unlockedRegionIds: ["village", "forest"],
+      completedRegionIds: [],
+      unlockedMapIds: ["village", "forest"],
+      chapters: {
+        coast: {
+          repairedDeviceIds: [],
+          collectedRecordIds: [],
+          supportChoice: null,
+          seraRescued: false,
+          coopBossDefeated: false,
+          coreFragmentObtained: false,
+          shortcutUnlocked: false,
+        },
+      },
+    },
     completedQuests: [],
     quests: { adventureStart: { status: "completed", progress: 3 } },
   });

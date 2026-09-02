@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PixelRPG, interactionKeyAction } from "../src/game-20260828-coop.js";
+import { PixelRPG, interactionKeyAction } from "../src/game-20260829-coast.js";
 import { createCombatStatusEffects } from "../src/player-combat.js";
-import { createInitialProgress } from "../src/quest-state.js";
+import { createInitialProgress } from "../src/quest-state-20260829-coast.js";
 import { WEAPON_ORDER_BY_CLASS } from "../src/weapon-data.js";
 
 function fakeNode(overrides = {}) {
@@ -103,6 +103,7 @@ function constructedQaGame() {
   const qaMonsterButton = eventNode(documentRef, { dataset: { qaMonster: "fang-shark" } });
   const qaWeaponButton = eventNode(documentRef, { dataset: { qaWeapons: "prepare" } });
   const qaBlacksmithButton = eventNode(documentRef, { dataset: { qaBlacksmith: "travel" } });
+  const qaBossButton = eventNode(documentRef, { dataset: { qaBoss: "approach" } });
   const elements = {
     qaEnabled: true,
     canvas,
@@ -131,6 +132,7 @@ function constructedQaGame() {
     qaMonsterButtons: [qaMonsterButton],
     qaWeaponButton,
     qaBlacksmithButton,
+    qaBossButton,
     hpPotionSlot: eventNode(documentRef, { dataset: { code: "Digit1" } }),
     mpPotionSlot: eventNode(documentRef, { dataset: { code: "Digit2" } }),
     chatPanel: eventNode(documentRef),
@@ -160,6 +162,7 @@ function constructedQaGame() {
     qaMonsterButton,
     qaWeaponButton,
     qaBlacksmithButton,
+    qaBossButton,
   };
 }
 
@@ -284,6 +287,7 @@ test("QA 패널의 Tab 포커스는 지역·몬스터·장비·브란 이동 버
     qaMonsterButton,
     qaWeaponButton,
     qaBlacksmithButton,
+    qaBossButton,
   } = constructedQaGame();
   elements.qaButton.click();
   let prevented = false;
@@ -316,6 +320,13 @@ test("QA 패널의 Tab 포커스는 지역·몬스터·장비·브란 이동 버
     preventDefault() {},
   });
   assert.equal(documentRef.activeElement, qaBlacksmithButton);
+
+  elements.qaOverlay.dispatch("keydown", {
+    code: "Tab",
+    shiftKey: false,
+    preventDefault() {},
+  });
+  assert.equal(documentRef.activeElement, qaBossButton);
 });
 
 test("실제 QA 브란 이동 버튼은 플레이어를 브란 상호작용 거리로 보내고 안내를 표시한다", () => {
@@ -363,7 +374,7 @@ test("QA 장비 준비는 Lv.30·5000G와 최대 HP·MP를 반영하고 한 번 
   assert.equal(game.ui.goldText.textContent, "5000 G");
   assert.equal(game.ui.qaOverlay.hidden, true);
   assert.equal(storage.writes.length, 1);
-  assert.equal(storage.writes[0].value.version, 5);
+  assert.equal(storage.writes[0].value.version, 6);
   assert.equal(game.lastNotice, "검사 7종 무기 준비 완료 · Lv.30 · 5000 G");
   delete globalThis.localStorage;
 });
@@ -426,6 +437,69 @@ test("QA 브란 이동은 열린 패널에서만 작동하며 진행 데이터�
   delete globalThis.localStorage;
 });
 
+test("실제 QA 보스 이동 버튼은 현재 지역 보스 아래로 이동하고 전투 입력을 초기화한다", () => {
+  const { game, elements } = constructedQaGame();
+  game.mapId = "forest";
+  game.player.x = 2160;
+  game.player.y = 2500;
+  game.keys.add("ArrowUp");
+  game.player.moving = true;
+  game.attackState = { kind: "basic" };
+  game.projectiles = [{ id: "in-flight" }];
+  elements.qaButton.click();
+
+  elements.qaBossButton.click();
+
+  assert.deepEqual({
+    x: game.player.x,
+    y: game.player.y,
+    prevX: game.player.prevX,
+    prevY: game.player.prevY,
+    dir: game.player.dir,
+  }, { x: 2160, y: 1464, prevX: 2160, prevY: 1464, dir: "up" });
+  assert.equal(game.keys.size, 0);
+  assert.equal(game.player.moving, false);
+  assert.equal(game.attackState, null);
+  assert.deepEqual(game.projectiles, []);
+  assert.equal(elements.qaOverlay.hidden, true);
+  assert.equal(game.inputEnabled, true);
+});
+
+test("QA 보스 이동은 열린 QA 패널에서만 작동하고 진행·저장·보스 상태를 바꾸지 않는다", () => {
+  const game = qaGame();
+  const storage = memoryStorage();
+  globalThis.localStorage = storage;
+  game.mapId = "forest";
+  const progressBefore = structuredClone(game.progress);
+  const bossController = { snapshot: { bossId: "forest-core-troll", hp: 200 } };
+  game.coopBossController = bossController;
+
+  game.ui.qaOverlay.hidden = true;
+  assert.equal(game.qaApproachBoss(), false);
+  game.ui.qaOverlay.hidden = false;
+  game.qaEnabled = false;
+  assert.equal(game.qaApproachBoss(), false);
+  game.qaEnabled = true;
+  assert.equal(game.qaApproachBoss(), true);
+
+  assert.deepEqual(game.progress, progressBefore);
+  assert.deepEqual(bossController.snapshot, { bossId: "forest-core-troll", hp: 200 });
+  assert.equal(storage.writes.length, 0);
+  delete globalThis.localStorage;
+});
+
+test("보스가 없는 지역이나 안전한 접근 위치가 없으면 QA 보스 이동은 현재 위치를 유지한다", () => {
+  const game = qaGame();
+  const before = { x: game.player.x, y: game.player.y };
+
+  assert.equal(game.qaApproachBoss(), false);
+  game.mapId = "forest";
+  game.resolveQaBossApproachPosition = () => null;
+  assert.equal(game.qaApproachBoss(), false);
+  assert.deepEqual({ x: game.player.x, y: game.player.y }, before);
+  assert.equal(game.ui.qaOverlay.hidden, false);
+});
+
 test("QA 지역 이동은 선택한 지역의 안전한 기본 위치와 전체 로스터를 불러온다", () => {
   const game = qaGame();
 
@@ -444,8 +518,8 @@ test("QA 몬스터 소환은 고유 지역으로 이동한 뒤 플레이어 앞 
   assert.equal(typeof game.qaSpawnMonster, "function");
   const enemy = game.qaSpawnMonster("fang-shark");
 
-  assert.equal(game.mapId, "coast");
-  assert.equal(game.enemies.length, 15);
+  assert.equal(game.mapId, "coast-beach");
+  assert.equal(game.enemies.length, 5);
   assert.equal(enemy, game.enemies.at(-1));
   assert.deepEqual({
     id: enemy.id,
@@ -455,12 +529,12 @@ test("QA 몬스터 소환은 고유 지역으로 이동한 뒤 플레이어 앞 
     x: enemy.x,
     y: enemy.y,
   }, {
-    id: "coast-qa-1",
+    id: "coast-beach-qa-1",
     kind: "fang-shark",
     hp: 25,
     maxHp: 25,
-    x: 2160,
-    y: 480,
+    x: 1080,
+    y: 460,
   });
   assert.equal(game.ui.qaOverlay.hidden, true);
   assert.equal(game.inputEnabled, true);
@@ -494,7 +568,7 @@ test("다른 지역 QA 소환의 안전 위치가 없으면 현재 지역과 전
   assert.equal(game.ui.qaOverlay.hidden, false);
 });
 
-test("QA 소환 몬스터 처치 보상은 일반 진행 데이터에 지급되고 v5 저장소에 기록된다", () => {
+test("QA 소환 몬스터 처치 보상은 일반 진행 데이터에 지급되고 v6 저장소에 기록된다", () => {
   const game = qaGame();
   const storage = memoryStorage();
   globalThis.localStorage = storage;
@@ -508,7 +582,7 @@ test("QA 소환 몬스터 처치 보상은 일반 진행 데이터에 지급되�
   assert.equal(game.progress.exp, 20);
   assert.equal(game.progress.gold, 15);
   assert.equal(storage.writes.length, 1);
-  assert.equal(storage.writes[0].value.version, 5);
+  assert.equal(storage.writes[0].value.version, 6);
   assert.equal(storage.writes[0].value.exp, 20);
   assert.equal(storage.writes[0].value.gold, 15);
   delete globalThis.localStorage;

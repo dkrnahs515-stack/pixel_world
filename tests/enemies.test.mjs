@@ -9,7 +9,7 @@ import {
   damageEnemy,
   formatHealthValue,
   updateEnemies,
-} from "../src/enemies.js";
+} from "../src/enemies-20260829-coast.js";
 
 test("the safe village never creates enemies", () => {
   assert.deepEqual(createEnemies("village"), []);
@@ -18,7 +18,9 @@ test("the safe village never creates enemies", () => {
 test("each exterior region creates its approved enemy roster", () => {
   const volcano = createEnemies("volcano");
   const forest = createEnemies("forest");
-  const coast = createEnemies("coast");
+  const coast = [
+    "coast-beach", "coast-wreck-bay", "coast-flooded-station", "coast-tide-core-cave",
+  ].flatMap(mapId => createEnemies(mapId));
 
   assert.equal(volcano.length, 13);
   assert.equal(forest.length, 16);
@@ -39,7 +41,7 @@ test("each exterior region creates its approved enemy roster", () => {
 test("enemy species receive distinct combat stats", () => {
   const fire = createEnemies("volcano")[0];
   const boar = createEnemies("forest").find(enemy => enemy.kind === "boar");
-  const crab = createEnemies("coast").find(enemy => enemy.kind === "crab");
+  const crab = createEnemies("coast-beach").find(enemy => enemy.kind === "crab");
   assert.deepEqual({ hp: fire.hp, damage: fire.contactDamage }, { hp: 4, damage: 12 });
   assert.deepEqual({ hp: boar.hp, speed: boar.speed }, { hp: 6, speed: 112 });
   assert.deepEqual({ hp: crab.hp, radius: crab.radius }, { hp: 5, radius: 20 });
@@ -150,7 +152,7 @@ test("더 짧은 재피격과 잘못된 지속시간은 남은 경직을 줄이�
 });
 
 test("blocked terrain prevents enemy knockback", () => {
-  const enemy = createEnemies("coast")[0];
+  const enemy = createEnemies("coast-beach")[0];
   damageEnemy(enemy, 1, { x: 1, y: 0 }, 230);
   const { enemies: [updated] } = updateEnemies([enemy], { x: enemy.x + 100, y: enemy.y }, 0.1, { isBlocked: () => true });
   assert.equal(updated.x, enemy.homeX);
@@ -158,7 +160,7 @@ test("blocked terrain prevents enemy knockback", () => {
 });
 
 test("송곳니 상어는 막힌 돌진을 안전하게 끝내고 이벤트를 만들지 않는다", () => {
-  const shark = createEnemies("coast").find(enemy => enemy.kind === "fang-shark");
+  const shark = createEnemies("coast-wreck-bay").find(enemy => enemy.kind === "fang-shark");
   shark.behaviorState = "attack";
   shark.lockedDirection = { x: 1, y: 0 };
   const simulation = updateEnemies(
@@ -202,7 +204,7 @@ test("비어 있는 대각선 돌진은 두 좌표를 함께 이동한다", () =
 });
 
 test("알 수 없는 행동은 기존 추적 이동으로 폴백한다", () => {
-  const enemy = createEnemies("coast")[0];
+  const enemy = createEnemies("coast-beach")[0];
   enemy.behavior = "unknown-behavior";
   const startX = enemy.x;
   const simulation = updateEnemies(

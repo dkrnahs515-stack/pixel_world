@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as progression from "../src/player-progression.js";
-import { getCoopBossForMap } from "../src/coop-boss-data.js";
+import { getCoopBossForMap } from "../src/coop-boss-data-20260829-coast.js";
 
 const {
   grantProgressReward,
@@ -19,7 +19,7 @@ test("다음 레벨 필요 EXP는 현재 레벨의 100배다", () => {
 test("협동 보스 보상은 정의된 EXP와 Gold를 그대로 적용한다", () => {
   const result = progression.grantCoopBossReward(
     { ...base(), exp: 90, gold: 10 },
-    getCoopBossForMap("coast"),
+    getCoopBossForMap("coast-tide-core-cave"),
   );
   assert.equal(result.rewardExp, 150);
   assert.equal(result.rewardGold, 100);
