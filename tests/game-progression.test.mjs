@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PixelRPG } from "../src/game-20260829-coast.js";
+import { PixelRPG } from "../src/game-20260902-lease.js";
 import { legacyProgressStorageKey } from "../src/progress-storage-20260829-coast.js";
 import { acceptAdventureQuest, createInitialProgress } from "../src/quest-state-20260829-coast.js";
 
@@ -218,7 +218,7 @@ test("multi-kill attacks leave a level-up notification last and save once", asyn
 });
 
 test("a write-failing v1 migration surfaces the existing save-failure notice", async () => {
-  const { loadPlayerProgress } = await import("../src/game-20260829-coast.js");
+  const { loadPlayerProgress } = await import("../src/game-20260902-lease.js");
   assert.equal(typeof loadPlayerProgress, "function");
   const legacy = JSON.stringify({
     version: 1,

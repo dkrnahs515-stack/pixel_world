@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 
-const RELEASE_SUFFIX = "20260829-coast";
-const RELEASE_MODULE_BASENAMES = Object.freeze([
+const COAST_RELEASE_SUFFIX = "20260829-coast";
+const LEASE_RELEASE_SUFFIX = "20260902-lease";
+const COAST_RELEASE_MODULE_BASENAMES = Object.freeze([
   "aren-dialogue",
   "chapter-progress",
   "chat-bubble-layout",
@@ -14,7 +15,6 @@ const RELEASE_MODULE_BASENAMES = Object.freeze([
   "coast-story-data",
   "coast-world-data",
   "communication-log",
-  "coop-boss-controller",
   "coop-boss-data",
   "coop-boss-network",
   "coop-boss-state",
@@ -32,6 +32,11 @@ const RELEASE_MODULE_BASENAMES = Object.freeze([
   "story-interactions",
   "world-data",
   "world",
+]);
+const LEASE_RELEASE_MODULE_BASENAMES = Object.freeze([
+  "coop-boss-controller",
+  "game",
+  "main",
 ]);
 
 function relativeModuleSpecifiers(source) {
@@ -54,25 +59,38 @@ async function reachableModuleUrls(entryUrl) {
 }
 
 test("the coast entry graph uses one physical release URL for every changed transitive module", async () => {
-  const reachable = await reachableModuleUrls(
-    new URL("../src/main-20260829-coast.js", import.meta.url),
-  );
+  const entryUrl = new URL(`../src/main-${LEASE_RELEASE_SUFFIX}.js`, import.meta.url);
+  const reachable = existsSync(entryUrl) ? await reachableModuleUrls(entryUrl) : new Set();
   const violations = {
     missingReleaseUrls: [],
+    reachableSupersededUrls: [],
+    duplicateSupersededFiles: [],
     reachablePreReleaseUrls: [],
     duplicatePreReleaseFiles: [],
   };
 
-  for (const basename of RELEASE_MODULE_BASENAMES) {
-    const releaseUrl = new URL(`../src/${basename}-${RELEASE_SUFFIX}.js`, import.meta.url);
+  for (const basename of COAST_RELEASE_MODULE_BASENAMES) {
+    const releaseUrl = new URL(`../src/${basename}-${COAST_RELEASE_SUFFIX}.js`, import.meta.url);
     const preReleaseUrl = new URL(`../src/${basename}.js`, import.meta.url);
     if (!reachable.has(releaseUrl.href)) violations.missingReleaseUrls.push(releaseUrl.pathname);
+    if (reachable.has(preReleaseUrl.href)) violations.reachablePreReleaseUrls.push(preReleaseUrl.pathname);
+    if (existsSync(preReleaseUrl)) violations.duplicatePreReleaseFiles.push(preReleaseUrl.pathname);
+  }
+  for (const basename of LEASE_RELEASE_MODULE_BASENAMES) {
+    const releaseUrl = new URL(`../src/${basename}-${LEASE_RELEASE_SUFFIX}.js`, import.meta.url);
+    const supersededUrl = new URL(`../src/${basename}-${COAST_RELEASE_SUFFIX}.js`, import.meta.url);
+    const preReleaseUrl = new URL(`../src/${basename}.js`, import.meta.url);
+    if (!reachable.has(releaseUrl.href)) violations.missingReleaseUrls.push(releaseUrl.pathname);
+    if (reachable.has(supersededUrl.href)) violations.reachableSupersededUrls.push(supersededUrl.pathname);
+    if (existsSync(supersededUrl)) violations.duplicateSupersededFiles.push(supersededUrl.pathname);
     if (reachable.has(preReleaseUrl.href)) violations.reachablePreReleaseUrls.push(preReleaseUrl.pathname);
     if (existsSync(preReleaseUrl)) violations.duplicatePreReleaseFiles.push(preReleaseUrl.pathname);
   }
 
   assert.deepEqual(violations, {
     missingReleaseUrls: [],
+    reachableSupersededUrls: [],
+    duplicateSupersededFiles: [],
     reachablePreReleaseUrls: [],
     duplicatePreReleaseFiles: [],
   });

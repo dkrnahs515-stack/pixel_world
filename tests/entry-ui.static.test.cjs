@@ -5,7 +5,7 @@ const path = require("node:path");
 
 const html = readFileSync(path.join(__dirname, "../index.html"), "utf8");
 const css = readFileSync(path.join(__dirname, "../styles.css"), "utf8");
-const main = readFileSync(path.join(__dirname, "../src/main-20260829-coast.js"), "utf8");
+const main = readFileSync(path.join(__dirname, "../src/main-20260902-lease.js"), "utf8");
 
 test("입장 화면은 접근 가능한 세 직업 단일 선택 카드와 오류 연결을 제공한다", () => {
   assert.match(html, /id="classSelection"[^>]*role="radiogroup"[^>]*aria-labelledby="classSelectionLabel"/);

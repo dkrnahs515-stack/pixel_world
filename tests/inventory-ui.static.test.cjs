@@ -4,8 +4,8 @@ const { readFileSync } = require("node:fs");
 const path = require("node:path");
 
 const html = readFileSync(path.join(__dirname, "../index.html"), "utf8");
-const main = readFileSync(path.join(__dirname, "../src/main-20260829-coast.js"), "utf8");
-const game = readFileSync(path.join(__dirname, "../src/game-20260829-coast.js"), "utf8");
+const main = readFileSync(path.join(__dirname, "../src/main-20260902-lease.js"), "utf8");
+const game = readFileSync(path.join(__dirname, "../src/game-20260902-lease.js"), "utf8");
 const css = readFileSync(path.join(__dirname, "../styles.css"), "utf8");
 
 test("인벤토리는 두 물약의 보유량·최대량·설명·사용 버튼을 제공한다", () => {

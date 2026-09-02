@@ -5,7 +5,7 @@ import {
   drawStorySignal,
   getStoryRenderablesForMap,
 } from "../src/world-20260829-coast.js";
-import { appendStorySignalEntities, PixelRPG } from "../src/game-20260829-coast.js";
+import { appendStorySignalEntities, PixelRPG } from "../src/game-20260902-lease.js";
 import {
   collectChapterRecord,
   completeRegion,

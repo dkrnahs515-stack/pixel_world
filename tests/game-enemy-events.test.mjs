@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { GAME_CONFIG as C } from "../src/config.js";
-import { PixelRPG } from "../src/game-20260829-coast.js";
+import { PixelRPG } from "../src/game-20260902-lease.js";
 import { createEnemyInstance } from "../src/enemies-20260829-coast.js";
 import { applyPlayerSlow, createCombatStatusEffects, playerMovementMultiplier } from "../src/player-combat.js";
 import { readFile } from "node:fs/promises";
@@ -38,7 +38,7 @@ test("둔화된 플레이어의 ArrowRight 1초 이동은 속도 배율을 사�
 });
 
 test("게임 고정 업데이트와 렌더는 일반 몬스터와 분리된 협동 보스 controller를 사용한다", async () => {
-  const source = await readFile(new URL("../src/game-20260829-coast.js", import.meta.url), "utf8");
+  const source = await readFile(new URL("../src/game-20260902-lease.js", import.meta.url), "utf8");
   assert.match(source, /this\.updateBossController\(/);
   assert.match(source, /returnedEvents\s*=\s*controller\.update\?\.\(/);
   assert.match(source, /coopBossController\?\.renderableBoss\(\)/);

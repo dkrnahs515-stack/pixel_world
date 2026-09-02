@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createPublishPolicyState, nextPublishDecision } from "../src/network-publish-policy.js";
-import { createCoopBossController } from "../src/coop-boss-controller-20260829-coast.js";
+import { createCoopBossController } from "../src/coop-boss-controller-20260902-lease.js";
 import { createBossEncounter } from "../src/coop-boss-state-20260829-coast.js";
 import { getCoopBossForMap } from "../src/coop-boss-data-20260829-coast.js";
 
@@ -35,6 +35,7 @@ test("관리자 보스 상태는 60초 동안 2Hz인 120회만 게시한다", ()
     uid: "host",
     network: { publishState: async () => { writes += 1; } },
     simulate: enemies => ({ enemies, events: [] }),
+    wallNow: () => 0,
   });
   controller.receiveSnapshot(createBossEncounter(getCoopBossForMap("coast-tide-core-cave"), {
     encounterId: "load", partySize: 10, now: 0, authorityUid: "host", authorityEpoch: 1,

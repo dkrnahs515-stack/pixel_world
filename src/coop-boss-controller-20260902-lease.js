@@ -253,7 +253,8 @@ export class CoopBossController {
   }
 
   isAuthority() {
-    return Boolean(this.snapshot && this.snapshot.authorityUid === this.uid);
+    return Boolean(this.snapshot && this.snapshot.authorityUid === this.uid
+      && this.snapshot.leaseUntil > this.wallNow());
   }
 
   targetableBoss() {
