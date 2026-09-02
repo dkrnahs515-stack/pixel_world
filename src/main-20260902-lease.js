@@ -1,4 +1,4 @@
-import { PixelRPG, interactionKeyAction } from "./game-20260829-coast.js";
+import { PixelRPG, interactionKeyAction } from "./game-20260902-lease.js";
 import { chatKeyAction } from "./chat-controller-20260829-coast.js";
 import { drawClassPreview } from "./class-rendering.js";
 import { renderCommunicationLog } from "./communication-log-20260829-coast.js";

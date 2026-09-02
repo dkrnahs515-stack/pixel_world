@@ -23,7 +23,7 @@ test("HUD의 통신 기록 버튼은 부모의 pointer 차단을 명시적으로
 
 test("통신 기록 모달은 접근 가능한 대화상자와 시간순 목록을 제공한다", () => {
   const html = read("index.html");
-  const main = read("src/main-20260829-coast.js");
+  const main = read("src/main-20260902-lease.js");
   const log = read("src/communication-log-20260829-coast.js");
 
   assert.match(html, /id="communicationLogOverlay"[^>]*hidden/);
@@ -39,7 +39,7 @@ test("통신 기록 모달은 접근 가능한 대화상자와 시간순 목록�
 test("대화는 세 선택을 담는 행동 컨테이너와 명확한 레이블을 제공한다", () => {
   const html = read("index.html");
   const css = read("styles.css");
-  const main = read("src/main-20260829-coast.js");
+  const main = read("src/main-20260902-lease.js");
 
   assert.match(html, /id="dialogueActions"[^>]*aria-label="대화 선택"/);
   assert.match(html, /id="dialogueActionButton"/);

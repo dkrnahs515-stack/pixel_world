@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createCoopBossController, selectBossTarget } from "../src/coop-boss-controller-20260829-coast.js";
+import { createCoopBossController, selectBossTarget } from "../src/coop-boss-controller-20260902-lease.js";
 import { createBossEncounter } from "../src/coop-boss-state-20260829-coast.js";
 import { getCoopBossForMap } from "../src/coop-boss-data-20260829-coast.js";
 
@@ -26,6 +26,7 @@ function fixture({ uid = "me", authorityUid = "me" } = {}) {
     uid,
     network,
     now: () => 0,
+    wallNow: () => 0,
     simulate: (enemies, _target, _dt) => {
       simulationCalls += 1;
       enemies[0].x += 10;
@@ -76,6 +77,51 @@ test("authority가 바뀌면 마지막 확정 HP와 위치로 시뮬레이션을
   value.controller.receiveSnapshot(bossSnapshot({ authorityUid: "me", authorityEpoch: 2, hp: 73, x: 800, y: 900 }));
   assert.equal(value.controller.isAuthority(), true);
   assert.deepEqual({ hp: value.controller.targetableBoss().hp, x: value.controller.targetableBoss().x }, { hp: 73, x: 800 });
+});
+
+test("같은 UID의 만료 lease는 재인수 전 authority 동작을 막고 재인수 뒤 재개한다", async () => {
+  let acquisitions = 0;
+  let simulationCalls = 0;
+  const published = [];
+  const controller = createCoopBossController({
+    uid: "me",
+    now: () => 0,
+    wallNow: () => 7_000,
+    network: {
+      tryAcquireAuthority: async () => {
+        acquisitions += 1;
+        return {
+          ok: true,
+          encounter: bossSnapshot({ authorityUid: "me", leaseUntil: 13_000 }),
+        };
+      },
+      publishState: async snapshot => { published.push(snapshot); return { ok: true }; },
+      cleanupExpired: async () => ({ ok: true }),
+    },
+    simulate: enemies => {
+      simulationCalls += 1;
+      return { enemies, events: [] };
+    },
+  });
+  controller.mapId = "coast-tide-core-cave";
+  controller.receiveSnapshot(bossSnapshot({ authorityUid: "me", leaseUntil: 6_000 }));
+  const context = {
+    player: { uid: "me", x: 0, y: 0, hp: 100, mapId: "coast-tide-core-cave" },
+    remotePlayers: new Map(),
+    isBlocked: () => false,
+  };
+
+  controller.update(1 / 60, context, 0);
+  assert.equal(simulationCalls, 0);
+  assert.equal(published.length, 0);
+
+  assert.equal(await controller.maintainLifecycle(), true);
+  assert.equal(acquisitions, 1);
+  assert.equal(controller.isAuthority(), true);
+
+  controller.update(1 / 60, context, 0);
+  assert.equal(simulationCalls, 1);
+  assert.equal(published.length, 1);
 });
 
 test("보스 대상은 같은 지역의 가장 가까운 생존자다", () => {
@@ -270,7 +316,7 @@ test("defeated snapshot의 새 authority도 누락 contributor claim을 재조�
 
   controller.receiveSnapshot(bossSnapshot({
     status: "defeated", hp: 0, defeatedAt: 2_000, respawnAt: 182_000,
-    authorityUid: "successor", authorityEpoch: 2,
+    authorityUid: "successor", authorityEpoch: 2, leaseUntil: 26_000,
     contributors: {
       earlier: { firstHitAt: 1_000, lastHitAt: 1_500 },
       finisher: { firstHitAt: 2_000, lastHitAt: 2_000 },
@@ -299,6 +345,7 @@ test("만료 데이터 정리는 현재 관리자가 된 뒤에만 실행하고 
 
   const authority = createCoopBossController({
     uid: "me",
+    wallNow: () => 0,
     network: {
       setMap: async () => true,
       ensureEncounter: async () => bossSnapshot({ authorityUid: "me" }),
@@ -399,7 +446,10 @@ test("관리자는 처치 3분 뒤 현재 참가자 수로 보스를 자동 재�
       writeRewardClaims: async () => ({ ok: true, failedUids: [] }),
       ensureEncounter: async ({ partySize }) => {
         ensuredPartySize = partySize;
-        return bossSnapshot({ encounterId: "next", authorityUid: "me", authorityEpoch: 3, partySize });
+        return bossSnapshot({
+          encounterId: "next", authorityUid: "me", authorityEpoch: 3,
+          leaseUntil: 187_000, partySize,
+        });
       },
       cleanupExpired: async () => ({ ok: true }),
     },
@@ -407,7 +457,8 @@ test("관리자는 처치 3분 뒤 현재 참가자 수로 보스를 자동 재�
   controller.mapId = "coast-tide-core-cave";
   controller.setPartySize(4);
   controller.receiveSnapshot(bossSnapshot({
-    authorityUid: "me", authorityEpoch: 3, status: "defeated", hp: 0, respawnAt: 181_000,
+    authorityUid: "me", authorityEpoch: 3, leaseUntil: 187_000,
+    status: "defeated", hp: 0, respawnAt: 181_000,
   }));
   assert.equal(await controller.maintainLifecycle(), true);
   assert.equal(ensuredPartySize, 4);
@@ -432,7 +483,9 @@ test("누락 contributor claim이 남아 있으면 respawn으로 마지막 복�
       },
       ensureEncounter: async () => {
         encounterEnsures += 1;
-        return bossSnapshot({ encounterId: "next", authorityUid: "me", authorityEpoch: 4 });
+        return bossSnapshot({
+          encounterId: "next", authorityUid: "me", authorityEpoch: 4, leaseUntil: 188_000,
+        });
       },
       cleanupExpired: async () => ({ ok: true }),
     },
@@ -441,6 +494,7 @@ test("누락 contributor claim이 남아 있으면 respawn으로 마지막 복�
   controller.receiveSnapshot(bossSnapshot({
     authorityUid: "me",
     authorityEpoch: 3,
+    leaseUntil: 187_000,
     status: "defeated",
     hp: 0,
     defeatedAt: 1_000,
@@ -484,7 +538,9 @@ test("respawn 시각 뒤 authority 인수도 claim 실패 시 defeated contribut
       ensureEncounter: async ({ reconciledEncounterId }) => {
         encounterEnsures += 1;
         assert.equal(reconciledEncounterId, "e");
-        return bossSnapshot({ encounterId: "next", authorityUid: "successor", authorityEpoch: 2 });
+        return bossSnapshot({
+          encounterId: "next", authorityUid: "successor", authorityEpoch: 2, leaseUntil: 188_000,
+        });
       },
       cleanupExpired: async () => ({ ok: true }),
     },
@@ -537,7 +593,9 @@ test("이전 encounter claim 성공은 대기 중 수신한 새 defeated encount
       },
       ensureEncounter: async ({ reconciledEncounterId }) => {
         encounterEnsures.push(reconciledEncounterId);
-        return bossSnapshot({ encounterId: "next", authorityUid: "successor", authorityEpoch: 3 });
+        return bossSnapshot({
+          encounterId: "next", authorityUid: "successor", authorityEpoch: 3, leaseUntil: 188_000,
+        });
       },
       cleanupExpired: async () => ({ ok: true }),
     },

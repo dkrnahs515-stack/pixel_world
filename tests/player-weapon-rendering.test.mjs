@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { drawPixelCharacter } from "../src/game-20260829-coast.js";
+import { drawPixelCharacter } from "../src/game-20260902-lease.js";
 
 function recordingContext() {
   const fills = [];

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PixelRPG } from "../src/game-20260829-coast.js";
+import { PixelRPG } from "../src/game-20260902-lease.js";
 
 function harness(controller) {
   const game = Object.create(PixelRPG.prototype);

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createCoopBossController } from "../src/coop-boss-controller-20260829-coast.js";
+import { createCoopBossController } from "../src/coop-boss-controller-20260902-lease.js";
 import { getCoopBossForMap } from "../src/coop-boss-data-20260829-coast.js";
 import { createBossEncounter } from "../src/coop-boss-state-20260829-coast.js";
 import { createLocalBossController } from "../src/local-boss-controller-20260829-coast.js";
