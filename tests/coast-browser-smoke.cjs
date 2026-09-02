@@ -136,7 +136,11 @@ async function assertOnlineRoomFullFallback(browser, errors) {
   await page.locator('[data-play-mode="online"]').click();
   await page.locator("#enterButton").click();
   await page.locator("#hud").waitFor({ state: "visible" });
-  await page.locator("#chatStatus").filter({ hasText: "솔로" }).waitFor({ timeout: 8000 });
+  await page.waitForFunction(
+    () => document.querySelector("#chatStatus")?.textContent?.trim() === "솔로",
+    null,
+    { timeout: 8000 },
+  );
   assert.equal(await page.locator("#chatPanel").isHidden(), true);
   await page.close();
 }

@@ -83,6 +83,16 @@ test("해안 보스 완료 뒤 세라 상호작용 전에는 위로만 이동하
   assert.doesNotMatch(route, /await move\(page, "Arrow(?:Left|Right)"/);
 });
 
+test("방 정원 초과 fallback은 숨겨진 상태 요소의 솔로 텍스트를 DOM에서 기다린다", () => {
+  const fallback = coastSmoke.match(
+    /async function assertOnlineRoomFullFallback\(browser, errors\) \{([\s\S]*?)\n\}/,
+  )?.[1] || "";
+
+  assert.match(fallback, /page\.waitForFunction\([\s\S]*?#chatStatus[\s\S]*?textContent[\s\S]*?솔로/);
+  assert.doesNotMatch(fallback, /locator\("#chatStatus"\)[\s\S]*?\.waitFor\(/);
+  assert.match(fallback, /locator\("#chatPanel"\)\.isHidden\(\)/);
+});
+
 test("QA 모달은 인벤토리보다 앞에 표시되고 모바일에서 한 열로 접힌다", () => {
   assert.match(css, /\.qa-overlay \{[^}]*z-index:\s*38/);
   assert.match(css, /\.qa-monster-grid \{[^}]*grid-template-columns:\s*repeat\(2,minmax\(0,1fr\)\)/);
