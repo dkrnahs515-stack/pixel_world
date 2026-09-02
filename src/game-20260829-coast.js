@@ -51,7 +51,7 @@ import {
 } from "./player-combat.js";
 import { advancePortalTransition, canUsePortal, createPortalTransition } from "./portal-transition-20260829-coast.js";
 import { grantCoopBossReward, grantHuntingReward, statsForLevel } from "./player-progression.js";
-import { getCoopBossById } from "./coop-boss-data-20260829-coast.js";
+import { getCoopBossById, getCoopBossForMap } from "./coop-boss-data-20260829-coast.js";
 import {
   createProjectile,
   updateProjectiles as simulateProjectiles,
@@ -65,6 +65,7 @@ import {
   trackedFpsFromFrameSeconds,
 } from "./performance-metrics.js";
 import {
+  findQaBossApproachPosition,
   findQaSpawnPosition,
   getQaMonster,
   prepareWeaponQaProgress,
@@ -427,6 +428,7 @@ export class PixelRPG {
     elements.qaDoneButton?.addEventListener("click", () => this.closeQaPanel());
     elements.qaWeaponButton?.addEventListener("click", () => this.qaPrepareWeaponShop());
     elements.qaBlacksmithButton?.addEventListener("click", () => this.qaTravelToBlacksmith());
+    elements.qaBossButton?.addEventListener("click", () => this.qaApproachBoss());
     for (const button of elements.qaWorldButtons || []) {
       button.addEventListener("click", () => this.qaTravel(button.dataset.qaWorld));
     }
@@ -441,6 +443,7 @@ export class PixelRPG {
         ...(elements.qaMonsterButtons || []),
         elements.qaWeaponButton,
         elements.qaBlacksmithButton,
+        elements.qaBossButton,
         elements.qaDoneButton,
       ].filter(control => control && !control.disabled);
       event.preventDefault();
@@ -1226,6 +1229,49 @@ export class PixelRPG {
     this.portalCooldown = 1;
     this.closeQaPanel();
     this.notify("브란 앞으로 이동했습니다 · F로 대장간 열기");
+    return true;
+  }
+
+  resolveQaBossApproachPosition({ mapId, boss, radius, portals }) {
+    return findQaBossApproachPosition({
+      boss,
+      radius,
+      portals,
+      isBlocked: (x, y, candidateRadius) => isWorldPositionBlocked(mapId, x, y, candidateRadius),
+    });
+  }
+
+  qaApproachBoss() {
+    if (!this.qaEnabled || !this.running || !this.isQaOpen()) return false;
+    const boss = getCoopBossForMap(this.mapId);
+    if (!boss) {
+      this.notify("현재 지역에는 보스가 없습니다.");
+      return false;
+    }
+
+    const world = getWorldDefinition(this.mapId);
+    const position = this.resolveQaBossApproachPosition({
+      mapId: world.id,
+      boss,
+      radius: PLAYER_RADIUS,
+      portals: world.portals,
+    });
+    if (!position) {
+      this.notify("보스 앞으로 이동할 안전한 공간이 없습니다.");
+      return false;
+    }
+
+    this.keys.clear();
+    this.player.moving = false;
+    this.attackState = null;
+    this.clearProjectiles();
+    this.player.x = position.x;
+    this.player.y = position.y;
+    this.player.prevX = position.x;
+    this.player.prevY = position.y;
+    this.player.dir = "up";
+    this.closeQaPanel();
+    this.notify(`${boss.name} 앞으로 이동했습니다.`);
     return true;
   }
 

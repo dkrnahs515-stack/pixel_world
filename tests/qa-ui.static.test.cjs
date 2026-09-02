@@ -7,6 +7,7 @@ const html = readFileSync(path.join(__dirname, "../index.html"), "utf8");
 const main = readFileSync(path.join(__dirname, "../src/main-20260829-coast.js"), "utf8");
 const css = readFileSync(path.join(__dirname, "../styles.css"), "utf8");
 const readme = readFileSync(path.join(__dirname, "../README.md"), "utf8");
+const coastSmoke = readFileSync(path.join(__dirname, "coast-browser-smoke.cjs"), "utf8");
 
 test("QA 도구는 기본 문서에서 숨겨진 버튼과 모달로 제공된다", () => {
   assert.match(html, /id="qaButton"[^>]*hidden/);
@@ -27,8 +28,10 @@ test("QA 도구는 기본 문서에서 숨겨진 버튼과 모달로 제공된�
   assert.equal((html.match(/data-qa-monster=/g) || []).length, 7);
   assert.equal((html.match(/data-qa-weapons="prepare"/g) || []).length, 1);
   assert.equal((html.match(/data-qa-blacksmith="travel"/g) || []).length, 1);
+  assert.equal((html.match(/data-qa-boss="approach"/g) || []).length, 1);
   assert.match(html, /id="qaOverlay"[^>]*hidden[\s\S]*?data-qa-weapons="prepare"/);
   assert.match(html, /현재 직업 7종 무기 준비/);
+  assert.match(html, /현재 지역 보스 앞으로 이동/);
 });
 
 test("README는 세 직업 전투·저장·21종 장비·온라인 동기화 범위를 설명한다", () => {
@@ -59,6 +62,16 @@ test("main은 qa=1 판정 결과만으로 QA 도구를 활성화한다", () => {
   assert.match(main, /close-qa[\s\S]*game\.closeQaPanel\(\)/);
   assert.match(main, /qaWeaponButton:\s*document\.querySelector\("\[data-qa-weapons='prepare'\]"\)/);
   assert.match(main, /qaBlacksmithButton:\s*document\.querySelector\("\[data-qa-blacksmith='travel'\]"\)/);
+  assert.match(main, /qaBossButton:\s*document\.querySelector\("\[data-qa-boss='approach'\]"\)/);
+});
+
+test("해안 브라우저 smoke는 두 지역 보스 모두 QA 접근 버튼으로 이동한 뒤 실제 키보드 공격을 반복한다", () => {
+  assert.match(coastSmoke, /async function qaApproachBoss\(page\)[\s\S]*?data-qa-boss="approach"/);
+  assert.equal((coastSmoke.match(/await qaApproachBoss\(page\)/g) || []).length, 2);
+  assert.doesNotMatch(coastSmoke, /move\(page, "ArrowUp", 6900\)/);
+  assert.doesNotMatch(coastSmoke, /move\(page, "ArrowDown", 1900\)[\s\S]*?move\(page, "ArrowRight", 4300\)[\s\S]*?fightUntilSaved/);
+  assert.match(coastSmoke, /page\.keyboard\.press\("Control"\)/);
+  assert.match(coastSmoke, /worldProgress[\s\S]*completedRegionIds[\s\S]*chapters[\s\S]*coopBossDefeated/);
 });
 
 test("QA 모달은 인벤토리보다 앞에 표시되고 모바일에서 한 열로 접힌다", () => {

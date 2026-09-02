@@ -49,6 +49,12 @@ async function qaTravel(page, mapId, name) {
   await expectMap(page, name);
 }
 
+async function qaApproachBoss(page) {
+  await page.locator("#qaButton").click();
+  await page.locator('[data-qa-boss="approach"]').click();
+  await page.locator("#qaOverlay").waitFor({ state: "hidden" });
+}
+
 async function storedProgress(page) {
   return page.evaluate(() => {
     const key = Object.keys(localStorage).find(candidate => candidate.startsWith("pixel-world.progress.v6:"));
@@ -169,7 +175,7 @@ async function assertOnlineRoomFullFallback(browser, errors) {
     await reloadCheckpoint(page);
 
     await qaTravel(page, "forest", "태고의 숲");
-    await move(page, "ArrowUp", 6900);
+    await qaApproachBoss(page);
     await fightUntilSaved(
       page,
       progress => progress?.worldProgress?.completedRegionIds?.includes("forest"),
@@ -233,8 +239,7 @@ async function assertOnlineRoomFullFallback(browser, errors) {
     await reloadCheckpoint(page);
     await qaTravel(page, "coast-tide-core-cave", "조수 코어 동굴");
     await saveShot(page, process.env.PIXEL_WORLD_SHOTS, "coast-04-tide-core-cave.png");
-    await move(page, "ArrowDown", 1900);
-    await move(page, "ArrowRight", 4300);
+    await qaApproachBoss(page);
     await fightUntilSaved(
       page,
       value => value?.worldProgress?.chapters?.coast?.coopBossDefeated === true,

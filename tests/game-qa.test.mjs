@@ -103,6 +103,7 @@ function constructedQaGame() {
   const qaMonsterButton = eventNode(documentRef, { dataset: { qaMonster: "fang-shark" } });
   const qaWeaponButton = eventNode(documentRef, { dataset: { qaWeapons: "prepare" } });
   const qaBlacksmithButton = eventNode(documentRef, { dataset: { qaBlacksmith: "travel" } });
+  const qaBossButton = eventNode(documentRef, { dataset: { qaBoss: "approach" } });
   const elements = {
     qaEnabled: true,
     canvas,
@@ -131,6 +132,7 @@ function constructedQaGame() {
     qaMonsterButtons: [qaMonsterButton],
     qaWeaponButton,
     qaBlacksmithButton,
+    qaBossButton,
     hpPotionSlot: eventNode(documentRef, { dataset: { code: "Digit1" } }),
     mpPotionSlot: eventNode(documentRef, { dataset: { code: "Digit2" } }),
     chatPanel: eventNode(documentRef),
@@ -160,6 +162,7 @@ function constructedQaGame() {
     qaMonsterButton,
     qaWeaponButton,
     qaBlacksmithButton,
+    qaBossButton,
   };
 }
 
@@ -284,6 +287,7 @@ test("QA 패널의 Tab 포커스는 지역·몬스터·장비·브란 이동 버
     qaMonsterButton,
     qaWeaponButton,
     qaBlacksmithButton,
+    qaBossButton,
   } = constructedQaGame();
   elements.qaButton.click();
   let prevented = false;
@@ -316,6 +320,13 @@ test("QA 패널의 Tab 포커스는 지역·몬스터·장비·브란 이동 버
     preventDefault() {},
   });
   assert.equal(documentRef.activeElement, qaBlacksmithButton);
+
+  elements.qaOverlay.dispatch("keydown", {
+    code: "Tab",
+    shiftKey: false,
+    preventDefault() {},
+  });
+  assert.equal(documentRef.activeElement, qaBossButton);
 });
 
 test("실제 QA 브란 이동 버튼은 플레이어를 브란 상호작용 거리로 보내고 안내를 표시한다", () => {
@@ -424,6 +435,69 @@ test("QA 브란 이동은 열린 패널에서만 작동하며 진행 데이터�
   assert.deepEqual(game.progress, progressBefore);
   assert.equal(storage.writes.length, 0);
   delete globalThis.localStorage;
+});
+
+test("실제 QA 보스 이동 버튼은 현재 지역 보스 아래로 이동하고 전투 입력을 초기화한다", () => {
+  const { game, elements } = constructedQaGame();
+  game.mapId = "forest";
+  game.player.x = 2160;
+  game.player.y = 2500;
+  game.keys.add("ArrowUp");
+  game.player.moving = true;
+  game.attackState = { kind: "basic" };
+  game.projectiles = [{ id: "in-flight" }];
+  elements.qaButton.click();
+
+  elements.qaBossButton.click();
+
+  assert.deepEqual({
+    x: game.player.x,
+    y: game.player.y,
+    prevX: game.player.prevX,
+    prevY: game.player.prevY,
+    dir: game.player.dir,
+  }, { x: 2160, y: 1464, prevX: 2160, prevY: 1464, dir: "up" });
+  assert.equal(game.keys.size, 0);
+  assert.equal(game.player.moving, false);
+  assert.equal(game.attackState, null);
+  assert.deepEqual(game.projectiles, []);
+  assert.equal(elements.qaOverlay.hidden, true);
+  assert.equal(game.inputEnabled, true);
+});
+
+test("QA 보스 이동은 열린 QA 패널에서만 작동하고 진행·저장·보스 상태를 바꾸지 않는다", () => {
+  const game = qaGame();
+  const storage = memoryStorage();
+  globalThis.localStorage = storage;
+  game.mapId = "forest";
+  const progressBefore = structuredClone(game.progress);
+  const bossController = { snapshot: { bossId: "forest-core-troll", hp: 200 } };
+  game.coopBossController = bossController;
+
+  game.ui.qaOverlay.hidden = true;
+  assert.equal(game.qaApproachBoss(), false);
+  game.ui.qaOverlay.hidden = false;
+  game.qaEnabled = false;
+  assert.equal(game.qaApproachBoss(), false);
+  game.qaEnabled = true;
+  assert.equal(game.qaApproachBoss(), true);
+
+  assert.deepEqual(game.progress, progressBefore);
+  assert.deepEqual(bossController.snapshot, { bossId: "forest-core-troll", hp: 200 });
+  assert.equal(storage.writes.length, 0);
+  delete globalThis.localStorage;
+});
+
+test("보스가 없는 지역이나 안전한 접근 위치가 없으면 QA 보스 이동은 현재 위치를 유지한다", () => {
+  const game = qaGame();
+  const before = { x: game.player.x, y: game.player.y };
+
+  assert.equal(game.qaApproachBoss(), false);
+  game.mapId = "forest";
+  game.resolveQaBossApproachPosition = () => null;
+  assert.equal(game.qaApproachBoss(), false);
+  assert.deepEqual({ x: game.player.x, y: game.player.y }, before);
+  assert.equal(game.ui.qaOverlay.hidden, false);
 });
 
 test("QA 지역 이동은 선택한 지역의 안전한 기본 위치와 전체 로스터를 불러온다", () => {
