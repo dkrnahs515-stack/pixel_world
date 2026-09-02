@@ -245,7 +245,6 @@ async function assertOnlineRoomFullFallback(browser, errors) {
       value => value?.worldProgress?.chapters?.coast?.coopBossDefeated === true,
       "coast local boss",
     );
-    await move(page, "ArrowRight", 550);
     await move(page, "ArrowUp", 2400);
     await completeStoryInteraction(page, "story-complete");
     await move(page, "ArrowDown", 900);
