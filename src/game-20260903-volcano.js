@@ -1290,11 +1290,15 @@ export class PixelRPG {
 
   qaApproachBoss() {
     if (!this.qaEnabled || !this.running || !this.isQaOpen()) return false;
-    const boss = getCoopBossForMap(this.mapId);
-    if (!boss) {
+    const definition = getCoopBossForMap(this.mapId);
+    if (!definition) {
       this.notify("현재 지역에는 보스가 없습니다.");
       return false;
     }
+    const renderedBoss = this.coopBossController?.renderableBoss?.();
+    const boss = Number.isFinite(renderedBoss?.x) && Number.isFinite(renderedBoss?.y)
+      ? { ...definition, x: renderedBoss.x, y: renderedBoss.y }
+      : definition;
 
     const world = getWorldDefinition(this.mapId);
     const position = this.resolveQaBossApproachPosition({

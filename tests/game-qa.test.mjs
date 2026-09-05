@@ -543,6 +543,26 @@ test("QA 보스 이동은 열린 QA 패널에서만 작동하고 진행·저장�
   delete globalThis.localStorage;
 });
 
+test("QA 보스 이동은 초기 정의가 아니라 현재 렌더 보스 좌표를 사용한다", () => {
+  const game = qaGame();
+  game.mapId = "forest";
+  game.ui.qaOverlay.hidden = false;
+  game.coopBossController = {
+    snapshot: { bossId: "forest-core-troll", hp: 180 },
+    renderableBoss: () => ({ x: 1840, y: 1210, mapId: "forest", hp: 180 }),
+  };
+  let approachedBoss = null;
+  game.resolveQaBossApproachPosition = ({ boss }) => {
+    approachedBoss = boss;
+    return { x: boss.x, y: boss.y + 64 };
+  };
+
+  assert.equal(game.qaApproachBoss(), true);
+  assert.deepEqual({ x: approachedBoss.x, y: approachedBoss.y }, { x: 1840, y: 1210 });
+  assert.deepEqual({ x: game.player.x, y: game.player.y }, { x: 1840, y: 1274 });
+  assert.deepEqual(game.coopBossController.snapshot, { bossId: "forest-core-troll", hp: 180 });
+});
+
 test("보스가 없는 지역이나 안전한 접근 위치가 없으면 QA 보스 이동은 현재 위치를 유지한다", () => {
   const game = qaGame();
   const before = { x: game.player.x, y: game.player.y };
