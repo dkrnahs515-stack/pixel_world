@@ -16,6 +16,15 @@ async function move(page, key, milliseconds) {
   await page.keyboard.up(key);
 }
 
+async function moveUntilMap(page, key, name) {
+  await page.keyboard.down(key);
+  try {
+    await expectMap(page, name);
+  } finally {
+    await page.keyboard.up(key);
+  }
+}
+
 async function enterSolo(page, nickname) {
   await page.locator("#nicknameInput").fill(nickname);
   await page.locator('[data-class-id="warrior"]').click();
@@ -141,8 +150,7 @@ async function chooseRoute(page, prepared) {
   const actionId = prepared ? "story-volcano-route-rescue" : "story-volcano-route-proceed";
   await page.locator(`[data-dialogue-action="${actionId}"]`).click();
   await page.locator("#dialogueOverlay").waitFor({ state: "hidden" });
-  await move(page, "ArrowRight", 1500);
-  await expectMap(page, "화구 코어 제단");
+  await moveUntilMap(page, "ArrowRight", "화구 코어 제단");
 }
 
 async function pressStrongAndAssert(page, label) {
