@@ -165,7 +165,8 @@ async function pressStrongAndAssert(page, label) {
 async function fightCaptain(page, label) {
   let strongAttackObserved = false;
   let missed = 0;
-  for (let attempt = 0; attempt < 60; attempt += 1) {
+  const deadline = Date.now() + 180000;
+  for (let attempt = 0; Date.now() < deadline; attempt += 1) {
     const before = await page.evaluate(() => window.__volcanoSmokeRead());
     if (before.boss?.status === "defeated") break;
     assert.equal(before.mapId, "volcano-core-caldera", `${label}: left arena`);
@@ -176,7 +177,8 @@ async function fightCaptain(page, label) {
       const state = window.__volcanoSmokeRead();
       return !state.attacking && state.basicCooldown <= 0;
     }, null, { timeout: 3000 });
-    if (!strongAttackObserved) {
+    const ready = await page.evaluate(() => window.__volcanoSmokeRead());
+    if (ready.strongCooldown <= 0) {
       await pressStrongAndAssert(page, label);
       strongAttackObserved = true;
     } else {
@@ -222,6 +224,7 @@ window.__volcanoSmokeRead = () => ({
   view: (() => { const b = game.coopBossController?.renderableBoss(); return b ? { x: b.x, y: b.y, targetable: b.targetable } : null; })(),
   attacking: Boolean(game.attackState),
   basicCooldown: game.basicCooldown,
+  strongCooldown: game.strongCooldown,
   events: structuredClone(smokeEvents),
 });
 ` });
