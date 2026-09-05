@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createCoopBossNetwork } from "../src/coop-boss-network-20260902-publish.js";
-import { createBossEncounter } from "../src/coop-boss-state-20260829-coast.js";
-import { getCoopBossForMap } from "../src/coop-boss-data-20260829-coast.js";
+import { createCoopBossNetwork } from "../src/coop-boss-network-20260903-volcano.js";
+import { createBossEncounter } from "../src/coop-boss-state-20260903-volcano.js";
+import { getCoopBossForMap } from "../src/coop-boss-data-20260903-volcano.js";
 
 function fixture() {
   const listenedPaths = [];
@@ -49,6 +49,15 @@ test("setMap은 이전 listener를 해제하고 현재 지역 보스 경로만 �
     "rooms/public/bosses/forest/state",
   ]);
   assert.equal(fake.unsubscribedPaths.filter(path => path.includes("/coast-tide-core-cave/")).length, 4);
+});
+
+test("화산 협동 보스는 레거시 volcano가 아니라 화구 물리 맵만 구독한다", async () => {
+  const fake = fixture();
+  const adapter = createCoopBossNetwork(fake.options);
+  assert.equal(await adapter.setMap("volcano"), false);
+  assert.equal(await adapter.setMap("volcano-core-caldera"), true);
+  assert.equal(fake.listenedPaths.some(path => path.includes("/bosses/volcano/")), false);
+  assert.equal(fake.listenedPaths.some(path => path.endsWith("/bosses/volcano-core-caldera/state")), true);
 });
 
 test("공격은 자기 UID와 증가 sequence 경로에만 기록한다", async () => {
@@ -111,7 +120,7 @@ test("만료된 lease만 transaction으로 인수하고 epoch를 올린다", asy
 test("stop은 보스 관련 listener와 timer를 한 번만 정리한다", async () => {
   const fake = fixture();
   const adapter = createCoopBossNetwork(fake.options);
-  await adapter.setMap("volcano");
+  await adapter.setMap("volcano-core-caldera");
   await adapter.stop();
   await adapter.stop();
   assert.equal(fake.unsubscribedPaths.length, 4);

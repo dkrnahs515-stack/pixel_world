@@ -3,6 +3,13 @@ import assert from "node:assert/strict";
 import * as storageApi from "../src/progress-storage-20260829-coast.js";
 import { createInitialProgress } from "../src/quest-state-20260829-coast.js";
 import { createInitialEquipmentByClass } from "../src/equipment-state.js";
+import {
+  loadProgress as loadV7Progress,
+  progressStorageKey as v7ProgressStorageKey,
+  saveProgress as saveV7Progress,
+  v6ProgressStorageKey,
+} from "../src/progress-storage-20260903-volcano.js";
+import { createInitialProgress as createInitialV7Progress } from "../src/quest-state-20260903-volcano.js";
 
 const {
   legacyProgressStorageKey,
@@ -58,6 +65,101 @@ function validV3(overrides = {}) {
     ...overrides,
   };
 }
+
+test("v7 저장은 활화산 챕터를 포함한 전체 진행을 독립 복제해 왕복한다", () => {
+  const storage = memoryStorage();
+  const source = createInitialV7Progress();
+  source.gold = 903;
+  source.worldProgress.chapters.volcano = {
+    ...source.worldProgress.chapters.volcano,
+    repairedDeviceIds: ["ash-gate-pressure-seal"],
+    collectedClueIds: ["garen-scorched-insignia"],
+    coolantAnchorIds: ["ash-gate-coolant-anchor"],
+  };
+
+  assert.match(v7ProgressStorageKey("화산"), /^pixel-world\.progress\.v7:/);
+  assert.deepEqual(saveV7Progress(storage, "화산", source), { ok: true });
+  const loaded = loadV7Progress(storage, "화산");
+
+  assert.deepEqual(loaded, source);
+  assert.notEqual(loaded.worldProgress, source.worldProgress);
+  assert.notEqual(
+    loaded.worldProgress.chapters.volcano.repairedDeviceIds,
+    source.worldProgress.chapters.volcano.repairedDeviceIds,
+  );
+  assert.equal(JSON.parse(storage.getItem(v7ProgressStorageKey("화산"))).version, 7);
+});
+
+test("v7에서 세 냉각 쐐기 없이 저장된 rescue 분기는 로드할 때 제거한다", () => {
+  const storage = memoryStorage();
+  const payload = createInitialV7Progress();
+  payload.worldProgress.chapters.volcano = {
+    ...payload.worldProgress.chapters.volcano,
+    coolantAnchorIds: ["ash-gate-coolant-anchor"],
+    routeDecision: "rescue",
+    eruptionTriggered: true,
+  };
+  storage.setItem(v7ProgressStorageKey("손상 구조"), JSON.stringify({ version: 7, ...payload }));
+
+  const loaded = loadV7Progress(storage, "손상 구조");
+
+  assert.equal(loaded.worldProgress.chapters.volcano.routeDecision, null);
+});
+
+test("v6 진행은 해안·장비·보상 영수증을 보존하고 활화산 기본 상태를 더해 v7에 쓴다", () => {
+  const storage = memoryStorage();
+  const v6 = {
+    version: 6,
+    ...createInitialProgress(),
+    level: 30,
+    exp: 77,
+    nextLevelExp: 3000,
+    gold: 712,
+    inventory: { hpPotion: 4, mpPotion: 3 },
+    claimedBossRewardIds: ["coast-tide-guardian:uid"],
+    equipmentByClass: {
+      warrior: { ownedWeaponIds: ["starter-sword", "katana"], equippedWeaponId: "katana" },
+      archer: { ownedWeaponIds: ["training-bow", "hunter-bow"], equippedWeaponId: "hunter-bow" },
+      mage: { ownedWeaponIds: ["training-staff", "apprentice-staff"], equippedWeaponId: "apprentice-staff" },
+    },
+  };
+  v6.worldProgress = {
+    unlockedRegionIds: ["village", "forest", "coast", "volcano"],
+    completedRegionIds: ["forest", "coast"],
+    unlockedMapIds: [
+      "village", "forest", "coast-beach", "coast-wreck-bay",
+      "coast-flooded-station", "coast-tide-core-cave", "volcano",
+    ],
+    chapters: { coast: {
+      repairedDeviceIds: [],
+      collectedRecordIds: [],
+      supportChoice: "sera",
+      seraRescued: true,
+      coopBossDefeated: true,
+      coreFragmentObtained: true,
+      shortcutUnlocked: true,
+    } },
+  };
+  storage.setItem(v6ProgressStorageKey("화산"), JSON.stringify(v6));
+
+  const loaded = loadV7Progress(storage, "화산");
+
+  assert.equal(loaded.level, 30);
+  assert.equal(loaded.gold, 712);
+  assert.deepEqual(loaded.inventory, v6.inventory);
+  assert.deepEqual(loaded.equipmentByClass, v6.equipmentByClass);
+  assert.deepEqual(loaded.claimedBossRewardIds, v6.claimedBossRewardIds);
+  assert.equal(loaded.worldProgress.chapters.coast.coreFragmentObtained, true);
+  assert.deepEqual(
+    loaded.worldProgress.chapters.volcano,
+    createInitialV7Progress().worldProgress.chapters.volcano,
+  );
+  assert.deepEqual(JSON.parse(storage.getItem(v7ProgressStorageKey("화산"))), {
+    version: 7,
+    ...loaded,
+  });
+  assert.deepEqual(JSON.parse(storage.getItem(v6ProgressStorageKey("화산"))), v6);
+});
 
 test("v6 키를 사용하고 모든 이전 버전 키의 닉네임 공백을 정규화한다", () => {
   const encoded = "%EC%95%84%EB%A0%8C%20%EB%AA%A8%ED%97%98%EA%B0%80";

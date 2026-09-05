@@ -4,8 +4,8 @@ const { readFileSync } = require("node:fs");
 const path = require("node:path");
 
 const html = readFileSync(path.join(__dirname, "../index.html"), "utf8");
-const css = readFileSync(path.join(__dirname, "../styles.css"), "utf8");
-const main = readFileSync(path.join(__dirname, "../src/main-20260902-publish.js"), "utf8");
+const css = readFileSync(path.join(__dirname, "../styles-20260903-volcano.css"), "utf8");
+const main = readFileSync(path.join(__dirname, "../src/main-20260903-volcano.js"), "utf8");
 
 test("협동 보스 HUD는 이름·체력·참여자·상태를 가진다", () => {
   assert.match(html, /id="coopBossHud"[^>]*hidden/);

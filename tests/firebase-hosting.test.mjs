@@ -14,14 +14,18 @@ test("Firebase의 고정 URL JavaScript와 CSS는 새 배포마다 재검증한�
 });
 
 test("진입 HTML은 CSS와 JavaScript의 실제 파일명으로 기존 배포 캐시를 우회한다", () => {
-  const stylesheetVersion = index.match(/href="\.\/styles\.css\?v=([^"]+)"/)?.[1];
+  const stylesheetPath = index.match(/href="(\.\/styles-([^"]+?)\.css)"/)?.[1];
+  const stylesheetVersion = index.match(/href="\.\/styles-([^"]+?)\.css"/)?.[1];
   const modulePath = index.match(/src="(\.\/src\/main-([^"]+?)\.js)"/)?.[1];
   const moduleVersion = index.match(/src="\.\/src\/main-([^"]+?)\.js"/)?.[1];
 
   assert.ok(stylesheetVersion);
   assert.equal(moduleVersion, stylesheetVersion);
+  assert.ok(stylesheetPath);
+  assert.ok(existsSync(new URL(`..\/${stylesheetPath}`, import.meta.url)));
   assert.ok(modulePath);
   assert.ok(existsSync(new URL(`..\/${modulePath}`, import.meta.url)));
+  assert.doesNotMatch(index, /(?:href|src)="[^"]+\?v=/);
 
   const entry = readFileSync(new URL(`..\/${modulePath}`, import.meta.url), "utf8");
   const gameModulePath = entry.match(/from "(\.\/game-([^"]+?)\.js)"/)?.[1];
@@ -32,18 +36,19 @@ test("진입 HTML은 CSS와 JavaScript의 실제 파일명으로 기존 배포 �
   assert.ok(existsSync(new URL(`..\/src\/${gameModulePath}`, import.meta.url)));
 });
 
-test("Firebase 상태 게시 hotfix는 network부터 엔트리까지 새 물리 release chain만 연결한다", () => {
-  assert.match(index, /href="\.\/styles\.css\?v=20260902-publish"/);
-  assert.match(index, /src="\.\/src\/main-20260902-publish\.js"/);
+test("활화산 release는 변경된 전이 모듈과 CSS를 물리 파일 체인으로 연결한다", () => {
+  assert.match(index, /href="\.\/styles-20260903-volcano\.css"/);
+  assert.match(index, /src="\.\/src\/main-20260903-volcano\.js"/);
   assert.doesNotMatch(index, /main-20260829-coast\.js/);
   assert.doesNotMatch(index, /main-20260828-coop\.js/);
   assert.doesNotMatch(index, /main-20260828-classes\.js/);
   assert.doesNotMatch(index, /main-20260827-2\.js/);
-  assert.ok(existsSync(new URL("../src/main-20260902-publish.js", import.meta.url)));
-  assert.ok(existsSync(new URL("../src/game-20260902-publish.js", import.meta.url)));
-  assert.ok(existsSync(new URL("../src/coop-boss-controller-20260902-lease.js", import.meta.url)));
-  assert.ok(existsSync(new URL("../src/network-20260902-publish.js", import.meta.url)));
-  assert.ok(existsSync(new URL("../src/coop-boss-network-20260902-publish.js", import.meta.url)));
+  assert.ok(existsSync(new URL("../styles-20260903-volcano.css", import.meta.url)));
+  assert.ok(existsSync(new URL("../src/main-20260903-volcano.js", import.meta.url)));
+  assert.ok(existsSync(new URL("../src/game-20260903-volcano.js", import.meta.url)));
+  assert.ok(existsSync(new URL("../src/coop-boss-controller-20260903-volcano.js", import.meta.url)));
+  assert.ok(existsSync(new URL("../src/network-20260903-volcano.js", import.meta.url)));
+  assert.ok(existsSync(new URL("../src/coop-boss-network-20260903-volcano.js", import.meta.url)));
   assert.equal(existsSync(new URL("../src/main-20260902-lease.js", import.meta.url)), false);
   assert.equal(existsSync(new URL("../src/game-20260902-lease.js", import.meta.url)), false);
   assert.equal(existsSync(new URL("../src/network-20260829-coast.js", import.meta.url)), false);
@@ -53,13 +58,15 @@ test("Firebase 상태 게시 hotfix는 network부터 엔트리까지 새 물리 
   assert.equal(existsSync(new URL("../src/coop-boss-controller-20260829-coast.js", import.meta.url)), false);
   assert.equal(existsSync(new URL("../src/main-20260828-coop.js", import.meta.url)), false);
   assert.equal(existsSync(new URL("../src/game-20260828-coop.js", import.meta.url)), false);
-  const entry = readFileSync(new URL("../src/main-20260902-publish.js", import.meta.url), "utf8");
-  const game = readFileSync(new URL("../src/game-20260902-publish.js", import.meta.url), "utf8");
-  const network = readFileSync(new URL("../src/network-20260902-publish.js", import.meta.url), "utf8");
-  assert.match(entry, /from "\.\/game-20260902-publish\.js"/);
-  assert.match(game, /from "\.\/coop-boss-controller-20260902-lease\.js"/);
-  assert.match(game, /from "\.\/network-20260902-publish\.js"/);
-  assert.match(network, /from "\.\/coop-boss-network-20260902-publish\.js"/);
+  const entry = readFileSync(new URL("../src/main-20260903-volcano.js", import.meta.url), "utf8");
+  const game = readFileSync(new URL("../src/game-20260903-volcano.js", import.meta.url), "utf8");
+  const network = readFileSync(new URL("../src/network-20260903-volcano.js", import.meta.url), "utf8");
+  assert.match(entry, /from "\.\/game-20260903-volcano\.js"/);
+  assert.match(game, /from "\.\/coop-boss-controller-20260903-volcano\.js"/);
+  assert.match(game, /from "\.\/network-20260903-volcano\.js"/);
+  assert.match(game, /from "\.\/combat-20260903-volcano\.js"/);
+  assert.match(game, /from "\.\/projectile-combat-20260903-volcano\.js"/);
+  assert.match(network, /from "\.\/coop-boss-network-20260903-volcano\.js"/);
   assert.doesNotMatch(entry, /game-20260902-lease\.js/);
   assert.doesNotMatch(entry, /game-20260829-coast\.js/);
   assert.doesNotMatch(game, /coop-boss-controller-20260829-coast\.js/);

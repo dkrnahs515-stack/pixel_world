@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { WEAPON_ORDER, WEAPON_ORDER_BY_CLASS } from "../src/weapon-data.js";
+import { WEAPON_ORDER } from "../src/weapon-data.js";
+import {
+  VOLCANO_HIDDEN_WEAPON_IDS,
+  WEAPON_ORDER_BY_CLASS,
+} from "../src/weapon-data-20260903-volcano.js";
 
 function snapshot(value) {
   return {
@@ -64,7 +68,7 @@ test("플레이어 규칙은 레거시 무기 누락과 알려진 ID만 허용�
   assert.equal(evaluate({ ...player, equippedWeaponId: 7 }), false);
 });
 
-test("플레이어 규칙은 직업별 일곱 무기 조합만 허용한다", async () => {
+test("플레이어 규칙은 직업별 기존 일곱 무기와 명시적 직업의 히든 무기만 허용한다", async () => {
   const rules = JSON.parse(await readFile(new URL("../database.rules.json", import.meta.url), "utf8"));
   const expression = rules.rules.rooms.$roomId.players.$uid[".validate"];
   const validate = Function("newData", "data", "now", `return (${expression});`);
@@ -88,6 +92,9 @@ test("플레이어 규칙은 직업별 일곱 무기 조합만 허용한다", as
   assert.equal(evaluate({ ...player, classId: "mage", equippedWeaponId: "starter-sword" }), false);
   assert.equal(evaluate({ ...player, classId: "rogue", equippedWeaponId: "starter-sword" }), false);
   assert.equal(evaluate({ ...player, equippedWeaponId: "hunter-bow" }), false);
+  for (const weaponId of Object.values(VOLCANO_HIDDEN_WEAPON_IDS)) {
+    assert.equal(evaluate({ ...player, equippedWeaponId: weaponId }), false, `legacy:${weaponId}`);
+  }
   assert.equal(evaluate({ ...player, classId: "archer" }), false);
 });
 

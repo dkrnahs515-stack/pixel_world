@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import * as gameModule from "../src/game-20260902-publish.js";
+import * as gameModule from "../src/game-20260903-volcano.js";
 
 function effectApi(name) {
   assert.equal(typeof gameModule[name], "function", `${name} should be exported`);

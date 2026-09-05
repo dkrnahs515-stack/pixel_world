@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PixelRPG } from "../src/game-20260902-publish.js";
+import { PixelRPG } from "../src/game-20260903-volcano.js";
 import { completeRegion } from "../src/chapter-progress-20260829-coast.js";
 import { createInitialProgress } from "../src/quest-state-20260829-coast.js";
 import { WORLD_DEFINITIONS } from "../src/world-data-20260829-coast.js";
@@ -38,6 +38,7 @@ function rewardHarness(progress = createInitialProgress()) {
   game.updateBiome = () => {};
   game.updateChapterUi = () => {};
   game.notify = () => {};
+  game.ui = {};
   return { game, saves };
 }
 

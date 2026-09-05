@@ -63,7 +63,7 @@ firebase init hosting:github
 
 저장소는 `dkrnahs515-stack/pixel_world`, 배포 브랜치는 `main`을 선택합니다.
 
-푸른 해안의 변경되지 않은 ES 모듈은 `-20260829-coast.js` 물리 파일명을 유지하고, 만료 lease controller는 `coop-boss-controller-20260902-lease.js`를 사용합니다. Firebase 상태 게시 hotfix의 변경 모듈과 캐시 의존 상위 모듈은 `coop-boss-network-20260902-publish.js` → `network-20260902-publish.js` → `game-20260902-publish.js` → `main-20260902-publish.js` 체인을 사용하며, HTML의 CSS 버전도 `20260902-publish`로 맞춥니다. 새 릴리스에서 모듈을 수정할 때는 엔트리만이 아니라 변경 모듈부터 엔트리까지 재귀 import 상위 그래프의 물리 버전을 함께 올리고 `tests/coast-cache-contract.test.mjs`를 통과시켜야 합니다.
+활화산 릴리스의 변경 모듈과 캐시 의존 상위 모듈은 `coop-boss-network-20260903-volcano.js` → `network-20260903-volcano.js` → `game-20260903-volcano.js` → `main-20260903-volcano.js` 물리 체인을 사용합니다. HTML은 query 없는 `styles-20260903-volcano.css`와 현재 엔트리를 참조합니다. 동작이 바뀌지 않은 해안 조합 모듈은 기존 불변 물리 파일을 유지할 수 있습니다. 새 릴리스에서 모듈을 수정할 때는 변경 모듈부터 엔트리까지 재귀 import 상위 그래프의 물리 버전을 함께 올리고 `tests/volcano-cache-contract.test.mjs`를 통과시켜야 합니다.
 
 ## 5. 수동 배포
 
@@ -85,31 +85,35 @@ firebase deploy --only hosting,database
 
 - 익명 인증으로 플레이어별 UID 발급
 - `rooms/public/players/{uid}`에 위치, 방향과 현재 `mapId` 저장
-- 위치는 초당 최대 20회 전송
+- 위치는 이동 중 초당 최대 2회 전송하고, 정지 중에는 30초 heartbeat만 전송
 - 같은 `mapId`에 있는 원격 캐릭터만 보간하여 부드럽게 표시
-- 이전 데이터에 `mapId`가 없으면 중앙 마을(`village`)로 처리
+- 누락된 `mapId`나 레거시 `coast`는 presence와 채팅 데이터에서 정규화하지 않고 거부
 - 접속 종료 시 `onDisconnect().remove()`로 플레이어 데이터 삭제
 - `rooms/public/chat/{uid}/{messageId}`에 전체 월드 채팅 저장
 - UID별 메시지는 최대 5개이며 새 메시지 추가와 오래된 메시지 삭제를 한 번의 원자적 갱신으로 처리
 - `rooms/public/chat` 전체를 구독하므로 지역이 달라도 채팅 패널에서는 메시지 확인 가능
 - 캐릭터 말풍선은 같은 `mapId`의 최신 메시지만 4초간 표시
 - 재연결 시 플레이어와 채팅의 `onDisconnect().remove()`를 다시 예약
-- `database.rules.json`에서 본인 데이터만 수정 가능
+- `database.rules.json`에서 본인 데이터만 수정 가능하며, 같은 UID의 플레이어 상태를 교체할 때 최초 `joinedAt`은 변경할 수 없음
 
-허용되는 물리 `mapId`는 정확히 `village`, `forest`, `volcano`, `coast-beach`, `coast-wreck-bay`, `coast-flooded-station`, `coast-tide-core-cave` 일곱 개입니다. 레거시 `coast`, 빈 값, 미등록 ID는 규칙에서 거부합니다.
+허용되는 물리 `mapId`는 정확히 `village`, `forest`, `coast-beach`, `coast-wreck-bay`, `coast-flooded-station`, `coast-tide-core-cave`, `volcano`, `volcano-magma-route`, `volcano-observatory`, `volcano-core-caldera`, `sanctuary` 열한 개입니다. 레거시 `coast`, 빈 값, 미등록 ID는 규칙에서 거부합니다.
 
 맵별 좌표 경계는 다음과 같습니다.
 
 - `village`: `2,880 × 1,800`
 - `forest`: `4,320 × 3,600`
-- `volcano`: `4,320 × 3,600`
 - `coast-beach`, `coast-wreck-bay`, `coast-flooded-station`, `coast-tide-core-cave`: 각각 `2,160 × 1,800`
+- `volcano`, `volcano-magma-route`, `volcano-observatory`, `volcano-core-caldera`, `sanctuary`: 각각 `2,160 × 1,800`
 
 좌표가 음수이거나 해당 맵의 최대 경계를 넘으면 플레이어 쓰기와 보스 공격 요청을 거부합니다. 월드 확장 코드를 배포할 때 갱신된 `database.rules.json`도 함께 게시해야 온라인 이동이 거부되지 않습니다.
+
+플레이어 presence의 직업별 장착 무기 목록은 기존 상점 무기 일곱 종과 그 직업의 히든 무기 하나만 허용합니다. `classId`가 없는 레거시 presence에는 기존 일곱 종 검만 허용하며, 세 히든 무기는 반드시 일치하는 명시적 `classId`와 함께 전송해야 합니다.
 
 ### 협동 보스 동기화와 거부 조건
 
 - 관리자 브라우저는 보스 상태를 `2Hz`(초당 2회)로 게시하며 3분 재등장과 lease 기반 관리자 승계를 유지합니다.
+- 보스 경로는 `forest`, `coast-tide-core-cave`, `volcano-core-caldera`만 허용합니다. 레거시 `volcano` 경로의 state·attack·reward 쓰기는 거부합니다.
+- 검사 `volcanic-heartblade`, 궁수 `ember-tracker-bow`, 마법사 `leyflame-core-staff` 공격은 일치하는 `classId`에서만 허용합니다.
 - 공격 요청의 경로 `sequence`와 숫자 payload `sequence`가 정확히 대응하지 않으면 규칙과 관리자 클라이언트가 요청을 거부하고 실제 경로만 정리합니다.
 - 보상 claim 생성은 현재 처치(`defeated`) 상태인 `encounter`와 경로 ID가 다르면 거부합니다. 이미 생성된 24시간 claim은 이후 보스가 재등장해도 해당 기여자가 수령할 수 있습니다.
 - 처치 상태와 contributor별 claim은 하나의 교차 경로 transaction으로 저장되지 않습니다. 상태 게시 뒤 각 UID claim을 독립적인 멱등 transaction으로 기록하고, 부분 실패·재연결·관리자 승계 시 누락 claim만 재조정합니다.
