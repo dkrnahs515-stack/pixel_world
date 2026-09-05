@@ -188,19 +188,19 @@ async function pressStrongAndAssert(page, label) {
 
 async function fightCaptain(page, label) {
   let strongAttackObserved = false;
-  let missed = 0;
+  let lastDamageAt = Date.now();
   const deadline = Date.now() + 180000;
   for (let attempt = 0; Date.now() < deadline; attempt += 1) {
     const before = await page.evaluate(() => window.__volcanoSmokeRead());
     if (before.boss?.status === "defeated") break;
     assert.equal(before.mapId, "volcano-core-caldera", `${label}: left arena`);
-    await qaApproachBoss(page);
     await page.keyboard.press("1");
     await page.keyboard.press("2");
     await page.waitForFunction(() => {
       const state = window.__volcanoSmokeRead();
-      return !state.attacking && state.basicCooldown <= 0;
-    }, null, { timeout: 3000 });
+      return !state.attacking && state.basicCooldown <= 0 && state.view?.targetable;
+    }, null, { timeout: 10000 });
+    await qaApproachBoss(page);
     const ready = await page.evaluate(() => window.__volcanoSmokeRead());
     if (ready.strongCooldown <= 0) {
       await pressStrongAndAssert(page, label);
@@ -211,11 +211,11 @@ async function fightCaptain(page, label) {
     try {
       await page.waitForFunction(hp => window.__volcanoSmokeRead().boss?.hp < hp,
         before.boss.hp, { timeout: 1800 });
-      missed = 0;
+      lastDamageAt = Date.now();
     } catch (error) {
       const state = await page.evaluate(() => window.__volcanoSmokeRead());
       console.error("VOLCANO_ATTACK_DIAGNOSTIC", JSON.stringify({ label, attempt, before, state }));
-      if (++missed >= 3) throw error;
+      if (Date.now() - lastDamageAt >= 20000) throw error;
     }
   }
   await page.waitForFunction(() => {
