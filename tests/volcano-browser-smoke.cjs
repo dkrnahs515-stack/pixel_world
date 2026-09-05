@@ -10,10 +10,34 @@ const HIDDEN_WEAPONS = Object.freeze({
   mage: "leyflame-core-staff",
 });
 
-async function move(page, key, milliseconds) {
+// Hold real movement input until the observed simulation reaches a waypoint.
+// Time is only a failure bound, never the measure of distance travelled.
+async function walkAxis(page, axis, target, expectedMap = null) {
+  const initial = await page.evaluate(() => window.__volcanoSmokeRead());
+  const mapId = initial.mapId;
+  const direction = Math.sign(target - initial.player[axis]);
+  if (!direction) return;
+  const key = axis === "x"
+    ? (direction > 0 ? "ArrowRight" : "ArrowLeft")
+    : (direction > 0 ? "ArrowDown" : "ArrowUp");
   await page.keyboard.down(key);
-  await page.waitForTimeout(milliseconds);
-  await page.keyboard.up(key);
+  try {
+    await page.waitForFunction(({ axis, target, direction, mapId, expectedMap }) => {
+      const state = window.__volcanoSmokeRead();
+      if (state.mapId !== mapId) {
+        if (state.mapId === expectedMap) return true;
+        throw new Error(`Unexpected map during movement: ${state.mapId}`);
+      }
+      return direction * (state.player[axis] - target) >= -4;
+    }, { axis, target, direction, mapId, expectedMap }, { timeout: 20000 });
+  } catch (error) {
+    console.error("VOLCANO_MOVEMENT_DIAGNOSTIC", JSON.stringify({
+      axis, target, initial, current: await page.evaluate(() => window.__volcanoSmokeRead()),
+    }));
+    throw error;
+  } finally {
+    await page.keyboard.up(key);
+  }
 }
 
 async function enterSolo(page, nickname) {
@@ -116,9 +140,9 @@ async function reloadCheckpoint(page, nickname) {
 
 async function approachRouteConsole(page) {
   await qaTravel(page, "volcano-observatory", "붕괴한 관측소");
-  await move(page, "ArrowDown", 1800);
-  await move(page, "ArrowRight", 6200);
-  await move(page, "ArrowUp", 1600);
+  await walkAxis(page, "y", 1220);
+  await walkAxis(page, "x", 1700);
+  await walkAxis(page, "y", 900);
   await page.locator("#npcPrompt").waitFor({ state: "visible", timeout: 8000 });
   await page.keyboard.press("f");
   await page.locator("#dialogueOverlay").waitFor({ state: "visible" });
@@ -240,19 +264,22 @@ async function completeNearbyInteraction(page) {
 }
 
 async function collectCore(page, { prepareWeapons = false } = {}) {
+  await walkAxis(page, "x", 1700);
+  await walkAxis(page, "y", 780);
+  await walkAxis(page, "x", 1600);
   await completeNearbyInteraction(page);
   if (prepareWeapons) await qaPrepareWeapons(page);
-  await move(page, "ArrowDown", 1600);
-  await move(page, "ArrowLeft", 2000);
+  await walkAxis(page, "y", 1230);
+  await walkAxis(page, "x", 1080);
   await completeNearbyInteraction(page);
 }
 
 async function enterSanctuaryThroughPortal(page) {
   await qaTravel(page, "volcano-core-caldera", "화구 코어 제단");
-  await move(page, "ArrowRight", 1100);
-  await move(page, "ArrowUp", 2300);
-  await move(page, "ArrowRight", 2500);
-  await move(page, "ArrowUp", 800);
+  await walkAxis(page, "x", 500);
+  await walkAxis(page, "y", 320);
+  await walkAxis(page, "x", 1080);
+  await walkAxis(page, "y", 148, "sanctuary");
   await expectMap(page, "픽셀 코어 성역 입구");
 }
 
