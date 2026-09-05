@@ -20,18 +20,19 @@ function snapshot(value) {
   };
 }
 
-test("협동 보스는 인증 사용자와 세 물리 전투장만 읽는다", async () => {
+test("협동 보스는 인증 사용자와 화구를 포함한 세 물리 전투장만 읽는다", async () => {
   const bosses = (await load()).rules.rooms.$roomId.bosses;
   assert.ok(bosses?.$mapId);
   assert.match(bosses.$mapId[".read"], /auth != null/);
   assert.match(bosses.$mapId[".read"], /coast-tide-core-cave/);
-  assert.match(bosses.$mapId[".read"], /volcano/);
+  assert.match(bosses.$mapId[".read"], /\$mapId === 'volcano-core-caldera'/);
   assert.match(bosses.$mapId[".read"], /forest/);
   assert.doesNotMatch(bosses.$mapId[".read"], /village/);
+  assert.doesNotMatch(bosses.$mapId[".read"], /\$mapId === 'volcano'/);
   assert.doesNotMatch(bosses.$mapId[".read"], /=== 'coast'/);
 });
 
-test("플레이어와 채팅 규칙은 일곱 물리 맵만 허용하고 맵별 경계를 적용한다", async () => {
+test("플레이어와 채팅 규칙은 열한 물리 맵만 허용하고 맵별 경계를 적용한다", async () => {
   const room = (await load()).rules.rooms.$roomId;
   const playerRule = room.players.$uid[".validate"];
   const chatMap = room.chat.$uid.$messageId.mapId[".validate"];
@@ -44,11 +45,15 @@ test("플레이어와 채팅 규칙은 일곱 물리 맵만 허용하고 맵별 
   const physicalMaps = [
     ["village", 2880, 1800],
     ["forest", 4320, 3600],
-    ["volcano", 4320, 3600],
+    ["volcano", 2160, 1800],
     ["coast-beach", 2160, 1800],
     ["coast-wreck-bay", 2160, 1800],
     ["coast-flooded-station", 2160, 1800],
     ["coast-tide-core-cave", 2160, 1800],
+    ["volcano-magma-route", 2160, 1800],
+    ["volcano-observatory", 2160, 1800],
+    ["volcano-core-caldera", 2160, 1800],
+    ["sanctuary", 2160, 1800],
   ];
   for (const [mapId, width, height] of physicalMaps) {
     const evaluate = value => validatePlayer(snapshot(value), snapshot({}), Date.now());
@@ -87,6 +92,9 @@ test("공격 요청은 자기 경로·허용 장비·시간만 쓰고 damage를 
   assert.match(attack[".validate"], /!newData\.hasChild\('damage'\)/);
   for (const value of ["warrior", "archer", "mage", "starter-sword", "training-bow", "training-staff", "basic", "strong"]) {
     assert.match(attack[".validate"], new RegExp(value));
+  }
+  for (const weaponId of ["volcanic-heartblade", "ember-tracker-bow", "leyflame-core-staff"]) {
+    assert.match(attack[".validate"], new RegExp(weaponId));
   }
   assert.match(attack[".validate"], /now \+ 5000/);
   assert.match(attack[".validate"], /now - 5000/);
@@ -202,7 +210,14 @@ test("Firebase 운영 문서는 App Check를 관찰 후 강제하도록 안내�
   assert.match(setup, /debug token|디버그 토큰/i);
 });
 
-test("Firebase 운영 문서는 2Hz boss state, 정확한 일곱 mapId, 경계와 거부 조건을 설명한다", async () => {
+test("Firebase 운영 문서는 누락되거나 레거시인 mapId를 거부한다고 설명한다", async () => {
+  const setup = await readFile(new URL("../FIREBASE_SETUP.md", import.meta.url), "utf8");
+  assert.match(setup, /(누락|missing)[^\n]*mapId[^\n]*(거부|reject)/i);
+  assert.match(setup, /레거시[^\n]*coast[^\n]*(거부|reject)/i);
+  assert.doesNotMatch(setup, /mapId가 없으면 중앙 마을[^\n]*처리/);
+});
+
+test("Firebase 운영 문서는 2Hz boss state, 정확한 열한 mapId, 경계와 거부 조건을 설명한다", async () => {
   const setup = await readFile(new URL("../FIREBASE_SETUP.md", import.meta.url), "utf8");
   assert.match(setup, /2Hz|초당 2회/i);
   for (const mapId of [
@@ -213,13 +228,21 @@ test("Firebase 운영 문서는 2Hz boss state, 정확한 일곱 mapId, 경계�
     "coast-wreck-bay",
     "coast-flooded-station",
     "coast-tide-core-cave",
+    "volcano-magma-route",
+    "volcano-observatory",
+    "volcano-core-caldera",
+    "sanctuary",
   ]) {
     assert.match(setup, new RegExp(`\\b${mapId}\\b`));
   }
   assert.match(setup, /village[^\n]*2,?880[^\n]*1,?800/i);
   assert.match(setup, /forest[^\n]*4,?320[^\n]*3,?600/i);
-  assert.match(setup, /volcano[^\n]*4,?320[^\n]*3,?600/i);
+  assert.match(setup, /volcano[^\n]*2,?160[^\n]*1,?800/i);
   assert.match(setup, /coast-[^\n]*2,?160[^\n]*1,?800/i);
   assert.match(setup, /sequence[^\n]*(거부|reject)/i);
   assert.match(setup, /(defeated|처치)[^\n]*encounter[^\n]*(거부|reject)/i);
+  assert.match(setup, /classId[^\n]*(히든|hidden)/i);
+  assert.match(setup, /(classId[^\n]*(없|누락)|레거시)[^\n]*(7종|일곱)/i);
+  assert.match(setup, /main-20260903-volcano\.js/);
+  assert.match(setup, /tests\/volcano-cache-contract\.test\.mjs/);
 });

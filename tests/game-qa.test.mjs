@@ -1,9 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PixelRPG, interactionKeyAction } from "../src/game-20260902-publish.js";
+import {
+  PixelRPG,
+  interactionKeyAction,
+  loadPlayerProgress,
+} from "../src/game-20260903-volcano.js";
 import { createCombatStatusEffects } from "../src/player-combat.js";
 import { createInitialProgress } from "../src/quest-state-20260829-coast.js";
+import { createInitialProgress as createInitialVolcanoProgress } from "../src/quest-state-20260903-volcano.js";
 import { WEAPON_ORDER_BY_CLASS } from "../src/weapon-data.js";
+import { VOLCANO_HIDDEN_WEAPON_IDS } from "../src/weapon-data-20260903-volcano.js";
 
 function fakeNode(overrides = {}) {
   return {
@@ -374,7 +380,7 @@ test("QA 장비 준비는 Lv.30·5000G와 최대 HP·MP를 반영하고 한 번 
   assert.equal(game.ui.goldText.textContent, "5000 G");
   assert.equal(game.ui.qaOverlay.hidden, true);
   assert.equal(storage.writes.length, 1);
-  assert.equal(storage.writes[0].value.version, 6);
+  assert.equal(storage.writes[0].value.version, 7);
   assert.equal(game.lastNotice, "검사 7종 무기 준비 완료 · Lv.30 · 5000 G");
   delete globalThis.localStorage;
 });
@@ -401,6 +407,55 @@ test("QA 장비 준비는 선택 직업 일곱 무기만 준비하고 다른 직
   assert.deepEqual(game.progress.equipmentByClass.warrior, warriorBefore);
   assert.deepEqual(game.progress.equipmentByClass.archer, archerBefore);
   assert.equal(game.lastNotice, "마법사 7종 무기 준비 완료 · Lv.30 · 5000 G");
+  delete globalThis.localStorage;
+});
+
+test("QA 장비 준비 뒤 v7 저장·재입장·직업 전환에도 세 히든 무기와 장착 ID가 남는다", () => {
+  const equippedWeaponIds = {
+    warrior: "katana",
+    archer: "hunter-bow",
+    mage: "apprentice-staff",
+  };
+  const game = qaGame();
+  const storage = memoryStorage();
+  globalThis.localStorage = storage;
+  game.progress = createInitialVolcanoProgress();
+  game.progress.worldProgress.chapters.volcano.hiddenWeaponRewardClaimed = true;
+  for (const classId of ["warrior", "archer", "mage"]) {
+    game.progress.equipmentByClass[classId] = {
+      ownedWeaponIds: [
+        WEAPON_ORDER_BY_CLASS[classId][0],
+        equippedWeaponIds[classId],
+        VOLCANO_HIDDEN_WEAPON_IDS[classId],
+      ],
+      equippedWeaponId: equippedWeaponIds[classId],
+    };
+  }
+
+  for (const classId of ["warrior", "archer", "mage"]) {
+    game.classId = classId;
+    game.player.classId = classId;
+    game.player.equippedWeaponId = equippedWeaponIds[classId];
+    game.ui.qaOverlay.hidden = false;
+    assert.equal(game.qaPrepareWeaponShop(), true);
+  }
+  game.running = false;
+
+  const loaded = loadPlayerProgress(storage, game.player.name).progress;
+  assert.equal(loaded.worldProgress.chapters.volcano.hiddenWeaponRewardClaimed, true);
+  const reloadedGame = qaGame();
+  reloadedGame.progress = loaded;
+  for (const classId of ["warrior", "archer", "mage"]) {
+    assert.deepEqual(loaded.equipmentByClass[classId], {
+      ownedWeaponIds: [
+        ...WEAPON_ORDER_BY_CLASS[classId],
+        VOLCANO_HIDDEN_WEAPON_IDS[classId],
+      ],
+      equippedWeaponId: equippedWeaponIds[classId],
+    });
+    reloadedGame.configureClassSession(classId);
+    assert.equal(reloadedGame.player.equippedWeaponId, equippedWeaponIds[classId]);
+  }
   delete globalThis.localStorage;
 });
 
@@ -568,7 +623,7 @@ test("다른 지역 QA 소환의 안전 위치가 없으면 현재 지역과 전
   assert.equal(game.ui.qaOverlay.hidden, false);
 });
 
-test("QA 소환 몬스터 처치 보상은 일반 진행 데이터에 지급되고 v6 저장소에 기록된다", () => {
+test("QA 소환 몬스터 처치 보상은 일반 진행 데이터에 지급되고 v7 저장소에 기록된다", () => {
   const game = qaGame();
   const storage = memoryStorage();
   globalThis.localStorage = storage;
@@ -582,7 +637,7 @@ test("QA 소환 몬스터 처치 보상은 일반 진행 데이터에 지급되�
   assert.equal(game.progress.exp, 20);
   assert.equal(game.progress.gold, 15);
   assert.equal(storage.writes.length, 1);
-  assert.equal(storage.writes[0].value.version, 6);
+  assert.equal(storage.writes[0].value.version, 7);
   assert.equal(storage.writes[0].value.exp, 20);
   assert.equal(storage.writes[0].value.gold, 15);
   delete globalThis.localStorage;

@@ -11,7 +11,7 @@ import {
   normalizeEquipment,
   normalizeEquipmentByClass,
   sellWeapon,
-} from "../src/equipment-state.js";
+} from "../src/equipment-state-20260903-volcano.js";
 
 function progress(overrides = {}) {
   return {

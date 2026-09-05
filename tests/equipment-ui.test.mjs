@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { equipmentUiModel } from "../src/equipment-ui.js";
-import { createInitialEquipmentByClass } from "../src/equipment-state.js";
+import { equipmentUiModel } from "../src/equipment-ui-20260903-volcano.js";
+import { createInitialEquipmentByClass } from "../src/equipment-state-20260903-volcano.js";
 
 test("궁수 대장간과 인벤토리는 현재 직업의 보유 활만 표시한다", () => {
   const model = equipmentUiModel({

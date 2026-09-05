@@ -8,15 +8,15 @@ const {
 const { get, ref, remove, set } = require("firebase/database");
 
 const projectId = "demo-pixel-world-rules";
-const bossMapId = "coast-tide-core-cave";
+const bossMapId = "volcano-core-caldera";
 const bossPath = `rooms/public/bosses/${bossMapId}`;
 const statePath = `${bossPath}/state`;
 
 function encounter({ authorityUid = "host", authorityEpoch = 1, leaseUntil = Date.now() + 6_000 } = {}) {
   const now = Date.now();
   return {
-    encounterId: "coast-emulator-1",
-    bossId: "coast-core-shark",
+    encounterId: "volcano-emulator-1",
+    bossId: "volcano-core-imp",
     mapId: bossMapId,
     status: "alive",
     x: 1600,
@@ -35,12 +35,12 @@ function encounter({ authorityUid = "host", authorityEpoch = 1, leaseUntil = Dat
   };
 }
 
-function player({ classId = "archer", equippedWeaponId = "training-bow", mapId = bossMapId, x = 1540, y = 1280 } = {}) {
+function player({ classId = "archer", equippedWeaponId = "training-bow", mapId = bossMapId, x = 1540, y = 1280, joinedAt = Date.now() } = {}) {
   return {
     x,
     y,
     hp: 100,
-    joinedAt: Date.now(),
+    joinedAt,
     dir: "right",
     moving: false,
     name: "RuleTester",
@@ -48,6 +48,25 @@ function player({ classId = "archer", equippedWeaponId = "training-bow", mapId =
     mapId,
     classId,
     equippedWeaponId,
+  };
+}
+
+function attackRequest(sequence, overrides = {}) {
+  return {
+    attackId: `fighter:volcano-emulator-1:${sequence}`,
+    sequence,
+    uid: "fighter",
+    encounterId: "volcano-emulator-1",
+    bossId: "volcano-core-imp",
+    mapId: bossMapId,
+    classId: "archer",
+    weaponId: "training-bow",
+    attackKind: "basic",
+    playerX: 1540,
+    playerY: 1280,
+    direction: "right",
+    createdAt: Date.now(),
+    ...overrides,
   };
 }
 
@@ -82,7 +101,12 @@ test("Realtime Database 규칙은 보스 읽기·관리자·공격·피해 권�
     await assertFails(set(ref(fighterDb, "rooms/public/players/fighter"), {
       ...fighterPlayer, mapId: "coast",
     }));
-    for (const mapId of ["coast-beach", "coast-wreck-bay", "coast-flooded-station", bossMapId]) {
+    for (const mapId of [
+      "village", "forest",
+      "coast-beach", "coast-wreck-bay", "coast-flooded-station", "coast-tide-core-cave",
+      "volcano", "volcano-magma-route", "volcano-observatory", bossMapId,
+      "sanctuary",
+    ]) {
       await assertSucceeds(set(ref(fighterDb, "rooms/public/players/fighter"), { ...fighterPlayer, mapId }));
     }
     await assertFails(set(ref(fighterDb, "rooms/public/players/fighter"), { ...fighterPlayer, x: 2160.1 }));
@@ -91,57 +115,65 @@ test("Realtime Database 규칙은 보스 읽기·관리자·공격·피해 권�
     await assertFails(set(ref(fighterDb, "rooms/public/players/fighter"), {
       ...fighterPlayer, classId: "archer", equippedWeaponId: "starter-sword",
     }));
+    await assertSucceeds(set(ref(fighterDb, "rooms/public/players/fighter"), {
+      ...fighterPlayer, classId: "archer", equippedWeaponId: "ember-tracker-bow",
+    }));
+    await assertFails(set(ref(fighterDb, "rooms/public/players/fighter"), {
+      ...fighterPlayer, classId: "archer", equippedWeaponId: "volcanic-heartblade",
+    }));
+    const { classId: _classId, equippedWeaponId: _equippedWeaponId, ...legacyFighter } = fighterPlayer;
+    await assertSucceeds(set(ref(fighterDb, "rooms/public/players/fighter"), {
+      ...legacyFighter, equippedWeaponId: "reinforced-masterwork-katana",
+    }));
+    await assertFails(set(ref(fighterDb, "rooms/public/players/fighter"), {
+      ...legacyFighter, equippedWeaponId: "volcanic-heartblade",
+    }));
+    await assertSucceeds(set(ref(fighterDb, "rooms/public/players/fighter"), fighterPlayer));
 
     await assertSucceeds(set(ref(hostDb, statePath), encounter()));
+    await assertFails(set(ref(hostDb, "rooms/public/bosses/volcano/state"), {
+      ...encounter(), mapId: "volcano",
+    }));
     await assertSucceeds(get(ref(fighterDb, bossPath)));
     await assertFails(set(ref(strangerDb, statePath), { ...encounter(), hp: 100 }));
 
-    const createdAt = Date.now();
-    const attack = {
-      attackId: "fighter:coast-emulator-1:1",
-      sequence: 1,
-      uid: "fighter",
-      encounterId: "coast-emulator-1",
-      bossId: "coast-core-shark",
-      mapId: bossMapId,
-      classId: "archer",
-      weaponId: "training-bow",
-      attackKind: "basic",
-      playerX: 1540,
-      playerY: 1280,
-      direction: "right",
-      createdAt,
-    };
-    await assertSucceeds(set(ref(fighterDb, `${bossPath}/attacks/fighter/1`), attack));
-    await assertFails(set(ref(fighterDb, `${bossPath}/attacks/fighter/2`), {
-      ...attack, attackId: "fighter:coast-emulator-1:2", sequence: 2, createdAt: createdAt - 6_000,
-    }));
-    await assertFails(set(ref(fighterDb, `${bossPath}/attacks/fighter/3`), {
-      ...attack, attackId: "fighter:coast-emulator-1:3", sequence: 3, damage: 999,
-    }));
-    await assertFails(set(ref(fighterDb, `${bossPath}/attacks/fighter/4`), {
-      ...attack, attackId: "fighter:coast-emulator-1:4", sequence: 4, mapId: "forest",
-    }));
-    await assertFails(set(ref(fighterDb, `${bossPath}/attacks/fighter/5`), {
-      ...attack, attackId: "fighter:coast-emulator-1:5", sequence: 5, weaponId: "starter-sword",
-    }));
-    await assertFails(set(ref(fighterDb, `${bossPath}/attacks/fighter/7`), {
-      ...attack, attackId: "fighter:coast-emulator-1:8", sequence: 8,
-    }));
+    await assertSucceeds(set(ref(fighterDb, `${bossPath}/attacks/fighter/1`), attackRequest(1)));
+    await assertFails(set(ref(fighterDb, `${bossPath}/attacks/fighter/2`), attackRequest(2, {
+      createdAt: Date.now() - 6_000,
+    })));
+    await assertFails(set(ref(fighterDb, `${bossPath}/attacks/fighter/3`), attackRequest(3, {
+      damage: 999,
+    })));
+    await assertFails(set(ref(fighterDb, `${bossPath}/attacks/fighter/4`), attackRequest(4, {
+      mapId: "forest",
+    })));
+    await assertFails(set(ref(fighterDb, `${bossPath}/attacks/fighter/5`), attackRequest(5, {
+      weaponId: "starter-sword",
+    })));
+    await assertFails(set(ref(fighterDb, `${bossPath}/attacks/fighter/7`), attackRequest(8)));
 
     await assertSucceeds(set(ref(fighterDb, "rooms/public/players/fighter"), {
       ...fighterPlayer, mapId: "coast-flooded-station",
     }));
-    await assertFails(set(ref(fighterDb, `${bossPath}/attacks/fighter/6`), {
-      ...attack, attackId: "fighter:coast-emulator-1:6", sequence: 6,
-    }));
+    await assertFails(set(ref(fighterDb, `${bossPath}/attacks/fighter/6`), attackRequest(6)));
     await assertSucceeds(set(ref(fighterDb, "rooms/public/players/fighter"), fighterPlayer));
 
-    const damagePath = `${bossPath}/playerDamage/fighter/coast-emulator-1:1:1`;
+    await assertSucceeds(set(ref(fighterDb, "rooms/public/players/fighter"), {
+      ...fighterPlayer, equippedWeaponId: "ember-tracker-bow",
+    }));
+    await assertSucceeds(set(ref(fighterDb, `${bossPath}/attacks/fighter/9`), attackRequest(9, {
+      weaponId: "ember-tracker-bow",
+    })));
+    await assertFails(set(ref(fighterDb, `${bossPath}/attacks/fighter/10`), attackRequest(10, {
+      classId: "archer", weaponId: "volcanic-heartblade",
+    })));
+    await assertSucceeds(set(ref(fighterDb, "rooms/public/players/fighter"), fighterPlayer));
+
+    const damagePath = `${bossPath}/playerDamage/fighter/volcano-emulator-1:1:1`;
     const damage = {
-      eventId: "coast-emulator-1:1:1",
-      encounterId: "coast-emulator-1",
-      bossId: "coast-core-shark",
+      eventId: "volcano-emulator-1:1:1",
+      encounterId: "volcano-emulator-1",
+      bossId: "volcano-core-imp",
       targetUid: "fighter",
       authorityEpoch: 1,
       damage: 12,
@@ -165,13 +197,13 @@ test("Realtime Database 규칙은 보스 읽기·관리자·공격·피해 권�
     await environment.withSecurityRulesDisabled(async context => {
       await set(ref(context.database(), statePath), defeatedState);
     });
-    const claimPath = `${bossPath}/rewardClaims/coast-emulator-1/fighter`;
+    const claimPath = `${bossPath}/rewardClaims/volcano-emulator-1/fighter`;
     const claim = {
-      encounterId: "coast-emulator-1",
-      bossId: "coast-core-shark",
+      encounterId: "volcano-emulator-1",
+      bossId: "volcano-core-imp",
       uid: "fighter",
-      exp: 150,
-      gold: 100,
+      exp: 220,
+      gold: 150,
       eligible: true,
       expiresAt: defeatedAt + 86_400_000,
     };

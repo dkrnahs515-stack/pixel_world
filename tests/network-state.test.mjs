@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { filterPlayersForMap, serializePlayerState } from "../src/network-state-20260829-coast.js";
-import { WORLD_IDS, getWorldDefinition } from "../src/world-data-20260829-coast.js";
+import { filterPlayersForMap, serializePlayerState } from "../src/network-state-20260903-volcano.js";
+import { WORLD_IDS, getWorldDefinition } from "../src/world-data-20260903-volcano.js";
 
 test("serialized player state keeps existing fields and adds the active region", () => {
   assert.deepEqual(
@@ -91,6 +91,43 @@ test("presence filtering uses each exact coast map and its 2160×1800 bounds", (
       x: 1080, y: 900, dir: "down", moving: false, color: "#fff", name: "해안",
     }, mapId).mapId, mapId);
   }
+});
+
+test("presence accepts all four volcano maps and sanctuary at exact 2160×1800 bounds", () => {
+  const mapIds = [
+    "volcano",
+    "volcano-magma-route",
+    "volcano-observatory",
+    "volcano-core-caldera",
+    "sanctuary",
+  ];
+  for (const mapId of mapIds) {
+    const players = filterPlayersForMap({
+      boundary: { x: 2160, y: 1800, mapId, name: "경계" },
+      xOutside: { x: 2160.1, y: 900, mapId, name: "가로 밖" },
+      yOutside: { x: 1080, y: 1800.1, mapId, name: "세로 밖" },
+    }, "own", mapId);
+    assert.deepEqual([...players.keys()], ["boundary"], mapId);
+    assert.equal(serializePlayerState({
+      x: 1080, y: 900, dir: "down", moving: false, color: "#fff", name: "화산",
+    }, mapId)?.mapId, mapId);
+  }
+});
+
+test("hidden presence weapons require an explicit matching class", () => {
+  const base = {
+    x: 10, y: 20, dir: "down", moving: false, color: "#fff", name: "원격", mapId: "village",
+  };
+  const players = filterPlayersForMap({
+    legacySword: { ...base, equippedWeaponId: "reinforced-masterwork-katana" },
+    legacyHidden: { ...base, equippedWeaponId: "volcanic-heartblade" },
+    warriorHidden: { ...base, classId: "warrior", equippedWeaponId: "volcanic-heartblade" },
+    wrongHidden: { ...base, classId: "archer", equippedWeaponId: "volcanic-heartblade" },
+  }, "own", "village");
+  assert.equal(players.get("legacySword").equippedWeaponId, "reinforced-masterwork-katana");
+  assert.equal(players.get("legacyHidden").equippedWeaponId, "starter-sword");
+  assert.equal(players.get("warriorHidden").equippedWeaponId, "volcanic-heartblade");
+  assert.equal(players.get("wrongHidden").equippedWeaponId, "training-bow");
 });
 
 test("outbound presence rejects legacy, unknown, and missing physical map IDs", () => {

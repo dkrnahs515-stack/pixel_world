@@ -1,6 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createNetworkAdapter } from "../src/network-20260902-publish.js";
+import { createNetworkAdapter } from "../src/network-20260903-volcano.js";
+
+const VOLCANO_RELEASE_MAP_IDS = Object.freeze([
+  "village",
+  "forest",
+  "coast-beach",
+  "coast-wreck-bay",
+  "coast-flooded-station",
+  "coast-tide-core-cave",
+  "volcano",
+  "volcano-magma-route",
+  "volcano-observatory",
+  "volcano-core-caldera",
+  "sanctuary",
+]);
 
 function firebaseModulesFake() {
   const callbacks = new Map();
@@ -97,6 +111,52 @@ test("플레이어와 채팅은 인증 연결을 공유하고 재연결 때 자�
   assert.equal(fake.onlineCalls, 1);
   assert.equal(fake.signOutCalls, 0);
   assert.equal(fake.offlineCalls, 1);
+});
+
+test("현재 채팅은 열한 물리 맵 모두에서 outbound 메시지를 기록한다", async () => {
+  const fake = firebaseModulesFake();
+  const adapter = await createNetworkAdapter({
+    playMode: "online",
+    onPlayersChanged: () => {},
+    onChatMessagesChanged: () => {},
+  }, {
+    firebaseConfig: { apiKey: "public-id", databaseURL: "https://example.invalid" },
+    loadFirebaseModules: async () => fake.modules,
+  });
+
+  const results = [];
+  for (const mapId of VOLCANO_RELEASE_MAP_IDS) {
+    results.push(await adapter.chat.send({ text: `출발 ${mapId}`, name: "화산대", mapId }));
+  }
+
+  assert.deepEqual(results, VOLCANO_RELEASE_MAP_IDS.map(() => ({ ok: true, error: "" })));
+  assert.deepEqual(
+    fake.updates.map(({ value }) => value.new.mapId),
+    VOLCANO_RELEASE_MAP_IDS,
+  );
+  await adapter.stop();
+});
+
+test("현재 채팅은 열한 물리 맵 모두의 inbound 메시지를 전달한다", async () => {
+  const fake = firebaseModulesFake();
+  const received = [];
+  const adapter = await createNetworkAdapter({
+    playMode: "online",
+    onPlayersChanged: () => {},
+    onChatMessagesChanged: messages => received.push(messages),
+  }, {
+    firebaseConfig: { apiKey: "public-id", databaseURL: "https://example.invalid" },
+    loadFirebaseModules: async () => fake.modules,
+  });
+  const records = Object.fromEntries(VOLCANO_RELEASE_MAP_IDS.map((mapId, index) => [
+    `m${index}`,
+    { text: `도착 ${mapId}`, name: "화산대", mapId, createdAt: 100 + index },
+  ]));
+
+  fake.callbacks.get("rooms/public/chat")({ val: () => ({ "user-b": records }) });
+
+  assert.deepEqual(received.at(-1).map(message => message.mapId), VOLCANO_RELEASE_MAP_IDS);
+  await adapter.stop();
 });
 
 test("네트워크 게시에는 현재 직업과 해당 장착 무기가 포함된다", async () => {

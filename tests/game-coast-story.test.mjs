@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PixelRPG, regionEntryMessage } from "../src/game-20260902-publish.js";
+import { PixelRPG, regionEntryMessage } from "../src/game-20260903-volcano.js";
 import { completeRegion, isMapUnlocked } from "../src/chapter-progress-20260829-coast.js";
 import { createInitialProgress } from "../src/quest-state-20260829-coast.js";
 import { canUsePortal } from "../src/portal-transition-20260829-coast.js";
@@ -72,7 +72,7 @@ for (const choice of ["sera", "echo", "mari"]) {
     assert.equal(game.progress.worldProgress.completedRegionIds.includes("coast"), true);
     assert.equal(isMapUnlocked(game.progress.worldProgress, "volcano"), true);
     assert.equal(saves.length, 15);
-    assert.equal(game.currentChapterObjective().id, "coast-completed");
+    assert.equal(game.currentChapterObjective().id, "repair-ash-gate-pressure-seal");
   });
 }
 

@@ -56,7 +56,7 @@ test("Firebase 규칙은 emulator allow/deny 검사를 PR에서 실행한다", a
   assert.match(workflow, /tests\/firebase-rules-emulator\.cjs/);
 });
 
-test("브라우저 smoke는 정적 서버에서 솔로·기본·채팅·해안 흐름을 함께 실행한다", async () => {
+test("브라우저 smoke는 정적 서버에서 솔로·기본·채팅·해안·활화산 흐름을 함께 실행한다", async () => {
   const workflow = await readFile(
     new URL("../.github/workflows/browser-smoke.yml", import.meta.url),
     "utf8",
@@ -66,4 +66,5 @@ test("브라우저 smoke는 정적 서버에서 솔로·기본·채팅·해안 �
   assert.match(workflow, /tests\/browser-smoke\.cjs/);
   assert.match(workflow, /tests\/chat-game-smoke\.cjs/);
   assert.match(workflow, /tests\/coast-browser-smoke\.cjs/);
+  assert.match(workflow, /tests\/volcano-browser-smoke\.cjs/);
 });

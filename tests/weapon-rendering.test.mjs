@@ -4,8 +4,8 @@ import {
   drawScabbard,
   drawWeapon,
   drawWeaponPreview,
-} from "../src/weapon-rendering.js";
-import { WEAPON_ORDER, WEAPON_ORDER_BY_CLASS, WEAPONS } from "../src/weapon-data.js";
+} from "../src/weapon-rendering-20260903-volcano.js";
+import { WEAPON_ORDER, WEAPON_ORDER_BY_CLASS, WEAPONS } from "../src/weapon-data-20260903-volcano.js";
 
 function recordingContext() {
   const fills = [];
@@ -80,7 +80,7 @@ function boundsRecordingContext() {
   };
 }
 
-test("일곱 무기는 승인된 검신 길이와 색을 Canvas 픽셀로 그린다", () => {
+test("여덟 검은 승인된 검신 길이와 색을 Canvas 픽셀로 그린다", () => {
   for (const id of WEAPON_ORDER) {
     const context = recordingContext();
     const weapon = WEAPONS[id];
@@ -192,7 +192,7 @@ test("대장간 미리보기는 가장 긴 무기까지 캔버스 경계 안에 
   }
 });
 
-test("활 7종은 현과 등급별 재료색을 가진 활 모양으로 그린다", () => {
+test("활 8종은 현과 등급별 재료색을 가진 활 모양으로 그린다", () => {
   for (const weaponId of WEAPON_ORDER_BY_CLASS.archer) {
     const context = recordingContext();
     const weapon = WEAPONS[weaponId];
@@ -203,7 +203,7 @@ test("활 7종은 현과 등급별 재료색을 가진 활 모양으로 그린�
   }
 });
 
-test("지팡이 7종은 축과 발광 코어를 등급별 색으로 그린다", () => {
+test("지팡이 8종은 축과 발광 코어를 등급별 색으로 그린다", () => {
   for (const weaponId of WEAPON_ORDER_BY_CLASS.mage) {
     const context = recordingContext();
     const weapon = WEAPONS[weaponId];
@@ -214,7 +214,7 @@ test("지팡이 7종은 축과 발광 코어를 등급별 색으로 그린다", 
   }
 });
 
-test("모든 21종 무기 미리보기가 전용 Canvas 안에 표시된다", () => {
+test("모든 24종 무기 미리보기가 전용 Canvas 안에 표시된다", () => {
   for (const weaponId of Object.values(WEAPON_ORDER_BY_CLASS).flat()) {
     const context = boundsRecordingContext();
     const canvas = { width: 54, height: 32, getContext: () => context };

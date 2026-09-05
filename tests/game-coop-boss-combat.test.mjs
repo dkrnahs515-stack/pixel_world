@@ -1,13 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PixelRPG } from "../src/game-20260902-publish.js";
+import { PixelRPG } from "../src/game-20260903-volcano.js";
 
-function fixture(classId, weaponId) {
+function fixture(classId, weaponId, {
+  mapId = "coast-tide-core-cave",
+  bossId = "coast-core-shark",
+} = {}) {
   const requests = [];
-  const boss = { id: "coast-core-shark", x: 100, y: 100, radius: 32, hp: 120, targetable: true, isCoopBoss: true };
+  const boss = { id: bossId, x: 100, y: 100, radius: 32, hp: 120, targetable: true, isCoopBoss: true };
   const game = Object.create(PixelRPG.prototype);
   game.classId = classId;
-  game.mapId = "coast-tide-core-cave";
+  game.mapId = mapId;
   game.player = { x: 50, y: 100, dir: "right", equippedWeaponId: weaponId };
   game.enemies = [];
   game.damageNumbers = [];
@@ -20,6 +23,27 @@ function fixture(classId, weaponId) {
     requestHit: payload => { requests.push(payload); return Promise.resolve({ ok: true }); },
   };
   return { game, requests, boss };
+}
+
+for (const scenario of [
+  { classId: "warrior", weaponId: "volcanic-heartblade" },
+  { classId: "archer", weaponId: "ember-tracker-bow" },
+  { classId: "mage", weaponId: "leyflame-core-staff" },
+]) {
+  test(`${scenario.classId} hidden weapon attacks target the captain in the physical caldera`, () => {
+    const value = fixture(scenario.classId, scenario.weaponId, {
+      mapId: "volcano-core-caldera",
+      bossId: "volcano-core-imp",
+    });
+    value.game.attackState = { coopBossRequested: false };
+    value.game.applyAttackHits({
+      damage: 1, range: 70, arcDegrees: 120, knockback: 0, hitStun: 0, hitStop: 0,
+    }, "basic");
+    assert.equal(value.requests.length, 1);
+    assert.equal(value.requests[0].weaponId, scenario.weaponId);
+    assert.equal(value.requests[0].player.mapId, "volcano-core-caldera");
+    assert.equal(value.boss.hp, 120);
+  });
 }
 
 test("검사 근접 적중은 보스 공격 요청을 한 번 보내고 로컬 HP를 줄이지 않는다", () => {
