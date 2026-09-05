@@ -163,32 +163,69 @@ async function pressStrongAndAssert(page, label) {
 }
 
 async function fightCaptain(page, label) {
-  await qaApproachBoss(page);
   let strongAttackObserved = false;
-  for (let attempt = 0; attempt < 180; attempt += 1) {
-    if (attempt % 8 === 0) {
-      if (!strongAttackObserved) {
-        await pressStrongAndAssert(page, label);
-        strongAttackObserved = true;
-      } else {
-        await page.keyboard.press("q");
-      }
+  let missed = 0;
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const before = await page.evaluate(() => window.__volcanoSmokeRead());
+    if (before.boss?.status === "defeated") break;
+    assert.equal(before.mapId, "volcano-core-caldera", `${label}: left arena`);
+    await qaApproachBoss(page);
+    await page.keyboard.press("1");
+    await page.keyboard.press("2");
+    await page.waitForFunction(() => {
+      const state = window.__volcanoSmokeRead();
+      return !state.attacking && state.basicCooldown <= 0;
+    }, null, { timeout: 3000 });
+    if (!strongAttackObserved) {
+      await pressStrongAndAssert(page, label);
+      strongAttackObserved = true;
     } else {
       await page.keyboard.press("Control");
     }
-    if (attempt % 5 === 0) await page.keyboard.press("1");
-    if (attempt % 6 === 0) await page.keyboard.press("2");
-    await page.waitForTimeout(540);
-    if (attempt % 3 === 0) {
-      const progress = await storedProgress(page);
-      if (progress?.worldProgress?.chapters?.volcano?.coopBossDefeated === true) {
-        assert.equal(strongAttackObserved, true, `${label}: no successful Q was observed`);
-        return;
-      }
-      assert.equal(await page.locator("#respawnOverlay").isVisible(), false, `${label}: player died`);
+    try {
+      await page.waitForFunction(hp => window.__volcanoSmokeRead().boss?.hp < hp,
+        before.boss.hp, { timeout: 1800 });
+      missed = 0;
+    } catch (error) {
+      const state = await page.evaluate(() => window.__volcanoSmokeRead());
+      console.error("VOLCANO_ATTACK_DIAGNOSTIC", JSON.stringify({ label, attempt, before, state }));
+      if (++missed >= 3) throw error;
     }
   }
-  assert.fail(`${label}: captain defeat was not persisted`);
+  await page.waitForFunction(() => {
+    const state = window.__volcanoSmokeRead();
+    return state.boss?.status === "defeated" && state.events.some(event =>
+      event.type === "boss-defeated" && event.encounterId === state.boss.encounterId);
+  }, null, { timeout: 3000 });
+  await page.waitForFunction(() => {
+    const key = Object.keys(localStorage).find(key => key.startsWith("pixel-world.progress.v7:"));
+    return key && JSON.parse(localStorage.getItem(key)).worldProgress.chapters.volcano.coopBossDefeated;
+  }, null, { timeout: 3000 });
+  assert.equal(strongAttackObserved, true, `${label}: no successful Q was observed`);
+}
+
+async function installCombatObserver(page) {
+  await page.route("**/src/main-20260903-volcano.js", async route => {
+    const response = await route.fetch();
+    const source = await response.text();
+    await route.fulfill({ response, body: source + `
+const smokeEvents = [];
+const smokeHandleEvents = game.handleBossControllerEvents.bind(game);
+game.handleBossControllerEvents = events => {
+  smokeEvents.push(...structuredClone(events || []));
+  return smokeHandleEvents(events);
+};
+window.__volcanoSmokeRead = () => ({
+  mapId: game.mapId,
+  player: { x: game.player.x, y: game.player.y, dir: game.player.dir, hp: game.player.hp },
+  boss: structuredClone(game.coopBossController?.snapshot || null),
+  view: (() => { const b = game.coopBossController?.renderableBoss(); return b ? { x: b.x, y: b.y, targetable: b.targetable } : null; })(),
+  attacking: Boolean(game.attackState),
+  basicCooldown: game.basicCooldown,
+  events: structuredClone(smokeEvents),
+});
+` });
+  });
 }
 
 async function completeNearbyInteraction(page) {
@@ -231,6 +268,7 @@ async function runRoute(browser, { nickname, prepared }) {
     if (message.type() === "error") errors.push(message.text());
   });
   try {
+    await installCombatObserver(page);
     await page.goto(`${BASE_URL}?qa=1`, { waitUntil: "networkidle" });
     await enterSolo(page, nickname);
     await seedObservatoryCheckpoint(page, prepared);
