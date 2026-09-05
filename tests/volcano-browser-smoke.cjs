@@ -20,6 +20,22 @@ async function moveUntilMap(page, key, name) {
   await page.keyboard.down(key);
   try {
     await expectMap(page, name);
+  } catch (error) {
+    const diagnostic = await page.evaluate(() => {
+      const storageKey = Object.keys(localStorage).find(candidate => candidate.startsWith("pixel-world.progress.v7:"));
+      const stored = storageKey ? JSON.parse(localStorage.getItem(storageKey)) : null;
+      return {
+        subtitle: document.querySelector(".player-header small")?.textContent || null,
+        message: document.querySelector("#message")?.textContent || null,
+        objective: document.querySelector("#chapterObjective")?.textContent || null,
+        portalDestination: document.querySelector("#portalDestination")?.textContent || null,
+        portalOverlayHidden: document.querySelector("#portalTransitionOverlay")?.hidden ?? null,
+        volcano: stored?.worldProgress?.chapters?.volcano || null,
+        unlockedMapIds: stored?.worldProgress?.unlockedMapIds || null,
+      };
+    });
+    console.error("VOLCANO_PORTAL_DIAGNOSTIC", JSON.stringify(diagnostic));
+    throw error;
   } finally {
     await page.keyboard.up(key);
   }
