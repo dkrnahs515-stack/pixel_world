@@ -5,20 +5,20 @@ import {
   findNearbyStoryInteraction,
   isStoryInteractionEligible,
   resolveStoryInteraction,
-} from "../src/story-interactions-20260903-volcano.js";
+} from "../src/story-interactions-20260903-volcano-20260905-upgrade.js";
 import {
   actorDialogueModel,
   storyDialogueModel,
-} from "../src/story-dialogue-20260903-volcano.js";
-import { COAST_STORY_INTERACTIONS } from "../src/coast-story-data-20260829-coast.js";
-import { VOLCANO_STORY_INTERACTIONS } from "../src/volcano-story-data-20260903-volcano.js";
+} from "../src/story-dialogue-20260903-volcano-20260905-upgrade.js";
+import { COAST_STORY_INTERACTIONS } from "../src/coast-story-data-20260829-coast-20260905-upgrade.js";
+import { VOLCANO_STORY_INTERACTIONS } from "../src/volcano-story-data-20260903-volcano-20260905-upgrade.js";
 import {
   collectCoolantAnchor,
   collectVolcanoClue,
   normalizeWorldProgress,
   recordChapterBossDefeat,
   repairVolcanoDevice,
-} from "../src/chapter-progress-20260903-volcano.js";
+} from "../src/chapter-progress-20260903-volcano-20260905-upgrade.js";
 
 const MAGMA_DEVICE_IDS = ["magma-valve-west", "magma-valve-central", "magma-valve-east"];
 const ANCHOR_IDS = [

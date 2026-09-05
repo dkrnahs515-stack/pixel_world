@@ -4,12 +4,12 @@ import {
   PixelRPG,
   interactionKeyAction,
   loadPlayerProgress,
-} from "../src/game-20260903-volcano.js";
-import { createCombatStatusEffects } from "../src/player-combat.js";
-import { createInitialProgress } from "../src/quest-state-20260829-coast.js";
-import { createInitialProgress as createInitialVolcanoProgress } from "../src/quest-state-20260903-volcano.js";
-import { WEAPON_ORDER_BY_CLASS } from "../src/weapon-data.js";
-import { VOLCANO_HIDDEN_WEAPON_IDS } from "../src/weapon-data-20260903-volcano.js";
+} from "../src/game-20260903-volcano-20260905-upgrade.js";
+import { createCombatStatusEffects } from "../src/player-combat-20260905-upgrade.js";
+import { createInitialProgress } from "../src/quest-state-20260829-coast-20260905-upgrade.js";
+import { createInitialProgress as createInitialVolcanoProgress } from "../src/quest-state-20260903-volcano-20260905-upgrade.js";
+import { WEAPON_ORDER_BY_CLASS } from "../src/weapon-data-20260905-upgrade.js";
+import { VOLCANO_HIDDEN_WEAPON_IDS } from "../src/weapon-data-20260903-volcano-20260905-upgrade.js";
 
 function fakeNode(overrides = {}) {
   return {
@@ -606,8 +606,8 @@ test("QA 몬스터 소환은 고유 지역으로 이동한 뒤 플레이어 앞 
   }, {
     id: "coast-beach-qa-1",
     kind: "fang-shark",
-    hp: 25,
-    maxHp: 25,
+    hp: 100,
+    maxHp: 100,
     x: 1080,
     y: 460,
   });

@@ -1,0 +1,19 @@
+import { FIREBASE_CONFIG } from "./firebase-config-20260905-upgrade.js";
+
+export const GAME_CONFIG = Object.freeze({
+  TILE: 32,
+  SIMULATION_HZ: 60,
+  PLAYER_SPEED: 245,
+  CAMERA_LERP: 13,
+  MAX_DPR: 1.5,
+  MIN_RENDER_SCALE: 0.75,
+  NETWORK_SEND_HZ: 2,
+  NETWORK_HEARTBEAT_MS: 30_000,
+  REMOTE_INTERPOLATION_MS: 500,
+  REMOTE_STALE_MS: 1_000,
+  CONNECTION_LOSS_GRACE_MS: 5_000,
+});
+
+export { FIREBASE_CONFIG };
+
+export const ROOM_ID = "public";

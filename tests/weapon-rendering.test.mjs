@@ -4,8 +4,8 @@ import {
   drawScabbard,
   drawWeapon,
   drawWeaponPreview,
-} from "../src/weapon-rendering-20260903-volcano.js";
-import { WEAPON_ORDER, WEAPON_ORDER_BY_CLASS, WEAPONS } from "../src/weapon-data-20260903-volcano.js";
+} from "../src/weapon-rendering-20260903-volcano-20260905-upgrade.js";
+import { WEAPON_ORDER, WEAPON_ORDER_BY_CLASS, WEAPONS } from "../src/weapon-data-20260903-volcano-20260905-upgrade.js";
 
 function recordingContext() {
   const fills = [];

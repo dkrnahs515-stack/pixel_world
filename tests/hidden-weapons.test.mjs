@@ -5,22 +5,22 @@ import {
   createInitialEquipmentByClass,
   grantVolcanoHiddenWeapons,
   sellWeapon,
-} from "../src/equipment-state-20260903-volcano.js";
-import { equipmentUiModel } from "../src/equipment-ui-20260903-volcano.js";
+} from "../src/equipment-state-20260903-volcano-20260905-upgrade.js";
+import { equipmentUiModel } from "../src/equipment-ui-20260903-volcano-20260905-upgrade.js";
 import {
   VOLCANO_HIDDEN_WEAPON_IDS,
   WEAPONS,
-} from "../src/weapon-data-20260903-volcano.js";
-import { drawWeapon } from "../src/weapon-rendering-20260903-volcano.js";
-import { attackDefinition } from "../src/combat-20260903-volcano.js";
-import { createProjectile } from "../src/projectile-combat-20260903-volcano.js";
+} from "../src/weapon-data-20260903-volcano-20260905-upgrade.js";
+import { drawWeapon } from "../src/weapon-rendering-20260903-volcano-20260905-upgrade.js";
+import { attackDefinition } from "../src/combat-20260903-volcano-20260905-upgrade.js";
+import { createProjectile } from "../src/projectile-combat-20260903-volcano-20260905-upgrade.js";
 import {
   chooseVolcanoRoute,
   normalizeWorldProgress,
   recordChapterBossDefeat,
-} from "../src/chapter-progress-20260903-volcano.js";
-import { createInitialProgress } from "../src/quest-state-20260903-volcano.js";
-import { loadProgress, saveProgress } from "../src/progress-storage-20260903-volcano.js";
+} from "../src/chapter-progress-20260903-volcano-20260905-upgrade.js";
+import { createInitialProgress } from "../src/quest-state-20260903-volcano-20260905-upgrade.js";
+import { loadProgress, saveProgress } from "../src/progress-storage-20260903-volcano-20260905-upgrade.js";
 
 const HIDDEN_IDS = {
   warrior: "volcanic-heartblade",
@@ -88,9 +88,9 @@ test("히든 무기 세 종은 정확한 tier 8 보상 전용 수치를 가진�
       weapon.strongCooldown,
     ];
   }), [
-    ["volcanic-heartblade", "불굴의 화심검", "warrior", 8, 30, null, null, true, 2.75, 80, null, null, 3],
-    ["ember-tracker-bow", "불굴의 잿불궁", "archer", 8, 30, null, null, true, 2.65, 500, 750, null, 3.2],
-    ["leyflame-core-staff", "불굴의 용맥지팡이", "mage", 8, 30, null, null, true, 2.85, 405, 575, 156, 3.4],
+    ["volcanic-heartblade", "불굴의 화심검", "warrior", 8, 30, null, null, true, 11.0, 80, null, null, 3],
+    ["ember-tracker-bow", "불굴의 잿불궁", "archer", 8, 30, null, null, true, 10.6, 500, 750, null, 3.2],
+    ["leyflame-core-staff", "불굴의 용맥지팡이", "mage", 8, 30, null, null, true, 11.4, 405, 575, 156, 3.4],
   ]);
 });
 
@@ -185,11 +185,11 @@ test("히든 무기는 대장간에서 숨고 보유한 현재 직업 인벤토�
 test("히든 무기 전투 정의는 정확한 기본 수치와 Q 재사용시간을 사용한다", () => {
   const warrior = attackDefinition("strong", "warrior", HIDDEN_IDS.warrior);
   assert.deepEqual({ damage: warrior.damage, range: warrior.range, cooldown: warrior.cooldown }, {
-    damage: 5.5, range: 108, cooldown: 3,
+    damage: 22.0, range: 108, cooldown: 3,
   });
   const archer = attackDefinition("basic", "archer", HIDDEN_IDS.archer);
   assert.deepEqual({ damage: archer.damage, range: archer.range, speed: archer.speed }, {
-    damage: 2.65, range: 500, speed: 750,
+    damage: 10.6, range: 500, speed: 750,
   });
   const mage = attackDefinition("strong", "mage", HIDDEN_IDS.mage);
   assert.deepEqual({
@@ -199,7 +199,7 @@ test("히든 무기 전투 정의는 정확한 기본 수치와 Q 재사용시�
     explosionRadius: mage.explosionRadius,
     cooldown: mage.cooldown,
   }, {
-    damage: 6.84,
+    damage: 27.36,
     range: 506.25,
     speed: 575,
     explosionRadius: 156,
@@ -224,7 +224,7 @@ test("히든 활과 지팡이 투사체는 보상 무기 ID와 전투 수치를 
     maxRange: arrow.maxRange,
   }, {
     weaponId: HIDDEN_IDS.archer,
-    damage: 2.65,
+    damage: 10.6,
     speed: 750,
     maxRange: 500,
   });

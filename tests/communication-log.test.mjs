@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { renderCommunicationLog } from "../src/communication-log-20260829-coast.js";
+import { renderCommunicationLog } from "../src/communication-log-20260829-coast-20260905-upgrade.js";
 
 function fakeDocument() {
   return {

@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { prepareWeaponQaProgress } from "../src/qa-mode-20260903-volcano.js";
-import { createInitialProgress } from "../src/quest-state-20260903-volcano.js";
-import { WEAPON_ORDER_BY_CLASS as ORDINARY_WEAPON_IDS } from "../src/weapon-data.js";
-import { VOLCANO_HIDDEN_WEAPON_IDS } from "../src/weapon-data-20260903-volcano.js";
+import { prepareWeaponQaProgress } from "../src/qa-mode-20260903-volcano-20260905-upgrade.js";
+import { createInitialProgress } from "../src/quest-state-20260903-volcano-20260905-upgrade.js";
+import { WEAPON_ORDER_BY_CLASS as ORDINARY_WEAPON_IDS } from "../src/weapon-data-20260905-upgrade.js";
+import { VOLCANO_HIDDEN_WEAPON_IDS } from "../src/weapon-data-20260903-volcano-20260905-upgrade.js";
 
 const EQUIPPED_ORDINARY_WEAPON_IDS = Object.freeze({
   warrior: "katana",

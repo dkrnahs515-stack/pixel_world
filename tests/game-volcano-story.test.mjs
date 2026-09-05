@@ -1,22 +1,22 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PixelRPG, regionEntryMessage } from "../src/game-20260903-volcano.js";
+import { PixelRPG, regionEntryMessage } from "../src/game-20260903-volcano-20260905-upgrade.js";
 import {
   normalizeWorldProgress,
   recordChapterBossDefeat,
   resolveVolcanoCaptain,
-} from "../src/chapter-progress-20260903-volcano.js";
-import { createInitialProgress } from "../src/quest-state-20260903-volcano.js";
-import { VOLCANO_STORY_INTERACTIONS } from "../src/volcano-story-data-20260903-volcano.js";
-import { getNpcsForWorld } from "../src/npc-data-20260903-volcano.js";
-import { canUsePortal } from "../src/portal-transition-20260903-volcano.js";
-import { WORLD_DEFINITIONS } from "../src/world-data-20260903-volcano.js";
+} from "../src/chapter-progress-20260903-volcano-20260905-upgrade.js";
+import { createInitialProgress } from "../src/quest-state-20260903-volcano-20260905-upgrade.js";
+import { VOLCANO_STORY_INTERACTIONS } from "../src/volcano-story-data-20260903-volcano-20260905-upgrade.js";
+import { getNpcsForWorld } from "../src/npc-data-20260903-volcano-20260905-upgrade.js";
+import { canUsePortal } from "../src/portal-transition-20260903-volcano-20260905-upgrade.js";
+import { WORLD_DEFINITIONS } from "../src/world-data-20260903-volcano-20260905-upgrade.js";
 import {
   createWorldLayer,
   getBiome,
   getStoryRenderablesForMap,
   isWorldPositionBlocked,
-} from "../src/world-20260903-volcano.js";
+} from "../src/world-20260903-volcano-20260905-upgrade.js";
 
 const MAGMA_DEVICES = ["magma-valve-west", "magma-valve-central", "magma-valve-east"];
 const ANCHORS = [

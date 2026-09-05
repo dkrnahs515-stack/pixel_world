@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PixelRPG } from "../src/game-20260903-volcano.js";
+import { PixelRPG } from "../src/game-20260903-volcano-20260905-upgrade.js";
 import { legacyProgressStorageKey } from "../src/progress-storage-20260829-coast.js";
-import { acceptAdventureQuest, createInitialProgress } from "../src/quest-state-20260829-coast.js";
+import { acceptAdventureQuest, createInitialProgress } from "../src/quest-state-20260829-coast-20260905-upgrade.js";
 
 function fakeNode() {
   return {
@@ -212,13 +212,13 @@ test("multi-kill attacks leave a level-up notification last and save once", asyn
     assert.deepEqual(notifications, [
       "불꽃 슬라임 처치! EXP +3 · Gold +1",
       "숲 슬라임 처치! EXP +4 · Gold +2",
-      "LEVEL UP! LV.2 · HP와 MP가 회복되었습니다.",
+      "LEVEL UP! LV.2 · 공격력 +2 · 최대 HP +12 · 최대 MP +4 · HP·MP 회복",
     ]);
   });
 });
 
 test("a write-failing v1 migration surfaces the existing save-failure notice", async () => {
-  const { loadPlayerProgress } = await import("../src/game-20260903-volcano.js");
+  const { loadPlayerProgress } = await import("../src/game-20260903-volcano-20260905-upgrade.js");
   assert.equal(typeof loadPlayerProgress, "function");
   const legacy = JSON.stringify({
     version: 1,

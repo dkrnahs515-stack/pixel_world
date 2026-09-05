@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { WORLD_IDS } from "../src/world-data-20260829-coast.js";
-import * as worldModule from "../src/world-20260829-coast.js";
+import { WORLD_IDS } from "../src/world-data-20260829-coast-20260905-upgrade.js";
+import * as worldModule from "../src/world-20260829-coast-20260905-upgrade.js";
 
 test("일곱 물리 맵 배경은 절반 해상도로 한 번씩 사전 렌더링하고 이후 같은 객체를 재사용한다", async () => {
   const { createWorldLayer, prewarmWorldLayers } = worldModule;

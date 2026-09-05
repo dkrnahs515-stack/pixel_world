@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PixelRPG } from "../src/game-20260903-volcano.js";
-import { completeRegion } from "../src/chapter-progress-20260829-coast.js";
-import { createInitialProgress } from "../src/quest-state-20260829-coast.js";
-import { WORLD_DEFINITIONS } from "../src/world-data-20260829-coast.js";
+import { PixelRPG } from "../src/game-20260903-volcano-20260905-upgrade.js";
+import { completeRegion } from "../src/chapter-progress-20260829-coast-20260905-upgrade.js";
+import { createInitialProgress } from "../src/quest-state-20260829-coast-20260905-upgrade.js";
+import { WORLD_DEFINITIONS } from "../src/world-data-20260829-coast-20260905-upgrade.js";
 import { createLocalBossController } from "../src/local-boss-controller-20260829-coast.js";
 
 function portalHarness(progress = createInitialProgress()) {

@@ -4,9 +4,9 @@ import {
   PixelRPG,
   interactionKeyAction,
   npcInteractionKeyAction,
-} from "../src/game-20260903-volcano.js";
-import { getNpcsForWorld } from "../src/npc-data-20260829-coast.js";
-import { createInitialProgress } from "../src/quest-state-20260829-coast.js";
+} from "../src/game-20260903-volcano-20260905-upgrade.js";
+import { getNpcsForWorld } from "../src/npc-data-20260829-coast-20260905-upgrade.js";
+import { createInitialProgress } from "../src/quest-state-20260829-coast-20260905-upgrade.js";
 
 function fakeNode(documentRef, overrides = {}) {
   const attributes = new Map();
@@ -413,10 +413,10 @@ test("공격 생성 시 장착 무기 수치를 스냅샷하고 이후 장착 �
   game.basicCooldown = 0;
   game.strongCooldown = 0;
   game.tryAttack("basic");
-  assert.equal(game.attackState.definition.damage, 1.3);
+  assert.equal(game.attackState.definition.damage, 5.2);
   assert.equal(game.attackState.definition.range, 76);
   game.player.equippedWeaponId = "starter-sword";
-  assert.equal(game.attackState.definition.damage, 1.3);
+  assert.equal(game.attackState.definition.damage, 5.2);
   game.attackState = null;
   game.tryAttack("strong");
   assert.equal(game.attackState.definition.cooldown, 4);

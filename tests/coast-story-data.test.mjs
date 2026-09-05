@@ -8,8 +8,8 @@ import {
   COAST_STORY_INTERACTIONS,
   COAST_TIDE_CORE_REVEAL,
   getCoastStoryContent,
-} from "../src/coast-story-data-20260829-coast.js";
-import { isWorldPositionBlocked } from "../src/world-20260829-coast.js";
+} from "../src/coast-story-data-20260829-coast-20260905-upgrade.js";
+import { isWorldPositionBlocked } from "../src/world-20260829-coast-20260905-upgrade.js";
 
 const PLAYER_RADIUS = 14;
 

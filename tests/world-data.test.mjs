@@ -7,8 +7,8 @@ import {
   getTotalWorldArea,
   isSafeWorld,
   normalizeWorldId,
-} from "../src/world-data-20260829-coast.js";
-import { findActivePortal, isWorldPositionBlocked } from "../src/world-20260829-coast.js";
+} from "../src/world-data-20260829-coast-20260905-upgrade.js";
+import { findActivePortal, isWorldPositionBlocked } from "../src/world-20260829-coast-20260905-upgrade.js";
 
 const PLAYER_RADIUS = 14;
 const PORTAL_EXIT_SAFE_MARGIN = 32;

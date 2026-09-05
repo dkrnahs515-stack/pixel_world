@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createEnemyInstance, damageEnemy } from "../src/enemies-20260829-coast.js";
-import { updateEnemyBehavior } from "../src/enemy-behaviors.js";
+import { createEnemyInstance, damageEnemy } from "../src/enemies-20260829-coast-20260905-upgrade.js";
+import { updateEnemyBehavior } from "../src/enemy-behaviors-20260905-upgrade.js";
 
 function enemyOf(kind, overrides = {}) {
   return Object.assign(

@@ -1,3 +1,5 @@
+import { bindRewardCodeEntry } from "./reward-code-entry.js";
+import { loadProgress as loadCodeProgress, saveProgress as saveCodeProgress } from "./progress-storage-20260903-volcano.js";
 import { PixelRPG, interactionKeyAction } from "./game-20260903-volcano.js";
 import { chatKeyAction } from "./chat-controller-20260903-volcano.js";
 import { drawClassPreview } from "./class-rendering.js";
@@ -232,6 +234,15 @@ for (const card of playModeCards) {
     selectPlayMode(playModeCards[targetIndex].dataset.playMode, { focus: true });
   });
 }
+
+bindRewardCodeEntry({
+  selectionInputs: [nicknameInput, ...classCards, ...playModeCards],
+  input: document.querySelector("#rewardCodeInput"), preview: document.querySelector("#rewardCodePreview"),
+  redeem: document.querySelector("#rewardCodeRedeem"), status: document.querySelector("#rewardCodeStatus"),
+  getSelection: () => validateEntrySelection(nicknameInput.value, selectedClassId, selectedPlayMode),
+  load: nickname => loadCodeProgress(browserStorage, nickname),
+  save: (nickname, progress) => saveCodeProgress(browserStorage, nickname, progress),
+});
 
 nicknameForm.addEventListener("submit", async event => {
   event.preventDefault();

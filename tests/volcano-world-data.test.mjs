@@ -4,13 +4,13 @@ import {
   REGION_DEFINITIONS,
   REGION_IDS,
   getRegionForMap,
-} from "../src/region-data-20260903-volcano.js";
+} from "../src/region-data-20260903-volcano-20260905-upgrade.js";
 import {
   WORLD_DEFINITIONS,
   WORLD_IDS,
   getPortalDestination,
   isSafeWorld,
-} from "../src/world-data-20260903-volcano.js";
+} from "../src/world-data-20260903-volcano-20260905-upgrade.js";
 
 const VOLCANO_MAP_IDS = [
   "volcano",

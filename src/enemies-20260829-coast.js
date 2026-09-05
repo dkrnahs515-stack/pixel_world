@@ -61,6 +61,32 @@ export function createBossEnemyView(definition, snapshot) {
   );
 }
 
+export function createEnemyContactDamageEvent(enemy, player) {
+  return createEnemyContactDamageEvents(enemy, [player])[0] || null;
+}
+
+export function createEnemyContactDamageEvents(enemy, players) {
+  if (!enemy || !Array.isArray(players) || enemy.state === "dying" || enemy.targetable === false
+    || enemy.contactMode !== "contact" || enemy.contactCooldown > 0
+    || enemy.hitStunRemaining > 0) return [];
+  const overlapping = players.filter(player => {
+    if (!player || !Number.isFinite(player.x) || !Number.isFinite(player.y)) return false;
+    const playerRadius = Number.isFinite(player.radius) ? player.radius : 16;
+    return Math.hypot(player.x - enemy.x, player.y - enemy.y) < enemy.radius + playerRadius;
+  });
+  if (overlapping.length === 0) return [];
+  enemy.contactCooldown = enemy.contactCooldownDuration;
+  enemy.attackSequence += 1;
+  return overlapping.map(player => ({
+    type: "damage-player",
+    enemyId: enemy.id,
+    attackId: `${enemy.id}:contact:${enemy.attackSequence}:${player.uid || "local-player"}`,
+    targetUid: player.uid,
+    amount: enemy.contactDamage,
+    source: { x: enemy.x, y: enemy.y },
+  }));
+}
+
 export function applyEnemyHitStun(enemy, duration) {
   if (!enemy || enemy.state === "dying" || !(duration > 0)) return false;
   enemy.hitStunRemaining = Math.max(enemy.hitStunRemaining ?? 0, duration);
@@ -95,7 +121,7 @@ export function damageEnemy(enemy, damage, direction, knockbackSpeed, random = M
     enemy.knockbackY = 0;
     if (enemy.kind === "magma-slime" && (enemy.generation ?? 0) === 0 && !enemy.splitResolved) {
       enemy.splitCount = random() < 0.5 ? 2 : 3;
-      enemy.splitChildHp = enemy.splitCount === 2 ? 5 : 3;
+      enemy.splitChildHp = enemy.splitCount === 2 ? 20 : 12;
       enemy.splitEventEmitted = false;
       enemy.splitResolved = true;
     }
@@ -111,6 +137,9 @@ export function updateEnemies(enemies, player, dt, context) {
   const { isBlocked } = context;
   const events = [];
   for (const enemy of enemies) {
+    enemy.baseMoveSpeed ??= enemy.speed;
+    enemy.slowRemaining = Math.max(0, (enemy.slowRemaining || 0) - dt);
+    enemy.speed = enemy.baseMoveSpeed * (enemy.slowRemaining > 0 ? (enemy.slowMultiplier || 0.5) : 1);
     enemy.prevX = enemy.x;
     enemy.prevY = enemy.y;
     enemy.hitFlash = Math.max(0, enemy.hitFlash - dt);

@@ -5,7 +5,7 @@ import {
   REGION_IDS,
   getRegionDefinition,
   getRegionForMap,
-} from "../src/region-data-20260829-coast.js";
+} from "../src/region-data-20260829-coast-20260905-upgrade.js";
 
 test("the immutable region registry separates coast story membership from physical maps", () => {
   assert.deepEqual(REGION_IDS, ["village", "forest", "coast", "volcano"]);

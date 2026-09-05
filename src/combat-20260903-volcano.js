@@ -1,3 +1,5 @@
+import { skillDefinition } from "./skill-data.js";
+import { statsForLevel } from "./player-progression.js";
 import { CLASS_IDS, DEFAULT_CLASS_ID, normalizeClassId } from "./class-data.js";
 import { resolveWeaponDefinition } from "./weapon-data-20260903-volcano.js";
 
@@ -110,10 +112,13 @@ export function directionVector(direction) {
   }[direction] || { x: 0, y: 1 };
 }
 
-export function attackDefinition(kind, classId = DEFAULT_CLASS_ID, weaponId) {
+export function attackDefinition(kind, classId = DEFAULT_CLASS_ID, weaponId, level = 1) {
   const normalizedKind = kind === "strong" ? "strong" : "basic";
   const args = attackArguments(classId, weaponId);
-  const weapon = resolveWeaponDefinition(args.weaponId, args.classId);
+  const base = resolveWeaponDefinition(args.weaponId, args.classId);
+  const weapon = { ...base, damage: base.damage + statsForLevel(Number.isInteger(level) && level > 0 ? level : 1, args.classId).attackBonus };
+  const skill = skillDefinition(kind, args.classId, weapon.damage);
+  if (skill) return skill;
   if (args.classId === "archer") return archerAttack(normalizedKind, weapon);
   if (args.classId === "mage") return mageAttack(normalizedKind, weapon);
   return warriorAttack(normalizedKind, weapon);

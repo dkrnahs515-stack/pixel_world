@@ -4,14 +4,14 @@ import {
   drawInvestigationZone,
   drawStorySignal,
   getStoryRenderablesForMap,
-} from "../src/world-20260829-coast.js";
-import { appendStorySignalEntities, PixelRPG } from "../src/game-20260903-volcano.js";
+} from "../src/world-20260829-coast-20260905-upgrade.js";
+import { appendStorySignalEntities, PixelRPG } from "../src/game-20260903-volcano-20260905-upgrade.js";
 import {
   collectChapterRecord,
   completeRegion,
   createInitialWorldProgress,
   repairChapterDevice,
-} from "../src/chapter-progress-20260829-coast.js";
+} from "../src/chapter-progress-20260829-coast-20260905-upgrade.js";
 
 function commandContext() {
   const calls = [];

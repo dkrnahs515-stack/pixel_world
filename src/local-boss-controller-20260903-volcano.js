@@ -1,6 +1,6 @@
 import { getCoopBossForMap } from "./coop-boss-data-20260903-volcano.js";
 import { applyBossAttack, createBossEncounter, validateBossAttack } from "./coop-boss-state-20260903-volcano.js";
-import { createBossEnemyView, updateEnemies } from "./enemies-20260829-coast.js";
+import { createBossEnemyView, createEnemyContactDamageEvent, updateEnemies } from "./enemies-20260829-coast.js";
 
 function regionIdFor(definition) {
   return definition.id.split("-")[0];
@@ -47,6 +47,8 @@ export class LocalBossController {
     this.encounterSequence = 0;
     this.attackSequence = 0;
     this.lastAttackAt = Number.NEGATIVE_INFINITY;
+    this.attackTimes = new Map();
+    this.skillCastStates = new Map();
     this.processedBossAttackIds = new Set();
   }
 
@@ -75,7 +77,7 @@ export class LocalBossController {
     return this.view;
   }
 
-  async requestHit({ attackKind, player, classId, weaponId, direction } = {}) {
+  async requestHit({ attackKind, player, classId, weaponId, direction, castId, hitIndex } = {}) {
     if (!this.snapshot || this.snapshot.status !== "alive" || this.snapshot.mapId !== this.mapId) {
       return { ok: false, reason: "boss_unavailable" };
     }
@@ -90,7 +92,7 @@ export class LocalBossController {
       mapId: this.snapshot.mapId,
       classId,
       weaponId,
-      attackKind,
+      attackKind, castId, hitIndex,
       playerX: attacker?.x,
       playerY: attacker?.y,
       direction,
@@ -102,7 +104,8 @@ export class LocalBossController {
       authenticatedUid: attacker?.uid,
       player: attacker,
       lastSequence: sequence - 1,
-      lastAttackAt: this.lastAttackAt,
+      lastAttackAt: this.attackTimes.get(attackKind) ?? Number.NEGATIVE_INFINITY,
+      lastCast: this.skillCastStates.get(attackKind),
       now: this.wallNow(),
     });
     if (!validated.ok) return validated;
@@ -111,6 +114,9 @@ export class LocalBossController {
     if (!result.applied) return { ok: false, reason: "boss_unavailable" };
     this.snapshot = result.encounter;
     this.lastAttackAt = validated.attackAt;
+    this.attackTimes.set(attackKind, validated.attackAt);
+    if (validated.castState) this.skillCastStates.set(attackKind, validated.castState);
+    if (this.view && validated.slowDuration) { this.view.slowRemaining = validated.slowDuration; this.view.slowMultiplier = validated.slowMultiplier; }
     if (this.view) {
       this.view.hp = this.snapshot.hp;
       this.view.maxHp = this.snapshot.maxHp;
@@ -134,12 +140,17 @@ export class LocalBossController {
     if (!this.snapshot || !this.view || this.snapshot.status !== "alive") return [];
     const player = localPlayer(context.player, this.mapId, context.player?.classId, context.player?.equippedWeaponId)
       || { x: this.view.x, y: this.view.y };
+    const contactBeforeMove = createEnemyContactDamageEvent(this.view, player);
     const result = this.simulate([this.view], player, dt, {
       isBlocked: context.isBlocked || (() => false),
       portals: context.portals || [],
       random: context.random || Math.random,
     });
     this.view = result.enemies?.[0] || this.view;
+    this.view.hp = this.snapshot.hp;
+    this.view.maxHp = this.snapshot.maxHp;
+    const contactEvent = contactBeforeMove || createEnemyContactDamageEvent(this.view, player);
+    const resultEvents = contactEvent ? [...(result.events || []), contactEvent] : result.events || [];
     this.snapshot = {
       ...this.snapshot,
       x: this.view.x,
@@ -150,7 +161,7 @@ export class LocalBossController {
       updatedAt: this.wallNow(),
     };
     const events = [];
-    for (const event of result.events || []) {
+    for (const event of resultEvents) {
       if (event?.type === "damage-player" && event.attackId) {
         if (this.processedBossAttackIds.has(event.attackId)) continue;
         this.processedBossAttackIds.add(event.attackId);
@@ -174,6 +185,8 @@ export class LocalBossController {
     this.pendingEvents = [];
     this.attackSequence = 0;
     this.lastAttackAt = Number.NEGATIVE_INFINITY;
+    this.attackTimes = new Map();
+    this.skillCastStates = new Map();
     this.processedBossAttackIds.clear();
   }
 }

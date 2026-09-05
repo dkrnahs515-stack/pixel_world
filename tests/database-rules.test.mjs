@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { WEAPON_ORDER } from "../src/weapon-data.js";
+import { WEAPON_ORDER } from "../src/weapon-data-20260905-upgrade.js";
 import {
   VOLCANO_HIDDEN_WEAPON_IDS,
   WEAPON_ORDER_BY_CLASS,
-} from "../src/weapon-data-20260903-volcano.js";
+} from "../src/weapon-data-20260903-volcano-20260905-upgrade.js";
 
 function snapshot(value) {
   return {

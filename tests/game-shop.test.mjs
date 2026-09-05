@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import * as gameModule from "../src/game-20260903-volcano.js";
-import { getNpcsForWorld } from "../src/npc-data-20260829-coast.js";
-import { createInitialProgress } from "../src/quest-state-20260829-coast.js";
+import * as gameModule from "../src/game-20260903-volcano-20260905-upgrade.js";
+import { getNpcsForWorld } from "../src/npc-data-20260829-coast-20260905-upgrade.js";
+import { createInitialProgress } from "../src/quest-state-20260829-coast-20260905-upgrade.js";
 
 const { PixelRPG } = gameModule;
 
@@ -352,9 +352,9 @@ test("Gold 부족과 최대 보유 상태의 구매는 저장하지 않는다", 
   assert.equal(poor.storage.writes.length, 0);
   assert.equal(poor.notifications.at(-1), "Gold가 부족합니다.");
 
-  const full = shopHarness({ gold: 999, inventory: { hpPotion: 99 } });
+  const full = shopHarness({ gold: 999, inventory: { hpPotion: 9999 } });
   assert.equal(full.game.buyItem?.("hpPotion"), false);
-  assert.equal(full.game.progress.inventory.hpPotion, 99);
+  assert.equal(full.game.progress.inventory.hpPotion, 9999);
   assert.equal(full.storage.writes.length, 0);
   assert.equal(full.notifications.at(-1), "물약을 더 이상 보유할 수 없습니다.");
 });
@@ -432,8 +432,8 @@ test("I 키와 화면 가방 버튼은 인벤토리를 열고 다시 닫는다",
   assert.equal(prevented, true);
   assert.equal(game.isInventoryOpen?.(), true);
   assert.strictEqual(documentRef.activeElement, elements.inventoryCloseButton);
-  assert.equal(elements.inventoryHpPotionCount.textContent, "2 / 99");
-  assert.equal(elements.inventoryMpPotionCount.textContent, "1 / 99");
+  assert.equal(elements.inventoryHpPotionCount.textContent, "2 / 9999");
+  assert.equal(elements.inventoryMpPotionCount.textContent, "1 / 9999");
 
   dispatchWindow("keydown", {
     code: "KeyI",
@@ -485,7 +485,7 @@ test("인벤토리 사용 버튼은 물약을 소비하고 열린 화면의 수�
   assert.equal(game.useInventoryItem?.("hpPotion"), true);
   assert.equal(game.player.hp, 100);
   assert.equal(game.progress.inventory.hpPotion, 0);
-  assert.equal(game.ui.inventoryHpPotionCount.textContent, "0 / 99");
+  assert.equal(game.ui.inventoryHpPotionCount.textContent, "0 / 9999");
   assert.equal(game.ui.inventoryHpUseButton.disabled, true);
   assert.equal(game.isInventoryOpen?.(), true);
   assert.equal(storage.writes.length, 1);

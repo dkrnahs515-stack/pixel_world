@@ -22,6 +22,7 @@ export function nextLevelExp(level) {
 export function statsForLevel(level, classId = DEFAULT_CLASS_ID) {
   const rules = getClassDefinition(normalizeClassId(classId)).stats;
   return {
+    attackBonus: (level - 1) * rules.attackPerLevel,
     maxHp: rules.baseMaxHp + (level - 1) * rules.maxHpPerLevel,
     maxMp: rules.baseMaxMp + (level - 1) * rules.maxMpPerLevel,
   };

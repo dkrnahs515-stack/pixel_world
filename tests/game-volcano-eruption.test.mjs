@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PixelRPG } from "../src/game-20260903-volcano.js";
-import { normalizeWorldProgress } from "../src/chapter-progress-20260903-volcano.js";
-import { createInitialProgress } from "../src/quest-state-20260903-volcano.js";
-import { createVolcanoEruptionState } from "../src/volcano-eruption-20260903-volcano.js";
+import { PixelRPG } from "../src/game-20260903-volcano-20260905-upgrade.js";
+import { normalizeWorldProgress } from "../src/chapter-progress-20260903-volcano-20260905-upgrade.js";
+import { createInitialProgress } from "../src/quest-state-20260903-volcano-20260905-upgrade.js";
+import { createVolcanoEruptionState } from "../src/volcano-eruption-20260903-volcano-20260905-upgrade.js";
 
 function eruptionHarness() {
   const game = Object.create(PixelRPG.prototype);

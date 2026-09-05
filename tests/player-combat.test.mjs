@@ -7,7 +7,7 @@ import {
   playerMovementMultiplier,
   respawnPlayer,
   tickPlayerStatus,
-} from "../src/player-combat.js";
+} from "../src/player-combat-20260905-upgrade.js";
 
 function player(overrides = {}) {
   return {

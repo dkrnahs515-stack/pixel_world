@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PixelRPG } from "../src/game-20260903-volcano.js";
+import { PixelRPG } from "../src/game-20260903-volcano-20260905-upgrade.js";
 
 function fixture(classId, weaponId, {
   mapId = "coast-tide-core-cave",

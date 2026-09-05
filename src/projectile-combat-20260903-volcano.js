@@ -6,6 +6,7 @@ const EPSILON = 1e-7;
 const BLOCK_SAMPLE_DISTANCE = 4;
 
 function projectileAttackKind(kind) {
+  if (kind === "ice-bolt" || kind === "spread-arrow") return "skill-e";
   return kind === "piercing-arrow" || kind === "explosive-bolt" ? "strong" : "basic";
 }
 
@@ -76,6 +77,8 @@ function hitEvent(projectile, target) {
     classId: projectile.classId,
     weaponId: projectile.weaponId,
     attackKind: projectileAttackKind(projectile.kind),
+    playerSnapshot: projectile.playerSnapshot,
+    castId: projectile.castId, hitIndex: projectile.hitIndex, slowDuration: projectile.slowDuration, slowMultiplier: projectile.slowMultiplier,
     direction: projectile.direction,
     damage: projectile.damage,
     knockback: projectile.knockback,
@@ -132,16 +135,17 @@ function isValidProjectile(projectile) {
   return Array.isArray(projectile.hitEnemyIds);
 }
 
-export function createProjectile({ id, kind, classId, weaponId, x, y, direction }) {
+export function createProjectile({ id, kind, classId, weaponId, x, y, direction, level = 1, castId, hitIndex = 0, angle = 0, playerSnapshot }) {
   const normalizedClassId = normalizeClassId(classId);
   const weapon = resolveWeaponDefinition(weaponId, normalizedClassId);
-  const definition = attackDefinition(projectileAttackKind(kind), normalizedClassId, weapon.id);
-  if (definition.delivery !== "projectile") {
+  const definition = attackDefinition(projectileAttackKind(kind), normalizedClassId, weapon.id, level);
+  if (!["projectile", "spread", "slow"].includes(definition.delivery)) {
     throw new TypeError("projectile attacks require archer or mage class data");
   }
-  const vector = directionVector(direction);
+  const facing = directionVector(direction);
+  const vector = { x: facing.x * Math.cos(angle) - facing.y * Math.sin(angle), y: facing.x * Math.sin(angle) + facing.y * Math.cos(angle) };
   return {
-    id,
+    id, castId, hitIndex, playerSnapshot, slowDuration: definition.slowDuration, slowMultiplier: definition.slowMultiplier,
     kind: definition.projectileKind,
     classId: normalizedClassId,
     weaponId: weapon.id,

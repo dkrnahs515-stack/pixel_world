@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createPublishPolicyState, nextPublishDecision } from "../src/network-publish-policy.js";
+import { createPublishPolicyState, nextPublishDecision } from "../src/network-publish-policy-20260905-upgrade.js";
 import { createCoopBossController } from "../src/coop-boss-controller-20260902-lease.js";
 import { createBossEncounter } from "../src/coop-boss-state-20260829-coast.js";
 import { getCoopBossForMap } from "../src/coop-boss-data-20260829-coast.js";

@@ -7,7 +7,7 @@ import {
   readStoredClassId,
   storeClassId,
   validateEntrySelection,
-} from "../src/class-selection.js";
+} from "../src/class-selection-20260905-upgrade.js";
 
 test("브라우저 저장소 getter 자체가 차단돼도 null로 복구한다", () => {
   const blockedGlobal = {};

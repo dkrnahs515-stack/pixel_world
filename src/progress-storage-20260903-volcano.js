@@ -1,3 +1,4 @@
+import { REWARD_POTION_LIMIT, normalizeRedeemedCodeIds } from "./reward-codes.js";
 import {
   ADVENTURE_QUEST,
   createInitialProgress,
@@ -89,7 +90,7 @@ function isValidInventory(inventory) {
     && ["hpPotion", "mpPotion"].every(itemId => (
       Number.isSafeInteger(inventory[itemId])
       && inventory[itemId] >= 0
-      && inventory[itemId] <= 99
+      && inventory[itemId] <= REWARD_POTION_LIMIT
     ));
 }
 
@@ -135,6 +136,8 @@ function toBaseAndInventoryProgress(value) {
       hpPotion: value.inventory.hpPotion,
       mpPotion: value.inventory.mpPotion,
     },
+    ...(Object.hasOwn(value, "redeemedCodeIds") ? { redeemedCodeIds: normalizeRedeemedCodeIds(value.redeemedCodeIds) } : {}),
+    ...(Array.isArray(value.questNotificationIds) ? { questNotificationIds: [...new Set(value.questNotificationIds.filter(id => typeof id === "string" && id.length < 120))].slice(0, 200) } : {}),
     claimedBossRewardIds: normalizeClaimedBossRewardIds(value.claimedBossRewardIds),
     worldProgress: normalizeWorldProgress(value.worldProgress),
     completedQuests: [...value.completedQuests],

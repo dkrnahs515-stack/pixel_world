@@ -1,7 +1,17 @@
+import { normalizeSkillResource } from "./skill-validation.js";
+import { statsForLevel } from "./player-progression.js";
 import { normalizeClassId } from "./class-data.js";
 import { WORLD_IDS, getWorldDefinition } from "./world-data-20260903-volcano.js";
 import { WEAPON_ORDER as LEGACY_SWORD_WEAPON_IDS } from "./weapon-data.js";
 import { resolveWeaponDefinition } from "./weapon-data-20260903-volcano.js";
+
+function skillResources(player, classId) {
+  const maxMp = statsForLevel(Number.isInteger(player.level) && player.level > 0 ? Math.min(10000, player.level) : 1, classId).maxMp;
+  return Object.fromEntries(["skill-e", "skill-r"].flatMap(kind => {
+    const cast = normalizeSkillResource(player.skillResources?.[kind], maxMp);
+    return cast ? [[kind, cast]] : [];
+  }));
+}
 
 function resolvePresenceWeaponId(weaponId, rawClassId) {
   const classId = normalizeClassId(rawClassId);
@@ -21,13 +31,17 @@ export function serializePlayerState(player, mapId) {
   return {
     x: Math.round(player.x * 10) / 10,
     y: Math.round(player.y * 10) / 10,
+    level: Number.isInteger(player.level) && player.level > 0 && player.level <= 10000 ? player.level : 1,
+    mp: Number.isFinite(player.mp) ? Math.max(0, Math.min(player.mp, statsForLevel(Number.isInteger(player.level) && player.level > 0 ? Math.min(10000, player.level) : 1, classId).maxMp)) : 0,
     hp: Number.isFinite(player.hp) ? Math.max(0, Math.round(player.hp * 10) / 10) : 100,
     dir: player.dir,
     moving: Boolean(player.moving),
     color: player.color,
     name: player.name,
     mapId,
+    skillResources: skillResources(player, classId),
     classId,
+    skinId: player.skinId === 'slime' ? 'slime' : 'default',
     equippedWeaponId: resolvePresenceWeaponId(player.equippedWeaponId, player.classId),
   };
 }
@@ -45,8 +59,14 @@ export function filterPlayersForMap(rawPlayers, ownUid, activeMapId) {
     const classId = normalizeClassId(raw.classId);
     players.set(uid, {
       ...raw,
+      skinId: raw.skinId === "slime" ? "slime" : "default",
+      immortal: false,
+      pencilWeapon: false,
+      level: Number.isInteger(raw.level) && raw.level > 0 && raw.level <= 10000 ? raw.level : 1,
+      mp: Number.isFinite(raw.mp) ? Math.max(0, Math.min(raw.mp, statsForLevel(Number.isInteger(raw.level) && raw.level > 0 ? Math.min(10000, raw.level) : 1, classId).maxMp)) : 0,
       hp: Number.isFinite(raw.hp) ? Math.max(0, raw.hp) : 100,
       mapId,
+      skillResources: skillResources(raw, classId),
       classId,
       equippedWeaponId: resolvePresenceWeaponId(raw.equippedWeaponId, raw.classId),
     });

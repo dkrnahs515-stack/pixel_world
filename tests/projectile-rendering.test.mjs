@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { drawExplosionEffect, drawProjectile } from "../src/projectile-rendering.js";
+import { drawExplosionEffect, drawProjectile } from "../src/projectile-rendering-20260905-upgrade.js";
 
 function recordingContext() {
   const calls = [];

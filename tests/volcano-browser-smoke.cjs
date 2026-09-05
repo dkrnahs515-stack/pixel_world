@@ -79,7 +79,7 @@ async function storedProgress(page) {
 
 async function runtimeProgress(page, nickname) {
   return page.evaluate(async activeNickname => {
-    const { loadPlayerProgress } = await import("./src/game-20260903-volcano.js");
+    const { loadPlayerProgress } = await import("./src/game-20260903-volcano-20260905-upgrade.js");
     return loadPlayerProgress(localStorage, activeNickname).progress;
   }, nickname);
 }
@@ -231,7 +231,7 @@ async function fightCaptain(page, label) {
 }
 
 async function installCombatObserver(page) {
-  await page.route("**/src/main-20260903-volcano.js", async route => {
+  await page.route("**/src/main-20260903-volcano-20260905-upgrade.js", async route => {
     const response = await route.fetch();
     const source = await response.text();
     await route.fulfill({ response, body: source + `

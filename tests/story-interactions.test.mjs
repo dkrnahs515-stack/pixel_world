@@ -1,17 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { COAST_STORY_INTERACTIONS, getCoastStoryContent } from "../src/coast-story-data-20260829-coast.js";
+import { COAST_STORY_INTERACTIONS, getCoastStoryContent } from "../src/coast-story-data-20260829-coast-20260905-upgrade.js";
 import {
   findNearbyStoryInteraction,
   resolveStoryInteraction,
   storyInteractionPrompt,
-} from "../src/story-interactions-20260829-coast.js";
+} from "../src/story-interactions-20260829-coast-20260905-upgrade.js";
 import {
   collectChapterRecord,
   completeRegion,
   createInitialWorldProgress,
   repairChapterDevice,
-} from "../src/chapter-progress-20260829-coast.js";
+} from "../src/chapter-progress-20260829-coast-20260905-upgrade.js";
 
 const WRECK_DEVICE_IDS = ["wreck-relay-west", "wreck-relay-deck", "wreck-relay-east"];
 const WRECK_RECORD_IDS = [

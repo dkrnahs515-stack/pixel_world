@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import * as shop from "../src/shop-state.js";
+import * as shop from "../src/shop-state-20260905-upgrade.js";
 
 function progress(gold, inventory = shop.createInitialInventory()) {
   return { gold, inventory };
@@ -27,7 +27,7 @@ test("Gold 부족과 최대 보유 상태에서는 구매 상태를 변경하지
   assert.equal(poorResult?.reason, "insufficient_gold");
   assert.equal(poorResult?.progress, poor);
 
-  const full = progress(999, { hpPotion: 99, mpPotion: 0 });
+  const full = progress(999, { hpPotion: 9999, mpPotion: 0 });
   const fullResult = shop.buyShopItem?.(full, "hpPotion");
   assert.equal(fullResult?.ok, false);
   assert.equal(fullResult?.reason, "inventory_full");

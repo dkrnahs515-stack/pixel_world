@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { filterPlayersForMap, serializePlayerState } from "../src/network-state-20260903-volcano.js";
-import { WORLD_IDS, getWorldDefinition } from "../src/world-data-20260903-volcano.js";
+import { filterPlayersForMap, serializePlayerState } from "../src/network-state-20260903-volcano-20260905-upgrade.js";
+import { WORLD_IDS, getWorldDefinition } from "../src/world-data-20260903-volcano-20260905-upgrade.js";
 
 test("serialized player state keeps existing fields and adds the active region", () => {
   assert.deepEqual(
@@ -13,6 +13,7 @@ test("serialized player state keeps existing fields and adds the active region",
       x: 10,
       y: 20.1,
       hp: 73,
+      level: 1, mp: 0, skillResources: {}, skinId: "default",
       dir: "left",
       moving: true,
       color: "#fff",

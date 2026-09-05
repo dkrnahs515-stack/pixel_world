@@ -169,6 +169,16 @@ test("Realtime Database 규칙은 보스 읽기·관리자·공격·피해 권�
     })));
     await assertSucceeds(set(ref(fighterDb, "rooms/public/players/fighter"), fighterPlayer));
 
+    const skillResource = { castId: "paid-e", mpBefore: 20, mpAfter: 0, originX: fighterPlayer.x, originY: fighterPlayer.y, direction: "right", createdAt: Date.now() };
+    const paidPlayer = { ...fighterPlayer, level: 10, mp: 0, skinId: "slime", skillResources: { "skill-e": skillResource } };
+    await assertSucceeds(set(ref(fighterDb, "rooms/public/players/fighter"), paidPlayer));
+    await assertSucceeds(set(ref(fighterDb, `${bossPath}/attacks/fighter/11`), attackRequest(11, { attackKind: "skill-e", castId: "paid-e", hitIndex: 0 })));
+    await assertFails(set(ref(fighterDb, "rooms/public/players/fighter"), { ...paidPlayer, skinId: "unknown" }));
+    for (const invalid of [{ ...skillResource, mpAfter: 20 }, { ...skillResource, mpBefore: -1 }, { ...skillResource, originX: 9999 }, { ...skillResource, direction: "diagonal" }]) {
+      await assertFails(set(ref(fighterDb, "rooms/public/players/fighter"), { ...paidPlayer, skillResources: { "skill-e": invalid } }));
+    }
+    await assertSucceeds(set(ref(fighterDb, "rooms/public/players/fighter"), fighterPlayer));
+
     const damagePath = `${bossPath}/playerDamage/fighter/volcano-emulator-1:1:1`;
     const damage = {
       eventId: "volcano-emulator-1:1:1",

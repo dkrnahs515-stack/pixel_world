@@ -4,7 +4,7 @@ import {
   findActivePortal,
   getBiome,
   isWorldPositionBlocked,
-} from "../src/world-20260829-coast.js";
+} from "../src/world-20260829-coast-20260905-upgrade.js";
 
 test("region boundaries and representative landmarks block movement", () => {
   assert.equal(isWorldPositionBlocked("village", -1, 100, 14), true);

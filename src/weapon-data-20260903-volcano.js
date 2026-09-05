@@ -89,12 +89,21 @@ const VOLCANO_HIDDEN_WEAPONS = Object.freeze({
   }),
 });
 
-export const WEAPONS = Object.freeze({ ...COAST_WEAPONS, ...VOLCANO_HIDDEN_WEAPONS });
+const CODE_WEAPON = Object.freeze({
+  ...COAST_WEAPONS["starter-sword"],
+  id: "heaven-sovereign-sword", name: "천상천하 유아독존",
+  damage: 100, range: 76, requiredLevel: 1, tier: 9,
+  price: null, sellPrice: null, rewardOnly: true,
+  visual: Object.freeze({ ...COAST_WEAPONS["starter-sword"].visual,
+    bladeLength: 32, bladeWidth: 5, bladeColor: "#fff5bb", highlightColor: "#ffffff",
+    guardColor: "#eab308", pommelColor: "#eab308" }),
+});
+export const WEAPONS = Object.freeze({ ...Object.fromEntries(Object.entries({ ...COAST_WEAPONS, ...VOLCANO_HIDDEN_WEAPONS }).map(([id, weapon]) => [id, Object.freeze({ ...weapon, damage: Number((weapon.damage * 4).toFixed(4)) })])), [CODE_WEAPON.id]: CODE_WEAPON });
 
 export const WEAPON_ORDER_BY_CLASS = Object.freeze(Object.fromEntries(
   Object.entries(COAST_WEAPON_ORDER_BY_CLASS).map(([classId, ids]) => [
     classId,
-    Object.freeze([...ids, VOLCANO_HIDDEN_WEAPON_IDS[classId]]),
+    Object.freeze([...ids, VOLCANO_HIDDEN_WEAPON_IDS[classId], ...(classId === "warrior" ? [CODE_WEAPON.id] : [])]),
   ]),
 ));
 export const WEAPON_ORDER = WEAPON_ORDER_BY_CLASS.warrior;

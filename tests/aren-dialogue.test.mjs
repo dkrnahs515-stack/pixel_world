@@ -4,8 +4,8 @@ import {
   acceptAdventureQuest,
   createInitialProgress,
   recordAdventureKill,
-} from "../src/quest-state-20260829-coast.js";
-import { arenDialogueModel } from "../src/aren-dialogue-20260829-coast.js";
+} from "../src/quest-state-20260829-coast-20260905-upgrade.js";
+import { arenDialogueModel } from "../src/aren-dialogue-20260829-coast-20260905-upgrade.js";
 
 test("아렌 대화는 퀘스트 상태에 맞는 행동을 제공한다", () => {
   assert.equal(arenDialogueModel(createInitialProgress()).action, "accept");

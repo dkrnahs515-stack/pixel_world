@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#111827" />
   <title>픽셀 월드 온라인 RPG</title>
-  <link rel="stylesheet" href="./styles-20260903-volcano.css" />
+  <link rel="stylesheet" href="./styles-20260903-volcano-20260905-upgrade.css" />
 </head>
 <body>
   <canvas id="game" tabindex="0" aria-label="2D 픽셀 온라인 RPG 게임 화면"></canvas>
@@ -60,6 +60,16 @@
         </button>
       </div>
       <p id="playModeError" class="form-error play-mode-error" role="alert"></p>
+      <details class="reward-code-panel">
+        <summary>특별 보상 코드</summary>
+        <label for="rewardCodeInput">보상 코드 · 여러 개는 쉼표로 구분</label>
+        <input id="rewardCodeInput" type="text" maxlength="240" autocomplete="off" spellcheck="false" placeholder="코드를 입력하세요" aria-describedby="rewardCodeStatus" />
+        <div class="reward-code-actions">
+          <button id="rewardCodePreview" type="button" class="secondary-button">보상 확인</button>
+          <button id="rewardCodeRedeem" type="button" class="secondary-button" disabled>이 닉네임에 지급</button>
+        </div>
+        <p id="rewardCodeStatus" role="status" aria-live="polite">닉네임별 1회 지급됩니다. TEACHER·BOSSKILLBOSS 효과는 솔로 전용입니다.</p>
+      </details>
       <button id="enterButton" class="primary-button" type="submit" disabled>직업을 선택해 주세요</button>
       <p class="entry-note">솔로는 온라인 통신 없이 실행되며, 온라인을 선택한 경우에만 실시간 서버에 연결됩니다.</p>
     </form>
@@ -362,7 +372,7 @@
       <div><kbd>Ctrl</kbd><span>기본 공격</span></div>
       <div><kbd>Q</kbd><span>강한 공격</span></div>
       <div><kbd>F</kbd><span>NPC 대화</span></div>
-      <div><kbd>E</kbd><kbd>R</kbd><span>빈 스킬</span></div>
+      <div><kbd>E</kbd><kbd>R</kbd><span>추가 스킬</span></div>
       <div><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><span>아이템</span></div>
       <div><kbd>I</kbd><span>인벤토리</span></div>
       <div><kbd>Enter</kbd><span>전체 채팅</span></div>
@@ -376,8 +386,8 @@
           <span id="strongSkillName" class="skill-name">회전 베기</span><span id="strongSkillCost" class="skill-cost">MP 20</span>
           <span id="strongCooldown" class="cooldown"></span>
         </button>
-        <button class="slot" data-code="KeyE" type="button"><span class="key">E</span><span class="slot-type">SKILL</span><span class="empty">비어 있음</span></button>
-        <button class="slot" data-code="KeyR" type="button"><span class="key">R</span><span class="slot-type">SKILL</span><span class="empty">비어 있음</span></button>
+        <button class="slot" data-code="KeyE" type="button"><span class="key">E</span><span class="slot-type">SKILL</span><span class="skill-name">스킬</span><span class="skill-damage"></span><span class="skill-cost"></span><span class="cooldown"></span></button>
+        <button class="slot" data-code="KeyR" type="button"><span class="key">R</span><span class="slot-type">SKILL</span><span class="skill-name">스킬</span><span class="skill-damage"></span><span class="skill-cost"></span><span class="cooldown"></span></button>
       </div>
       <div class="slot-group glass">
         <button id="hpPotionSlot" class="slot item" data-code="Digit1" type="button" aria-label="작은 체력 물약 사용">
@@ -396,6 +406,6 @@
   </div>
 
   <noscript>이 게임은 JavaScript가 필요합니다.</noscript>
-  <script type="module" src="./src/main-20260903-volcano.js"></script>
+  <script type="module" src="./src/main-20260903-volcano-20260905-upgrade.js"></script>
 </body>
 </html>

@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { GAME_CONFIG as C } from "../src/config.js";
-import { PixelRPG } from "../src/game-20260903-volcano.js";
-import * as gameModule from "../src/game-20260903-volcano.js";
+import { GAME_CONFIG as C } from "../src/config-20260905-upgrade.js";
+import { PixelRPG } from "../src/game-20260903-volcano-20260905-upgrade.js";
+import * as gameModule from "../src/game-20260903-volcano-20260905-upgrade.js";
 
 test("FPS 측정은 현실적인 프레임 간격만 표본으로 사용한다", () => {
   assert.equal(gameModule.fpsSampleFromFrameSeconds?.(0), null);
