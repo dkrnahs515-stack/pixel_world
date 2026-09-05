@@ -16,31 +16,6 @@ async function move(page, key, milliseconds) {
   await page.keyboard.up(key);
 }
 
-async function moveUntilMap(page, key, name) {
-  await page.keyboard.down(key);
-  try {
-    await expectMap(page, name);
-  } catch (error) {
-    const diagnostic = await page.evaluate(() => {
-      const storageKey = Object.keys(localStorage).find(candidate => candidate.startsWith("pixel-world.progress.v7:"));
-      const stored = storageKey ? JSON.parse(localStorage.getItem(storageKey)) : null;
-      return {
-        subtitle: document.querySelector(".player-header small")?.textContent || null,
-        message: document.querySelector("#message")?.textContent || null,
-        objective: document.querySelector("#chapterObjective")?.textContent || null,
-        portalDestination: document.querySelector("#portalDestination")?.textContent || null,
-        portalOverlayHidden: document.querySelector("#portalTransitionOverlay")?.hidden ?? null,
-        volcano: stored?.worldProgress?.chapters?.volcano || null,
-        unlockedMapIds: stored?.worldProgress?.unlockedMapIds || null,
-      };
-    });
-    console.error("VOLCANO_PORTAL_DIAGNOSTIC", JSON.stringify(diagnostic));
-    throw error;
-  } finally {
-    await page.keyboard.up(key);
-  }
-}
-
 async function enterSolo(page, nickname) {
   await page.locator("#nicknameInput").fill(nickname);
   await page.locator('[data-class-id="warrior"]').click();
@@ -166,7 +141,7 @@ async function chooseRoute(page, prepared) {
   const actionId = prepared ? "story-volcano-route-rescue" : "story-volcano-route-proceed";
   await page.locator(`[data-dialogue-action="${actionId}"]`).click();
   await page.locator("#dialogueOverlay").waitFor({ state: "hidden" });
-  await moveUntilMap(page, "ArrowRight", "화구 코어 제단");
+  await qaTravel(page, "volcano-core-caldera", "화구 코어 제단");
 }
 
 async function pressStrongAndAssert(page, label) {

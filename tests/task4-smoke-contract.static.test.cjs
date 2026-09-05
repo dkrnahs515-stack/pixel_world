@@ -33,19 +33,13 @@ test("volcano boss combat observes a successful Q separately from Ctrl", () => {
   assert.doesNotMatch(fight, /keyboard\.press\("Control"\);\s*if[^\n]*keyboard\.press\("q"\)/);
 });
 
-test("volcano route portal movement waits for the destination instead of a fixed duration", () => {
-  const helper = volcanoSmoke.match(
-    /async function moveUntilMap\(page, key, name\) \{([\s\S]*?)\n\}/,
-  )?.[1] || "";
+test("volcano route smoke enters the unlocked caldera through deterministic QA travel", () => {
   const chooseRoute = volcanoSmoke.match(
     /async function chooseRoute\(page, prepared\) \{([\s\S]*?)\n\}/,
   )?.[1] || "";
 
-  assert.match(helper, /keyboard\.down\(key\)/);
-  assert.match(helper, /expectMap\(page, name\)/);
-  assert.match(helper, /finally/);
-  assert.match(helper, /keyboard\.up\(key\)/);
-  assert.match(chooseRoute, /moveUntilMap\(page, "ArrowRight", "화구 코어 제단"\)/);
+  assert.match(chooseRoute, /qaTravel\(page, "volcano-core-caldera", "화구 코어 제단"\)/);
+  assert.doesNotMatch(chooseRoute, /moveUntilMap/);
   assert.doesNotMatch(chooseRoute, /move\(page, "ArrowRight", 1500\)/);
 });
 
