@@ -7,9 +7,9 @@ import {
   VOLCANO_STORY_CLUES,
   VOLCANO_STORY_INTERACTIONS,
   getVolcanoStoryContent,
-} from "../src/volcano-story-data-20260903-volcano.js";
-import { WORLD_DEFINITIONS } from "../src/world-data-20260903-volcano.js";
-import { pointInRect } from "../src/collision.js";
+} from "../src/volcano-story-data-20260903-volcano-20260905-upgrade.js";
+import { WORLD_DEFINITIONS } from "../src/world-data-20260903-volcano-20260905-upgrade.js";
+import { pointInRect } from "../src/collision-20260905-upgrade.js";
 
 const PLAYER_RADIUS = 14;
 

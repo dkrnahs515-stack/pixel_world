@@ -4,10 +4,10 @@ import {
   COAST_SUPPORT_FOLLOW_UPS,
   coastActorDialogueModel,
   coastStoryDialogueModel,
-} from "../src/story-dialogue-20260829-coast.js";
-import { completeRegion, chooseChapterSupport } from "../src/chapter-progress-20260829-coast.js";
-import { COAST_STORY_INTERACTIONS } from "../src/coast-story-data-20260829-coast.js";
-import { createInitialWorldProgress } from "../src/chapter-progress-20260829-coast.js";
+} from "../src/story-dialogue-20260829-coast-20260905-upgrade.js";
+import { completeRegion, chooseChapterSupport } from "../src/chapter-progress-20260829-coast-20260905-upgrade.js";
+import { COAST_STORY_INTERACTIONS } from "../src/coast-story-data-20260829-coast-20260905-upgrade.js";
+import { createInitialWorldProgress } from "../src/chapter-progress-20260829-coast-20260905-upgrade.js";
 
 function selected(choice) {
   const progress = completeRegion(createInitialWorldProgress(), "forest").progress;

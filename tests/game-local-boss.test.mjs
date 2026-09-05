@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PixelRPG } from "../src/game-20260903-volcano.js";
-import { LocalBossController } from "../src/local-boss-controller-20260903-volcano.js";
+import { PixelRPG } from "../src/game-20260903-volcano-20260905-upgrade.js";
+import { LocalBossController } from "../src/local-boss-controller-20260903-volcano-20260905-upgrade.js";
 
 function harness(mapId = "forest") {
   const game = Object.create(PixelRPG.prototype);
@@ -23,8 +23,8 @@ test("solo selects a local one-player boss controller without constructing the F
   assert.equal(onlineConstructions, 0);
   assert.ok(game.coopBossController instanceof LocalBossController);
   assert.equal(game.coopBossController.snapshot.partySize, 1);
-  assert.equal(game.coopBossController.snapshot.hp, 200);
-  assert.equal(game.coopBossController.snapshot.maxHp, 200);
+  assert.equal(game.coopBossController.snapshot.hp, 600);
+  assert.equal(game.coopBossController.snapshot.maxHp, 600);
 });
 
 test("disconnect discards the cooperative snapshot and starts a fresh full-HP local encounter", async () => {
@@ -51,8 +51,8 @@ test("disconnect discards the cooperative snapshot and starts a fresh full-HP lo
   assert.equal(clears, 1);
   assert.ok(game.coopBossController instanceof LocalBossController);
   assert.notEqual(game.coopBossController.snapshot.encounterId, sharedSnapshot.encounterId);
-  assert.equal(game.coopBossController.snapshot.hp, 200);
-  assert.equal(game.coopBossController.snapshot.maxHp, 200);
+  assert.equal(game.coopBossController.snapshot.hp, 600);
+  assert.equal(game.coopBossController.snapshot.maxHp, 600);
 });
 
 test("fallback 뒤 retained online snapshot callback은 local controller와 solo state를 건드리지 않는다", async () => {

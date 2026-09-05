@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 async function metricsModule() {
   try {
-    return await import("../src/performance-metrics.js");
+    return await import("../src/performance-metrics-20260905-upgrade.js");
   } catch {
     return {};
   }

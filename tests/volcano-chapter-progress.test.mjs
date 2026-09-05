@@ -12,7 +12,7 @@ import {
   recordChapterBossDefeat,
   repairVolcanoDevice,
   resolveVolcanoCaptain,
-} from "../src/chapter-progress-20260903-volcano.js";
+} from "../src/chapter-progress-20260903-volcano-20260905-upgrade.js";
 
 const MAGMA_DEVICE_IDS = [
   "magma-valve-west",

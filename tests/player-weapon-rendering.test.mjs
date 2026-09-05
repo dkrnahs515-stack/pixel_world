@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { drawPixelCharacter } from "../src/game-20260903-volcano.js";
+import { drawPixelCharacter } from "../src/game-20260903-volcano-20260905-upgrade.js";
 
 function recordingContext() {
   const fills = [];

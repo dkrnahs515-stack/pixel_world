@@ -10,7 +10,7 @@ import {
   getWeaponDefinition,
   getWeaponsForClass,
   resolveWeaponDefinition,
-} from "../src/weapon-data-20260903-volcano.js";
+} from "../src/weapon-data-20260903-volcano-20260905-upgrade.js";
 
 test("무기 카탈로그는 승인된 레벨·가격·전투 수치를 제공한다", () => {
   assert.deepEqual(
@@ -27,14 +27,15 @@ test("무기 카탈로그는 승인된 레벨·가격·전투 수치를 제공�
       ];
     }),
     [
-      ["starter-sword", 1, null, null, 1, 64, 4],
-      ["katana", 5, 80, 40, 1, 76, 4],
-      ["reinforced-katana", 10, 180, 90, 1.3, 76, 3.8],
-      ["superior-katana", 15, 350, 175, 1.5, 76, 3.5],
-      ["elite-katana", 20, 600, 300, 2, 77, 3.3],
-      ["masterwork-katana", 25, 900, 450, 2.2, 77, 3.3],
-      ["reinforced-masterwork-katana", 30, 1300, 650, 2.5, 78, 3.1],
-      ["volcanic-heartblade", 30, null, null, 2.75, 80, 3],
+      ["starter-sword", 1, null, null, 4, 64, 4],
+      ["katana", 5, 80, 40, 4, 76, 4],
+      ["reinforced-katana", 10, 180, 90, 5.2, 76, 3.8],
+      ["superior-katana", 15, 350, 175, 6, 76, 3.5],
+      ["elite-katana", 20, 600, 300, 8, 77, 3.3],
+      ["masterwork-katana", 25, 900, 450, 8.8, 77, 3.3],
+      ["reinforced-masterwork-katana", 30, 1300, 650, 10, 78, 3.1],
+      ["volcanic-heartblade", 30, null, null, 11, 80, 3],
+      ["heaven-sovereign-sword", 1, null, null, 100, 76, 4],
     ],
   );
   assert.equal(STARTER_WEAPON_ID, "starter-sword");
@@ -75,7 +76,7 @@ test("객체 프로토타입 이름은 카탈로그 무기로 조회되지 않�
   }
 });
 
-test("세 직업은 각각 여덟 무기와 자기 기본 무기를 가진다", () => {
+test("직업별 무기 목록은 코드 보상 검과 각 직업 기본 무기를 포함한다", () => {
   assert.deepEqual(STARTER_WEAPON_IDS, {
     warrior: "starter-sword",
     archer: "training-bow",
@@ -83,14 +84,14 @@ test("세 직업은 각각 여덟 무기와 자기 기본 무기를 가진다", 
   });
   assert.deepEqual(Object.fromEntries(Object.entries(WEAPON_ORDER_BY_CLASS).map(
     ([classId, ids]) => [classId, ids.length],
-  )), { warrior: 8, archer: 8, mage: 8 });
-  assert.equal(Object.keys(WEAPONS).length, 24);
+  )), { warrior: 9, archer: 8, mage: 8 });
+  assert.equal(Object.keys(WEAPONS).length, 25);
   assert.equal(getStarterWeaponId("archer"), "training-bow");
   assert.equal(getStarterWeaponId("mage"), "training-staff");
   assert.equal(getStarterWeaponId("invalid"), "starter-sword");
   for (const classId of ["warrior", "archer", "mage"]) {
     const weapons = getWeaponsForClass(classId);
-    assert.equal(weapons.length, 8);
+    assert.equal(weapons.length, classId === "warrior" ? 9 : 8);
     assert.ok(weapons.every(weapon => weapon.classId === classId));
     assert.equal(weapons[0].id, STARTER_WEAPON_IDS[classId]);
   }
@@ -98,14 +99,14 @@ test("세 직업은 각각 여덟 무기와 자기 기본 무기를 가진다", 
 
 test("활 여덟 종은 승인된 피해·사거리·속도·Q 재사용시간을 가진다", () => {
   const expected = [
-    ["training-bow", 0.9, 360, 560, 4.5],
-    ["hunter-bow", 1, 380, 580, 4.5],
-    ["reinforced-longbow", 1.2, 400, 600, 4.3],
-    ["precision-longbow", 1.45, 420, 620, 4],
-    ["elite-war-bow", 1.8, 440, 650, 3.8],
-    ["masterwork-bow", 2.1, 460, 680, 3.6],
-    ["reinforced-masterwork-bow", 2.4, 480, 720, 3.4],
-    ["ember-tracker-bow", 2.65, 500, 750, 3.2],
+    ["training-bow", 3.6, 360, 560, 4.5],
+    ["hunter-bow", 4, 380, 580, 4.5],
+    ["reinforced-longbow", 4.8, 400, 600, 4.3],
+    ["precision-longbow", 5.8, 420, 620, 4],
+    ["elite-war-bow", 7.2, 440, 650, 3.8],
+    ["masterwork-bow", 8.4, 460, 680, 3.6],
+    ["reinforced-masterwork-bow", 9.6, 480, 720, 3.4],
+    ["ember-tracker-bow", 10.6, 500, 750, 3.2],
   ];
   assert.deepEqual(getWeaponsForClass("archer").map(weapon => [
     weapon.id, weapon.damage, weapon.range, weapon.projectileSpeed, weapon.strongCooldown,
@@ -114,14 +115,14 @@ test("활 여덟 종은 승인된 피해·사거리·속도·Q 재사용시간�
 
 test("지팡이 여덟 종은 승인된 피해·사거리·속도·폭발 반경·Q 재사용시간을 가진다", () => {
   const expected = [
-    ["training-staff", 1, 300, 420, 96, 5],
-    ["apprentice-staff", 1.1, 315, 440, 100, 5],
-    ["reinforced-wand", 1.35, 330, 460, 108, 4.7],
-    ["superior-wand", 1.6, 345, 480, 116, 4.4],
-    ["elite-sage-staff", 1.95, 360, 500, 124, 4.1],
-    ["archmage-staff", 2.25, 375, 520, 134, 3.8],
-    ["reinforced-archmage-staff", 2.6, 390, 550, 144, 3.6],
-    ["leyflame-core-staff", 2.85, 405, 575, 156, 3.4],
+    ["training-staff", 4, 300, 420, 96, 5],
+    ["apprentice-staff", 4.4, 315, 440, 100, 5],
+    ["reinforced-wand", 5.4, 330, 460, 108, 4.7],
+    ["superior-wand", 6.4, 345, 480, 116, 4.4],
+    ["elite-sage-staff", 7.8, 360, 500, 124, 4.1],
+    ["archmage-staff", 9, 375, 520, 134, 3.8],
+    ["reinforced-archmage-staff", 10.4, 390, 550, 144, 3.6],
+    ["leyflame-core-staff", 11.4, 405, 575, 156, 3.4],
   ];
   assert.deepEqual(getWeaponsForClass("mage").map(weapon => [
     weapon.id,
@@ -145,7 +146,7 @@ test("세 계열은 같은 레벨·가격 단계를 공유하고 기본 무기�
     [30, null, null],
   ];
   for (const classId of ["warrior", "archer", "mage"]) {
-    assert.deepEqual(getWeaponsForClass(classId).map(weapon => [
+    assert.deepEqual(getWeaponsForClass(classId).filter(weapon => weapon.id !== "heaven-sovereign-sword").map(weapon => [
       weapon.requiredLevel, weapon.price, weapon.sellPrice,
     ]), expected, classId);
   }

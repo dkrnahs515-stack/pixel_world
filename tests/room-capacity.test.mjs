@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { claimRoomSlot, PUBLIC_ROOM_CAPACITY } from "../src/room-capacity.js";
+import { claimRoomSlot, PUBLIC_ROOM_CAPACITY } from "../src/room-capacity-20260905-upgrade.js";
 
 function firebaseSlots(initial = {}) {
   const values = Array.from({ length: PUBLIC_ROOM_CAPACITY }, (_, index) => initial[index] ?? null);

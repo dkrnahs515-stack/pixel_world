@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PixelRPG } from "../src/game-20260903-volcano.js";
-import { createEnemyInstance } from "../src/enemies-20260829-coast.js";
-import { createInitialProgress } from "../src/quest-state-20260829-coast.js";
+import { PixelRPG } from "../src/game-20260903-volcano-20260905-upgrade.js";
+import { createEnemyInstance } from "../src/enemies-20260829-coast-20260905-upgrade.js";
+import { createInitialProgress } from "../src/quest-state-20260829-coast-20260905-upgrade.js";
 
 function fakeNode() {
   return {
@@ -115,7 +115,7 @@ test("검사 Ctrl은 근접 공격 상태를 만들고 Q는 MP를 써서 360도 
 
   assert.equal(game.player.mp, 120);
   assert.equal(game.strongCooldown, 4);
-  assert.deepEqual(game.enemies.map(enemy => enemy.hp), [98, 98]);
+  assert.deepEqual(game.enemies.map(enemy => enemy.hp), [392, 392]);
 });
 
 for (const scenario of [
@@ -177,7 +177,7 @@ test("투사체 피해 이벤트는 같은 적에게 한 번만 기존 피해·�
 
   game.applyProjectileHits([event, event]);
 
-  assert.equal(game.enemies[0].hp, 98);
+  assert.equal(game.enemies[0].hp, 398);
   assert.equal(game.enemies[0].hitStunRemaining, 0.18);
   assert.equal(game.damageNumbers.length, 1);
   assert.equal(game.hitEffects.length, 1);
@@ -214,4 +214,18 @@ test("HUD는 현재 직업 Q 이름과 MP 비용을 사용한다", () => {
   assert.equal(game.ui.strongSkillName.textContent, "폭발 마법탄");
   assert.equal(game.ui.strongSkillCost.textContent, "MP 30");
   assert.equal(game.ui.strongSlot.classList.contains("unavailable"), true);
+});
+
+test('reusing a player for another class clears old skill debits before presence publication',async()=>{
+  const {serializePlayerState}=await import('../src/network-state-20260903-volcano-20260905-upgrade.js');
+  const {createSkillCast,finalizeSkillResource}=await import('../src/skill-runtime-20260905-upgrade.js');
+  const game=Object.create(PixelRPG.prototype);game.progress={...createInitialProgress(),level:10};game.sessionMode='online';
+  game.player={x:1440,y:1110,dir:'right',name:'전환검증'};game.configureClassSession('warrior');
+  const cast=createSkillCast('skill-e','warrior','starter-sword',10,game.player,'old-warrior');cast.player={...game.player};
+  game.player.mp-=cast.definition.mpCost;finalizeSkillResource(game.player,cast,1000);
+  assert.equal(game.player.skillResources['skill-e'].mpBefore-game.player.skillResources['skill-e'].mpAfter,18);
+  game.configureClassSession('archer');
+  assert.deepEqual(serializePlayerState(game.player,'village').skillResources,{});
+  game.player.skillResources={'skill-e':cast.player.skillResources['skill-e']};game.mapId='village';game.ui={respawnOverlay:{}};game.updateHud=()=>{};
+  game.resetCombatState();assert.deepEqual(game.player.skillResources,{});
 });

@@ -5,7 +5,7 @@ import {
   completeAdventureQuest,
   createInitialProgress,
   recordAdventureKill,
-} from "../src/quest-state-20260829-coast.js";
+} from "../src/quest-state-20260829-coast-20260905-upgrade.js";
 
 test("초기 진행 데이터는 공용 물약과 직업별 기본 장비를 가진다", () => {
   const initial = createInitialProgress();

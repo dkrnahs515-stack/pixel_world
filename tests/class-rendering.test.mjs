@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { drawClassEquipment, drawClassPreview } from "../src/class-rendering.js";
+import { drawClassEquipment, drawClassPreview } from "../src/class-rendering-20260905-upgrade.js";
 
 function recordingContext() {
   const calls = [];

@@ -1,3 +1,10 @@
+import { questNotifications } from "./quest-notifications.js";
+import { storyGuidance } from "./quest-guidance.js";
+import { QuestBanner, drawQuestGuidance } from "./quest-banner.js";
+import { rewardCodeEffects } from "./reward-codes.js";
+import { applyRewardModifiers, drawSlimeBody, drawPencilWeapon } from "./reward-cosmetics.js";
+import { createTripleBossController } from "./triple-boss-controller.js";
+import { finalizeSkillResource, tickManaRegen, skillAvailability, createSkillCast, advanceSkillCast } from "./skill-runtime.js";
 import { GAME_CONFIG as C } from "./config.js";
 import { DEFAULT_CLASS_ID, getClassDefinition, normalizeClassId } from "./class-data.js";
 import { drawClassEquipment } from "./class-rendering.js";
@@ -331,11 +338,15 @@ export class PixelRPG {
     this.volcanoEruptionState = createVolcanoEruptionState();
     this.attackState = null;
     this.projectiles = [];
+    this.skillCasts = [];
     this.explosionEffects = [];
     this.projectileSequence = 0;
     this.processedProjectileHitIds = new Set();
     this.basicCooldown = 0;
     this.strongCooldown = 0;
+    this.skillCooldowns = {};
+    this.skillCasts = [];
+    this.player.manaRegenElapsed = 0;
     this.damageNumbers = [];
     this.hitEffects = [];
     this.hitStopRemaining = 0;
@@ -498,6 +509,9 @@ export class PixelRPG {
     const progressStorage = browserStorage();
     const loadedProgress = loadPlayerProgress(progressStorage, this.player.name);
     this.progress = loadedProgress.progress;
+    this.savedQuestProgress = null;
+    this.questBanner ||= new QuestBanner(document.body);
+    this.questBanner.reset();
     this.configureClassSession(classId);
     this.ui.playerName.textContent = this.player.name;
     this.ui.playerCount.textContent = "1";
@@ -542,6 +556,7 @@ export class PixelRPG {
     }
     await this.replaceBossControllerForMode(this.sessionMode);
 
+    this.persistProgress();
     this.running = true;
     this.lastFrame = 0;
     this.accumulator = 0;
@@ -556,6 +571,7 @@ export class PixelRPG {
   }
 
   async leave({ silent = false } = {}) {
+    this.questBanner?.reset();
     if (!this.running && !this.network) {
       this.clearProjectiles();
       return;
@@ -604,6 +620,7 @@ export class PixelRPG {
 
   setSessionMode(mode, reason = "selected") {
     this.sessionMode = mode === "online" ? "online" : "solo";
+    if (this.player) applyRewardModifiers(this.player, this.progress, this.sessionMode);
     const online = this.sessionMode === "online";
     if (this.ui.chatPanel) this.ui.chatPanel.hidden = !online;
     if (this.ui.onlinePresence) this.ui.onlinePresence.hidden = !online;
@@ -640,6 +657,7 @@ export class PixelRPG {
   }
 
   createLocalBossController() {
+    if (rewardCodeEffects(this.progress, this.sessionMode).bossCount === 3) return createTripleBossController();
     return createLocalBossController();
   }
 
@@ -812,6 +830,7 @@ export class PixelRPG {
       if (["KeyE", "KeyR", "Digit1", "Digit2", "Digit3"].includes(event.code) && !event.repeat) {
         if (event.code === "Digit1") this.useItem("hpPotion");
         else if (event.code === "Digit2") this.useItem("mpPotion");
+        else if (event.code === "KeyE" || event.code === "KeyR") this.tryAttack(event.code === "KeyE" ? "skill-e" : "skill-r");
         else this.activateEmptySlot(event.code);
       }
     });
@@ -823,6 +842,7 @@ export class PixelRPG {
         if (button.dataset.code === "KeyQ") this.tryAttack("strong");
         else if (button.dataset.code === "Digit1") this.useItem("hpPotion");
         else if (button.dataset.code === "Digit2") this.useItem("mpPotion");
+        else if (["KeyE", "KeyR"].includes(button.dataset.code)) this.tryAttack(button.dataset.code === "KeyE" ? "skill-e" : "skill-r");
         else this.activateEmptySlot(button.dataset.code);
       });
     });
@@ -894,6 +914,8 @@ export class PixelRPG {
     this.basicCooldown = Math.max(0, this.basicCooldown - dt);
     this.strongCooldown = Math.max(0, this.strongCooldown - dt);
     this.portalCooldown = Math.max(0, this.portalCooldown - dt);
+    for (const key of Object.keys(this.skillCooldowns || {})) this.skillCooldowns[key] = Math.max(0, this.skillCooldowns[key] - dt);
+    tickManaRegen(this.player, dt);
     const wasRespawning = this.player.respawnTimer > 0;
     tickPlayerStatus(this.player, dt);
     if (wasRespawning && this.player.respawnTimer === 0) this.finishRespawn();
@@ -902,6 +924,7 @@ export class PixelRPG {
     if (this.portalTransition) {
       this.updatePortalTransition(dt);
     } else {
+      this.updateSkillCasts(dt);
       this.updateAttack(dt);
       if (this.hitStopRemaining > 0) return;
       this.updateProjectiles(dt);
@@ -1103,7 +1126,7 @@ export class PixelRPG {
       return false;
     }
     this.notify?.(`${definition.name} 처치! EXP +${reward.rewardExp} · Gold +${reward.rewardGold}`);
-    if (reward.levelsGained > 0) this.notify?.(`LEVEL UP! LV.${this.progress.level} · HP와 MP가 회복되었습니다.`);
+    if (reward.levelsGained > 0) this.notify?.(this.levelGrowthNotice(reward.levelsGained));
     return true;
   }
 
@@ -1566,9 +1589,11 @@ export class PixelRPG {
     }
 
     if (action === "complete") {
+      const previousProgress = this.progress;
       const result = completeAdventureQuest(this.progress);
       this.progress = result.progress;
       if (result.rewardExp > 0) {
+        if (!this.persistProgress()) { this.progress = previousProgress; return; }
         this.applyProgressionStats(result.levelsGained > 0);
         this.updateQuestHud();
         this.updateProgressHud();
@@ -1576,9 +1601,8 @@ export class PixelRPG {
         this.updateBiome();
         this.notify("퀘스트 완료! EXP 15 · Gold 30을 획득했습니다.");
         if (result.levelsGained > 0) {
-          this.notify(`LEVEL UP! LV.${this.progress.level} · HP와 MP가 회복되었습니다.`);
+          this.notify(this.levelGrowthNotice(result.levelsGained));
         }
-        this.persistProgress();
       }
     }
     this.closeNpcDialogue();
@@ -1645,15 +1669,20 @@ export class PixelRPG {
       this.notify(`${reward.label} 처치! EXP +${reward.rewardExp}${gold}`);
     }
     if (rewards.some(reward => reward.levelsGained > 0)) {
-      this.notify(`LEVEL UP! LV.${this.progress.level} · HP와 MP가 회복되었습니다.`);
+      this.notify(this.levelGrowthNotice(rewards.reduce((sum, reward) => sum + reward.levelsGained, 0)));
     }
     this.persistProgress();
   }
 
   persistProgress(failureMessage = "진행 상황을 브라우저에 저장할 수 없습니다.") {
-    const result = saveProgress(browserStorage(), this.player.name, this.progress);
-    if (!result.ok) this.notify(failureMessage);
-    return result.ok;
+    const events = questNotifications(this.savedQuestProgress ?? null, this.progress, { saved: true });
+    const candidate = { ...this.progress, questNotificationIds: events.ids };
+    const result = saveProgress(browserStorage(), this.player.name, candidate);
+    if (!result.ok) { this.notify(failureMessage); return false; }
+    this.progress = candidate;
+    this.savedQuestProgress = structuredClone(candidate);
+    this.questBanner?.enqueue(events.notifications);
+    return true;
   }
 
   updateQuestHud() {
@@ -1745,8 +1774,11 @@ export class PixelRPG {
   }
 
   configureClassSession(classId) {
+    this.player.skillResources = {};
+    this.skillCasts = [];
     this.classId = normalizeClassId(classId);
     this.player.classId = this.classId;
+    applyRewardModifiers(this.player, this.progress, this.sessionMode);
     this.player.speed = getClassDefinition(this.classId).stats.moveSpeed;
     this.syncEquippedWeapon();
     this.applyProgressionStats(true);
@@ -2083,7 +2115,8 @@ export class PixelRPG {
 
   tryAttack(kind) {
     if (!this.running || !this.inputEnabled || this.isInteractionOpen() || this.player.respawnTimer > 0 || this.attackState) return;
-    const definition = attackDefinition(kind, this.classId, this.player.equippedWeaponId);
+    const definition = attackDefinition(kind, this.classId, this.player.equippedWeaponId, this.progress?.level || this.player.level || 1);
+    if (kind === "skill-e" || kind === "skill-r") return this.trySkill(kind, definition);
     const cooldown = kind === "strong" ? this.strongCooldown : this.basicCooldown;
     if (cooldown > 0) {
       if (kind === "strong") this.notify(`Q 스킬 재사용까지 ${cooldown.toFixed(1)}초`);
@@ -2110,12 +2143,100 @@ export class PixelRPG {
         x: this.player.x + direction.x * PROJECTILE_SPAWN_OFFSET,
         y: this.player.y + direction.y * PROJECTILE_SPAWN_OFFSET,
         direction: this.player.dir,
+        level: this.progress?.level || this.player.level || 1,
       }));
       this.attackState = { kind, elapsed: 0, applied: true, definition };
     }
     this.player.moving = false;
     this.updateHud();
     return true;
+  }
+
+  targetableBosses() {
+    return this.coopBossController?.targetableBosses?.() || [this.coopBossController?.targetableBoss?.()].filter(Boolean);
+  }
+
+  trySkill(kind, definition) {
+    this.skillCooldowns ||= {};
+    const reason = skillAvailability(definition, { ...this.player, level: this.progress.level }, this.skillCooldowns[kind] || 0);
+    if (reason) {
+      this.notify(reason === "level" ? `${definition.name}: 레벨 ${definition.requiredLevel} 해금` : reason === "mana" ? `MP ${definition.mpCost} 필요` : `${definition.name} 재사용까지 ${this.skillCooldowns[kind].toFixed(1)}초`);
+      return false;
+    }
+    const cast = createSkillCast(kind, this.classId, this.player.equippedWeaponId, this.progress.level, this.player, this.nextProjectileId());
+    cast.player = { ...this.player, mapId: this.mapId };
+    this.player.mp -= definition.mpCost;
+    this.skillCooldowns[kind] = definition.cooldown;
+    if (definition.delivery === "dash") {
+      const vector = directionVector(this.player.dir);
+      for (let distance = 0; distance < definition.dashDistance; distance += 5) {
+        const x = this.player.x + vector.x * 5, y = this.player.y + vector.y * 5;
+        if (isWorldPositionBlocked(this.mapId, x, y, this.player.radius)) break;
+        this.player.x = x; this.player.y = y;
+      }
+      cast.x = this.player.x; cast.y = this.player.y;
+      cast.player.x = this.player.x; cast.player.y = this.player.y;
+    }
+    finalizeSkillResource(this.player, cast);
+    this.skillCasts ||= [];
+    this.skillCasts.push(cast);
+    this.updateHud();
+    return true;
+  }
+
+  updateSkillCasts(dt) {
+    if (this.player.hp <= 0 || this.player.respawnTimer > 0) { this.skillCasts = []; return; }
+    for (const cast of this.skillCasts || []) {
+      const d = cast.definition;
+      for (const pulse of advanceSkillCast(cast, dt)) {
+        if (["spread", "slow"].includes(d.delivery)) {
+          const vector = directionVector(cast.direction);
+          this.projectiles ||= [];
+          this.projectiles.push(createProjectile({ id: pulse.id, castId: cast.id, hitIndex: pulse.hitIndex, kind: d.projectileKind, playerSnapshot: cast.player, classId: cast.classId, weaponId: cast.weaponId, level: cast.level, x: cast.x + vector.x * PROJECTILE_SPAWN_OFFSET, y: cast.y + vector.y * PROJECTILE_SPAWN_OFFSET, direction: cast.direction, angle: d.delivery === "spread" ? (pulse.hitIndex - 1) * 0.22 : 0 }));
+          continue;
+        }
+        const vector = directionVector(cast.direction);
+        const targets = [...this.enemies, ...this.targetableBosses()];
+        const hits = targets.filter(t => t.hp > 0 && t.targetable !== false && (d.radius ? Math.hypot(t.x - cast.x, t.y - cast.y) <= d.radius + (t.radius || 0) : isTargetInAttackArc(cast, cast.direction, t, d.range, d.arcDegrees)));
+        const rewards = [];
+        for (const target of hits) {
+          if (target.isCoopBoss) {
+            this.coopBossController.requestHit({ targetId: target.id, attackKind: cast.kind, castId: cast.id, hitIndex: pulse.hitIndex, player: { ...cast.player, x: this.player.x, y: this.player.y }, classId: cast.classId, weaponId: cast.weaponId, direction: cast.direction }).catch?.(error => console.warn("스킬 요청 실패", error));
+          } else {
+            const result = damageEnemy(target, d.damage, vector, d.knockback);
+            if (!result.killed) applyEnemyHitStun(target, d.hitStun);
+            if (result.killed) { const reward = this.recordEnemyKill(target.kind, { deferEffects: true }); if (reward) rewards.push(reward); }
+            if (result.damageNumber) this.damageNumbers.push({ ...result.damageNumber, kind: "strong", age: 0, duration: 0.55 });
+          }
+        }
+        this.commitEnemyKillEffects(rewards);
+        this.explosionEffects ||= [];
+        this.explosionEffects.push({x:cast.x,y:cast.y,radius:d.radius || d.range,delivery:d.delivery,age:0,duration:0.25});
+      }
+    }
+    this.skillCasts = (this.skillCasts || []).filter(cast => cast.elapsed < Math.max(cast.definition.duration, cast.definition.windup + (cast.definition.hitCount - 1) * cast.definition.interval));
+  }
+
+  levelGrowthNotice(levels = 1) {
+    const rules = getClassDefinition(normalizeClassId(this.classId)).stats;
+    return `LEVEL UP! LV.${this.progress.level} · 공격력 +${levels * rules.attackPerLevel} · 최대 HP +${levels * rules.maxHpPerLevel} · 최대 MP +${levels * rules.maxMpPerLevel} · HP·MP 회복`;
+  }
+
+  updateSkillHud() {
+    if (typeof document === "undefined" || typeof document.querySelector !== "function") return;
+    for (const [key, kind] of [["KeyE", "skill-e"], ["KeyR", "skill-r"]]) {
+      const slot = document.querySelector(`[data-code="${key}"]`);
+      if (!slot) continue;
+      const d = attackDefinition(kind, this.classId, this.player.equippedWeaponId, this.progress?.level || this.player.level || 1);
+      const cooldown = this.skillCooldowns?.[kind] || 0;
+      const locked = this.progress.level < d.requiredLevel;
+      setTextIfChanged(slot.querySelector(".skill-name"), d.name);
+      setTextIfChanged(slot.querySelector(".skill-damage"), `피해 ${Number(d.damage.toFixed(1))}×${d.hitCount}`);
+      setTextIfChanged(slot.querySelector(".skill-cost"), locked ? `Lv.${d.requiredLevel} 해금` : `MP ${d.mpCost} · ${d.cooldown}초`);
+      setTextIfChanged(slot.querySelector(".cooldown"), cooldown > 0 ? cooldown.toFixed(1) : "");
+      slot.title = `${d.name}: 피해 ${d.damage} × ${d.hitCount}, MP ${d.mpCost}, 재사용 ${d.cooldown}초, Lv.${d.requiredLevel}`;
+      toggleClassIfChanged(slot, "unavailable", locked || cooldown > 0 || this.player.mp < d.mpCost);
+    }
   }
 
   nextProjectileId() {
@@ -2125,6 +2246,7 @@ export class PixelRPG {
 
   clearProjectiles() {
     this.projectiles = [];
+    this.skillCasts = [];
     this.explosionEffects = [];
     this.processedProjectileHitIds = new Set();
   }
@@ -2136,7 +2258,7 @@ export class PixelRPG {
       isBlocked: (x, y, radius) => isWorldPositionBlocked(this.mapId, x, y, radius),
       worldBounds: { width: world.width, height: world.height },
       enemies: this.enemies,
-      bosses: [this.coopBossController?.targetableBoss()].filter(Boolean),
+      bosses: this.targetableBosses(),
     });
     this.projectiles = result.projectiles;
     this.applyProjectileHits(result.hits);
@@ -2158,8 +2280,9 @@ export class PixelRPG {
       if (event.targetType === "coop-boss") {
         this.processedProjectileHitIds.add(eventId);
         this.coopBossController?.requestHit({
+          targetId: event.enemyId, castId: event.castId, hitIndex: event.hitIndex,
           attackKind: event.attackKind || (event.kind === "piercing-arrow" || event.kind === "explosive-bolt" ? "strong" : "basic"),
-          player: { ...this.player, mapId: this.mapId },
+          player: { ...this.player, ...event.playerSnapshot, x: this.player.x, y: this.player.y, mapId: this.mapId },
           classId: event.classId || this.classId,
           weaponId: event.weaponId || this.player.equippedWeaponId,
           direction: event.direction || this.player.dir,
@@ -2172,6 +2295,7 @@ export class PixelRPG {
       const direction = { x: event.directionX || 0, y: event.directionY || 0 };
       const result = damageEnemy(enemy, event.damage, direction, event.knockback);
       if (!result.killed) applyEnemyHitStun(enemy, event.hitStun);
+      if (!result.killed && event.slowDuration) { enemy.slowRemaining = event.slowDuration; enemy.slowMultiplier = event.slowMultiplier; }
       if (result.killed) {
         const reward = this.recordEnemyKill(enemy.kind, { deferEffects: true });
         if (reward) killRewards.push(reward);
@@ -2226,11 +2350,11 @@ export class PixelRPG {
         this.hitEffects.push(createHitEffect({ x: enemy.x, y: enemy.y - enemy.radius * 0.2, kind }));
       }
     }
-    const boss = this.coopBossController?.targetableBoss();
-    if (boss && !this.attackState?.coopBossRequested
-      && isTargetInAttackArc(this.player, this.player.dir, boss, definition.range, definition.arcDegrees)) {
-      if (this.attackState) this.attackState.coopBossRequested = true;
+    for (const boss of this.targetableBosses()) {
+    if (!this.attackState?.requestedBossIds?.has(boss.id) && isTargetInAttackArc(this.player, this.player.dir, boss, definition.range, definition.arcDegrees)) {
+      if (this.attackState) { this.attackState.requestedBossIds ||= new Set(); this.attackState.requestedBossIds.add(boss.id); }
       this.coopBossController.requestHit({
+        targetId: boss.id,
         attackKind: kind,
         player: { ...this.player, mapId: this.mapId },
         classId: this.classId,
@@ -2238,6 +2362,7 @@ export class PixelRPG {
         direction: this.player.dir,
       }).catch?.(error => console.warn("협동 보스 공격 요청 실패", error));
       hit = true;
+    }
     }
     if (hit) this.requestHitStop(definition.hitStop);
     this.commitEnemyKillEffects(killRewards);
@@ -2292,6 +2417,7 @@ export class PixelRPG {
   }
 
   damagePlayer(amount, source) {
+    if (rewardCodeEffects(this.progress, this.sessionMode).immortal) return { applied: false, died: false };
     const result = applyPlayerDamage(this.player, amount);
     if (!result.applied) return result;
 
@@ -2326,6 +2452,7 @@ export class PixelRPG {
     const village = getWorldDefinition("village");
     this.clearProjectiles();
     respawnPlayer(this.player, village.spawn);
+    this.player.manaRegenElapsed = 0;
     this.switchWorld("village", village.spawn.x, village.spawn.y, false);
     this.ui.respawnOverlay.hidden = true;
     this.inputEnabled = true;
@@ -2333,6 +2460,7 @@ export class PixelRPG {
   }
 
   resetCombatState() {
+    this.player.skillResources = {};
     const world = getWorldDefinition(this.mapId);
     respawnPlayer(this.player, world.spawn);
     clearPlayerCombatStatuses(this.player);
@@ -2345,6 +2473,9 @@ export class PixelRPG {
     this.clearProjectiles();
     this.basicCooldown = 0;
     this.strongCooldown = 0;
+    this.skillCooldowns = {};
+    this.skillCasts = [];
+    this.player.manaRegenElapsed = 0;
     this.damageNumbers = [];
     this.hitEffects = [];
     this.hitStopRemaining = 0;
@@ -2387,7 +2518,9 @@ export class PixelRPG {
   }
 
   applyProgressionStats(restore = false) {
-    const { maxHp, maxMp } = statsForLevel(this.progress.level, this.classId);
+    const { maxHp, maxMp, attackBonus } = statsForLevel(this.progress.level, this.classId);
+    this.player.level = this.progress.level;
+    this.player.attackBonus = attackBonus;
     this.player.maxHp = maxHp;
     this.player.maxMp = maxMp;
     if (restore) {
@@ -2405,7 +2538,8 @@ export class PixelRPG {
     setStyleIfChanged(this.ui.hpBar, "transform", `scaleX(${this.player.hp / this.player.maxHp})`);
     setStyleIfChanged(this.ui.mpBar, "transform", `scaleX(${this.player.mp / this.player.maxMp})`);
 
-    const strongDefinition = attackDefinition("strong", this.classId, this.player.equippedWeaponId);
+    const strongDefinition = attackDefinition("strong", this.classId, this.player.equippedWeaponId, this.progress?.level || this.player.level || 1);
+    this.updateSkillHud();
     const classDefinition = getClassDefinition(normalizeClassId(this.classId));
     const strongSkillName = this.ui.strongSkillName || this.ui.strongSlot?.querySelector?.(".skill-name");
     const strongSkillCost = this.ui.strongSkillCost || this.ui.strongSlot?.querySelector?.(".skill-cost");
@@ -2463,8 +2597,16 @@ export class PixelRPG {
     const entities = [];
     this.remotePlayers.forEach(remote => entities.push({ ...remote, entityType: "player", remote: true }));
     this.enemies.forEach(enemy => entities.push({ entityType: "enemy", enemy, x: enemy.x, y: enemy.y }));
+    for (const cast of this.skillCasts || []) {
+      if (!cast.definition.radius || cast.elapsed >= cast.definition.windup) continue;
+      ctx.save(); ctx.strokeStyle = cast.definition.delivery === "meteor" ? "#ff8a42" : "#7dd3fc"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(cast.x - cameraX, cast.y - cameraY, cast.definition.radius, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+    }
     const coopBoss = this.coopBossController?.renderableBoss();
-    if (coopBoss) entities.push({ entityType: "coop-boss", enemy: coopBoss, x: coopBoss.x, y: coopBoss.y });
+    const visibleBosses = this.coopBossController?.renderableBosses?.() || (coopBoss ? [coopBoss] : []);
+    for (const boss of visibleBosses) {
+      if (boss.hp > 0) entities.push({ entityType: "coop-boss", enemy: boss, x: boss.x, y: boss.y });
+    }
     this.npcs.forEach(npc => entities.push({ entityType: "npc", npc, x: npc.x, y: npc.y }));
     appendStorySignalEntities(entities, storyRenderables);
     entities.push({
@@ -2498,6 +2640,7 @@ export class PixelRPG {
       drawExplosionEffect(ctx, effect, { cameraX, cameraY });
     }
     this.drawDamageNumbers(ctx, cameraX, cameraY);
+    drawQuestGuidance(ctx, this.getStoryGuidance({ x: cameraX, y: cameraY, width: viewW, height: viewH }), cameraX, cameraY, viewW, viewH);
     const bubbles = latestBubblesByUid(this.chatMessages, { mapId: this.mapId, now: Date.now() });
     for (const entity of visiblePlayers) {
       const message = bubbles.get(entity.uid);
@@ -2659,6 +2802,12 @@ export class PixelRPG {
     if (this.ui.frameDropCount) setTextIfChanged(this.ui.frameDropCount, "0");
   }
 
+  getStoryGuidance(camera = { x: 0, y: 0, width: 1, height: 1 }) {
+    return storyGuidance({ interactions: ALL_STORY_INTERACTIONS, worldProgress: this.progress?.worldProgress,
+      mapId: this.mapId, player: this.player, camera, world: getWorldDefinition(this.mapId),
+      minimap: { width: this.minimap?.width ?? 220, height: this.minimap?.height ?? 140 } });
+  }
+
   drawMinimapBase() {
     const world = getWorldDefinition(this.mapId);
     const context = this.minimapCtx;
@@ -2719,6 +2868,7 @@ export class PixelRPG {
         scaleY: height / world.height,
       });
     }
+    for (const marker of this.getStoryGuidance().markers) drawDot(marker.x, marker.y, marker.completed ? "#647a72" : "#ffe090", marker.completed ? 3 : 5);
     this.enemies.forEach(enemy => drawDot(enemy.x, enemy.y, enemy.color, 4));
     this.remotePlayers.forEach(player => drawDot(player.x, player.y, "#f8fafc", 3));
     drawDot(this.player.x, this.player.y, "#ff4d6d", 5);
@@ -2785,8 +2935,11 @@ export function drawPixelCharacter(ctx, player, cameraX, cameraY, attackState = 
 
   ctx.fillStyle = "rgba(0,0,0,.28)";
   ctx.fillRect(-13, 14, 26, 7);
+  if (player.skinId === 'slime') {
+    drawSlimeBody(ctx, player);
+  } else {
   drawClassEquipment(ctx, { classId: player.classId, direction: player.dir });
-  drawScabbard(ctx, {
+  if (!player.pencilWeapon || player.remote) drawScabbard(ctx, {
     classId: player.classId,
     direction: player.dir,
     weaponId: player.equippedWeaponId,
@@ -2809,7 +2962,9 @@ export function drawPixelCharacter(ctx, player, cameraX, cameraY, attackState = 
   if (player.dir === "left") ctx.fillRect(-7, -18, 2, 2);
   else if (player.dir === "right") ctx.fillRect(5, -18, 2, 2);
   else { ctx.fillRect(-5, -18, 2, 2); ctx.fillRect(3, -18, 2, 2); }
-  drawWeapon(ctx, {
+  }
+  if (player.pencilWeapon && !player.remote) drawPencilWeapon(ctx, { dir: player.dir, attackState });
+  else drawWeapon(ctx, {
     classId: player.classId,
     direction: player.dir,
     attackState,

@@ -11,7 +11,7 @@ import {
   recordChapterBossDefeat,
   repairChapterDevice,
   rescueSera,
-} from "../src/chapter-progress-20260829-coast.js";
+} from "../src/chapter-progress-20260829-coast-20260905-upgrade.js";
 
 const WRECK_DEVICE_IDS = ["wreck-relay-west", "wreck-relay-deck", "wreck-relay-east"];
 const WRECK_RECORD_IDS = [

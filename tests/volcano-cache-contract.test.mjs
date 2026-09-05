@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 
-const RELEASE_SUFFIX = "20260903-volcano";
+const RELEASE_SUFFIX = "20260903-volcano-20260905-upgrade";
 const RELEASE_MODULE_BASENAMES = Object.freeze([
   "chapter-progress",
   "chat-bubble-layout",
@@ -40,16 +40,16 @@ const RELEASE_MODULE_BASENAMES = Object.freeze([
   "world-data",
 ]);
 const IMMUTABLE_COMPOSITION_FILES = new Set([
-  "chapter-progress-20260829-coast.js",
-  "equipment-state.js",
-  "npc-data-20260829-coast.js",
-  "quest-state-20260829-coast.js",
-  "region-data-20260829-coast.js",
-  "story-dialogue-20260829-coast.js",
-  "story-interactions-20260829-coast.js",
-  "weapon-data.js",
-  "world-20260829-coast.js",
-  "world-data-20260829-coast.js",
+  "chapter-progress-20260829-coast-20260905-upgrade.js",
+  "equipment-state-20260905-upgrade.js",
+  "npc-data-20260829-coast-20260905-upgrade.js",
+  "quest-state-20260829-coast-20260905-upgrade.js",
+  "region-data-20260829-coast-20260905-upgrade.js",
+  "story-dialogue-20260829-coast-20260905-upgrade.js",
+  "story-interactions-20260829-coast-20260905-upgrade.js",
+  "weapon-data-20260905-upgrade.js",
+  "world-20260829-coast-20260905-upgrade.js",
+  "world-data-20260829-coast-20260905-upgrade.js",
 ]);
 
 function relativeModuleSpecifiers(source) {
@@ -116,8 +116,8 @@ test("legacy combat URLs stay on legacy weapon data while the volcano graph uses
 
 test("HTML uses query-free physical volcano CSS and JavaScript entry files", async () => {
   const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
-  assert.match(html, /href="\.\/styles-20260903-volcano\.css"/);
-  assert.match(html, /src="\.\/src\/main-20260903-volcano\.js"/);
+  assert.match(html, /href="\.\/styles-20260903-volcano-20260905-upgrade\.css"/);
+  assert.match(html, /src="\.\/src\/main-20260903-volcano-20260905-upgrade\.js"/);
   assert.doesNotMatch(html, /(?:styles|main)[^"']*\?v=/);
-  assert.equal(existsSync(new URL("../styles-20260903-volcano.css", import.meta.url)), true);
+  assert.equal(existsSync(new URL("../styles-20260903-volcano-20260905-upgrade.css", import.meta.url)), true);
 });

@@ -1,7 +1,7 @@
 import { BOSS_STATE_SEND_HZ, getCoopBossForMap } from "./coop-boss-data-20260903-volcano.js";
 import { normalizeBossEncounter } from "./coop-boss-state-20260903-volcano.js";
 import { applyBossAttack, createBossPlayerDamageEvent, createRewardClaims, validateBossAttack } from "./coop-boss-state-20260903-volcano.js";
-import { createBossEnemyView, drawEnemy, updateEnemies } from "./enemies-20260829-coast.js";
+import { createBossEnemyView, createEnemyContactDamageEvents, drawEnemy, updateEnemies } from "./enemies-20260829-coast.js";
 
 const AUTHORITY_TAKEOVER_STAGGER_MS = 1_500;
 
@@ -37,7 +37,11 @@ export class CoopBossController {
     this.attackSequence = 0;
     this.lastSequences = new Map();
     this.lastAttackTimes = new Map();
+    this.skillCastStates = new Map();
     this.players = new Map();
+    this.deferredSkillAttacks = new Map();
+    this.skillReplayPromise = null;
+    this.nextSkillReplayAt = 0;
     this.processedBossAttackIds = new Set();
     this.playerDamageSequence = 0;
     this.partySize = 1;
@@ -182,8 +186,22 @@ export class CoopBossController {
     if (this.mapId === "village") this.mapId = snapshot.mapId;
     const previous = this.snapshot;
     this.snapshot = snapshot;
+    const retainsAuthoritySimulation = Boolean(this.view && previous
+      && previous.encounterId === snapshot.encounterId
+      && previous.authorityUid === this.uid && snapshot.authorityUid === this.uid
+      && previous.authorityEpoch === snapshot.authorityEpoch);
+    if (retainsAuthoritySimulation) {
+      this.view.hp = snapshot.hp;
+      this.view.maxHp = snapshot.maxHp;
+      this.view.targetable = snapshot.status === "alive";
+      this.interpolation = null;
+      if (snapshot.status === "defeated") void this.reconcileRewardClaims();
+      return true;
+    }
     const nextView = this.createView(definition, snapshot);
     if (!nextView) return false;
+    this.processedBossAttackIds.clear();
+    this.playerDamageSequence = 0;
 
     if (snapshot.authorityUid !== this.uid && previous && previous.encounterId === snapshot.encounterId) {
       const fromAt = this.now();
@@ -265,7 +283,7 @@ export class CoopBossController {
     return this.view;
   }
 
-  async requestHit({ attackKind, player, classId, weaponId, direction }) {
+  async requestHit({ attackKind, player, classId, weaponId, direction, castId, hitIndex }) {
     if (!this.snapshot || this.snapshot.status !== "alive" || this.snapshot.mapId !== this.mapId) {
       return { ok: false, reason: "boss_unavailable" };
     }
@@ -282,7 +300,7 @@ export class CoopBossController {
       mapId: this.snapshot.mapId,
       classId,
       weaponId,
-      attackKind,
+      attackKind, ...(castId ? { castId, hitIndex } : {}),
       playerX: Math.round(player.x * 10) / 10,
       playerY: Math.round(player.y * 10) / 10,
       direction,
@@ -305,6 +323,19 @@ export class CoopBossController {
       const player = this.players.get(request.uid);
       const pathMatchesPayload = Number.isInteger(request.sequence)
         && String(request.sequence) === request.pathSequence;
+      const deferredKey = `${request.uid}:${request.pathSequence}`;
+      const needsResource = pathMatchesPayload && ["skill-e", "skill-r"].includes(request.attackKind)
+        && request.encounterId === this.snapshot?.encounterId
+        && player?.skillResources?.[request.attackKind]?.castId !== request.castId
+        && Number.isFinite(request.createdAt) && this.wallNow() - request.createdAt <= 5000;
+      const earlierPending = [...this.deferredSkillAttacks.values()].some(pending => pending.uid === request.uid && pending.sequence < request.sequence);
+      const canWait = request.sequence > (this.lastSequences.get(request.uid) || 0)
+        && Number.isFinite(request.createdAt) && this.wallNow() - request.createdAt <= 5000;
+      if (canWait && (needsResource || earlierPending)) {
+        if (this.deferredSkillAttacks.has(deferredKey) || this.deferredSkillAttacks.size < 128) this.deferredSkillAttacks.set(deferredKey, request);
+        continue;
+      }
+      this.deferredSkillAttacks.delete(deferredKey);
       const validated = pathMatchesPayload
         ? validateBossAttack(request, {
           encounter: this.snapshot,
@@ -312,7 +343,8 @@ export class CoopBossController {
           authenticatedUid: request.uid,
           player,
           lastSequence: this.lastSequences.get(request.uid) || 0,
-          lastAttackAt: this.lastAttackTimes.get(request.uid) ?? Number.NEGATIVE_INFINITY,
+          lastAttackAt: this.lastAttackTimes.get(`${request.uid}:${request.attackKind}`) ?? Number.NEGATIVE_INFINITY,
+          lastCast: this.skillCastStates.get(`${request.uid}:${request.attackKind}`),
           now: this.wallNow(),
         })
         : { ok: false, reason: "sequence_path_mismatch" };
@@ -325,7 +357,9 @@ export class CoopBossController {
           this.view.targetable = this.snapshot.status === "alive";
         }
         this.lastSequences.set(request.uid, request.sequence);
-        this.lastAttackTimes.set(request.uid, validated.attackAt);
+        this.lastAttackTimes.set(`${request.uid}:${request.attackKind}`, validated.attackAt);
+        if (validated.castState) this.skillCastStates.set(`${request.uid}:${request.attackKind}`, validated.castState);
+        if (this.view && validated.slowDuration) { this.view.slowRemaining = validated.slowDuration; this.view.slowMultiplier = validated.slowMultiplier; }
         await this.network?.publishState?.(this.snapshot);
         if (result.defeated) {
           await this.reconcileRewardClaims({ force: true });
@@ -335,6 +369,21 @@ export class CoopBossController {
       await this.network?.acknowledgeAttack?.(request.uid, request.pathSequence);
     }
     return appliedCount;
+  }
+
+  replayDeferredSkillAttacks() {
+    if (!this.deferredSkillAttacks.size || this.skillReplayPromise || this.wallNow() < this.nextSkillReplayAt) return;
+    this.nextSkillReplayAt = this.wallNow() + 50;
+    const tree = {};
+    for (const request of this.deferredSkillAttacks.values()) {
+      tree[request.uid] ||= {};
+      tree[request.uid][request.pathSequence] = request;
+    }
+    const replay = this.receiveAttackRequests(tree);
+    this.skillReplayPromise = replay;
+    replay.catch(error => this.reportError?.(error)).finally(() => {
+      if (this.skillReplayPromise === replay) this.skillReplayPromise = null;
+    });
   }
 
   update(dt, context = {}, timestamp = this.now()) {
@@ -360,27 +409,38 @@ export class CoopBossController {
     const remotePlayers = context.remotePlayers instanceof Map
       ? [...context.remotePlayers.values()].map(player => ({ ...player, mapId: player.mapId || this.mapId, hp: player.hp ?? 100 }))
       : [];
-    this.players = new Map([localPlayer, ...remotePlayers].filter(Boolean).map(player => [player.uid, player]));
-    const target = selectBossTarget(this.view, [localPlayer, ...remotePlayers].filter(Boolean), this.mapId);
+    const activePlayers = [localPlayer, ...remotePlayers].filter(Boolean);
+    this.players = new Map(activePlayers.map(player => [player.uid, player]));
+    this.replayDeferredSkillAttacks();
+    const target = selectBossTarget(this.view, activePlayers, this.mapId);
+    const collisionPlayers = activePlayers.filter(player => player.mapId === this.mapId && player.hp > 0);
+    const contactBeforeMove = createEnemyContactDamageEvents(this.view, collisionPlayers);
     const result = this.simulate([this.view], target || localPlayer || { x: this.view.x, y: this.view.y }, dt, {
       isBlocked: context.isBlocked || (() => false),
       portals: context.portals || [],
       random: context.random || Math.random,
     });
     this.view = result.enemies?.[0] || this.view;
+    this.view.hp = this.snapshot.hp;
+    this.view.maxHp = this.snapshot.maxHp;
+    const contactEvents = contactBeforeMove.length > 0
+      ? contactBeforeMove
+      : createEnemyContactDamageEvents(this.view, collisionPlayers);
+    const resultEvents = [...(result.events || []), ...contactEvents];
     const events = [];
-    for (const event of result.events || []) {
-      if (event?.type === "damage-player" && target && event.attackId) {
+    for (const event of resultEvents) {
+      const damageTarget = event?.targetUid ? this.players.get(event.targetUid) : target;
+      if (event?.type === "damage-player" && damageTarget && event.attackId) {
         if (this.processedBossAttackIds.has(event.attackId)) continue;
         this.processedBossAttackIds.add(event.attackId);
         const playerDamage = createBossPlayerDamageEvent({
           encounter: this.snapshot,
-          targetUid: target.uid,
+          targetUid: damageTarget.uid,
           damage: event.amount,
           sequence: ++this.playerDamageSequence,
           now: this.wallNow(),
         });
-        if (playerDamage) this.network?.sendPlayerDamage?.(target.uid, playerDamage).catch?.(() => {});
+        if (playerDamage) this.network?.sendPlayerDamage?.(damageTarget.uid, playerDamage).catch?.(() => {});
         continue;
       }
       this.pendingEvents.push(event);
@@ -423,6 +483,9 @@ export class CoopBossController {
     this.pendingEvents = [];
     this.lastPublishedAt = null;
     this.players.clear();
+    this.deferredSkillAttacks.clear();
+    this.skillReplayPromise = null;
+    this.nextSkillReplayAt = 0;
     this.processedBossAttackIds.clear();
     this.playerDamageSequence = 0;
     this.readyPromise = null;

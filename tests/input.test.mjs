@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { movementVector } from "../src/input.js";
+import { movementVector } from "../src/input-20260905-upgrade.js";
 
 test("arrow keys produce normalized movement", () => {
   assert.deepEqual(movementVector(new Set(["ArrowRight"])), { x: 1, y: 0 });

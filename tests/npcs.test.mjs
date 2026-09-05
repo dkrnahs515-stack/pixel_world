@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getNpcsForWorld } from "../src/npc-data-20260829-coast.js";
-import { drawNpc, findNearbyNpc } from "../src/npcs.js";
-import { isWorldPositionBlocked } from "../src/world-20260829-coast.js";
+import { getNpcsForWorld } from "../src/npc-data-20260829-coast-20260905-upgrade.js";
+import { drawNpc, findNearbyNpc } from "../src/npcs-20260905-upgrade.js";
+import { isWorldPositionBlocked } from "../src/world-20260829-coast-20260905-upgrade.js";
 import {
   createInitialWorldProgress,
   rescueSera,
-} from "../src/chapter-progress-20260829-coast.js";
+} from "../src/chapter-progress-20260829-coast-20260905-upgrade.js";
 
 test("아렌·미아·브란은 역할이 분리되어 중앙 마을에만 배치된다", () => {
   const village = getNpcsForWorld("village");

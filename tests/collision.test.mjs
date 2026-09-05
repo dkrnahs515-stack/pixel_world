@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { distanceToSegment, pointInRect } from "../src/collision.js";
+import { distanceToSegment, pointInRect } from "../src/collision-20260905-upgrade.js";
 
 test("pointInRect includes collision padding", () => {
   const rect = { x: 100, y: 100, w: 50, h: 50 };

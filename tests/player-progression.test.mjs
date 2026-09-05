@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import * as progression from "../src/player-progression.js";
+import * as progression from "../src/player-progression-20260905-upgrade.js";
 import { getCoopBossForMap } from "../src/coop-boss-data-20260829-coast.js";
 
 const {
@@ -94,11 +94,11 @@ test("종류별 사냥 보상을 진행 데이터에 반영하고 알 수 없는
 });
 
 test("레벨과 직업에 따라 최대 HP와 MP를 계산한다", () => {
-  assert.deepEqual(statsForLevel(1, "warrior"), { maxHp: 120, maxMp: 80 });
-  assert.deepEqual(statsForLevel(30, "warrior"), { maxHp: 468, maxMp: 196 });
-  assert.deepEqual(statsForLevel(1, "archer"), { maxHp: 100, maxMp: 100 });
-  assert.deepEqual(statsForLevel(30, "archer"), { maxHp: 390, maxMp: 245 });
-  assert.deepEqual(statsForLevel(1, "mage"), { maxHp: 80, maxMp: 140 });
-  assert.deepEqual(statsForLevel(30, "mage"), { maxHp: 312, maxMp: 343 });
-  assert.deepEqual(statsForLevel(1, "invalid"), { maxHp: 120, maxMp: 80 });
+  assert.deepEqual(statsForLevel(1, "warrior"), { attackBonus: 0, maxHp: 120, maxMp: 80 });
+  assert.deepEqual(statsForLevel(30, "warrior"), { attackBonus: 58, maxHp: 468, maxMp: 196 });
+  assert.deepEqual(statsForLevel(1, "archer"), { attackBonus: 0, maxHp: 100, maxMp: 100 });
+  assert.deepEqual(statsForLevel(30, "archer"), { attackBonus: 58, maxHp: 390, maxMp: 245 });
+  assert.deepEqual(statsForLevel(1, "mage"), { attackBonus: 0, maxHp: 80, maxMp: 140 });
+  assert.deepEqual(statsForLevel(30, "mage"), { attackBonus: 87, maxHp: 312, maxMp: 343 });
+  assert.deepEqual(statsForLevel(1, "invalid"), { attackBonus: 0, maxHp: 120, maxMp: 80 });
 });

@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { attackDefinition } from "../src/combat.js";
-import { createEnemyInstance, drawEnemy } from "../src/enemies-20260829-coast.js";
-import * as gameModule from "../src/game-20260903-volcano.js";
+import { createEnemyInstance, drawEnemy } from "../src/enemies-20260829-coast-20260905-upgrade.js";
+import * as gameModule from "../src/game-20260903-volcano-20260905-upgrade.js";
 
 function recordingContext() {
   const fills = [];
@@ -124,13 +124,13 @@ test("magma children render at a smaller relative scale than their parent", () =
 
 test("근거리 몬스터는 고정 레벨·이름·현재 체력을 머리 위에 표시한다", () => {
   const shark = enemy("fang-shark");
-  shark.hp = 18.7;
+  shark.hp = 74.8;
   const ctx = recordingContext();
 
   drawEnemy(ctx, shark, 0, 0, 1, { player: { x: 100, y: 100 } });
 
   assert.ok(ctx.texts.some(text => text.value === "Lv.7 송곳니 상어"));
-  assert.ok(ctx.texts.some(text => text.value === "18.7 / 25"));
+  assert.ok(ctx.texts.some(text => text.value === "74.8 / 100"));
   assert.ok(ctx.fills.some(fill => fill.color === "rgba(4,10,7,.9)" && fill.w === 104));
   assert.ok(ctx.fills.some(fill => fill.color === "#ef4444" && fill.w > 77 && fill.w < 78));
   assert.equal(ctx.fills.filter(fill => fill.color === "#ef4444").length, 1);

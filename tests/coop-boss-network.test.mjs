@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createCoopBossNetwork } from "../src/coop-boss-network-20260903-volcano.js";
-import { createBossEncounter } from "../src/coop-boss-state-20260903-volcano.js";
-import { getCoopBossForMap } from "../src/coop-boss-data-20260903-volcano.js";
+import { createCoopBossNetwork } from "../src/coop-boss-network-20260903-volcano-20260905-upgrade.js";
+import { createBossEncounter } from "../src/coop-boss-state-20260903-volcano-20260905-upgrade.js";
+import { getCoopBossForMap } from "../src/coop-boss-data-20260903-volcano-20260905-upgrade.js";
 
 function fixture() {
   const listenedPaths = [];

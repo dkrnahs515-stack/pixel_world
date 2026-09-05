@@ -9,7 +9,7 @@ import {
   damageEnemy,
   formatHealthValue,
   updateEnemies,
-} from "../src/enemies-20260829-coast.js";
+} from "../src/enemies-20260829-coast-20260905-upgrade.js";
 
 test("the safe village never creates enemies", () => {
   assert.deepEqual(createEnemies("village"), []);
@@ -42,9 +42,9 @@ test("enemy species receive distinct combat stats", () => {
   const fire = createEnemies("volcano")[0];
   const boar = createEnemies("forest").find(enemy => enemy.kind === "boar");
   const crab = createEnemies("coast-beach").find(enemy => enemy.kind === "crab");
-  assert.deepEqual({ hp: fire.hp, damage: fire.contactDamage }, { hp: 4, damage: 12 });
-  assert.deepEqual({ hp: boar.hp, speed: boar.speed }, { hp: 6, speed: 112 });
-  assert.deepEqual({ hp: crab.hp, radius: crab.radius }, { hp: 5, radius: 20 });
+  assert.deepEqual({ hp: fire.hp, damage: fire.contactDamage }, { hp: 16, damage: 12 });
+  assert.deepEqual({ hp: boar.hp, speed: boar.speed }, { hp: 24, speed: 112 });
+  assert.deepEqual({ hp: crab.hp, radius: crab.radius }, { hp: 20, radius: 20 });
 });
 
 test("협동 보스 view는 기존 행동과 외형을 유지하며 공유 상태를 덮어쓴다", () => {
@@ -218,9 +218,9 @@ test("알 수 없는 행동은 기존 추적 이동으로 폴백한다", () => {
 });
 
 test("마그마 슬라임은 사망 순간 난수 경계로 분열 수와 자식 HP를 한 번만 정한다", () => {
-  for (const [sample, count, childHp] of [[0, 2, 5], [0.5, 3, 3]]) {
+  for (const [sample, count, childHp] of [[0, 2, 20], [0.5, 3, 12]]) {
     const parent = createEnemyInstance("magma-slime", { x: 100, y: 100 }, `parent-${count}`);
-    damageEnemy(parent, 10, { x: 1, y: 0 }, 0, () => sample);
+    damageEnemy(parent, 40, { x: 1, y: 0 }, 0, () => sample);
     const first = updateEnemies([parent], { x: 0, y: 0 }, 0.66, {
       isBlocked: () => false,
       random: () => 0.999999,

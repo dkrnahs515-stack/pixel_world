@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createNetworkAdapter } from "../src/network-20260903-volcano.js";
+import { createNetworkAdapter } from "../src/network-20260903-volcano-20260905-upgrade.js";
 
 const VOLCANO_RELEASE_MAP_IDS = Object.freeze([
   "village",

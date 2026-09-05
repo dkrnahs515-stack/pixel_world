@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createPublishPolicyState, nextPublishDecision } from "../src/network-publish-policy.js";
+import { createPublishPolicyState, nextPublishDecision } from "../src/network-publish-policy-20260905-upgrade.js";
 
 const moving = { x: 100, y: 100, dir: "right", moving: true, mapId: "coast", classId: "archer", equippedWeaponId: "training-bow" };
 

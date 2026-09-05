@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createInitialWorldProgress, completeRegion } from "../src/chapter-progress-20260829-coast.js";
-import { WORLD_DEFINITIONS } from "../src/world-data-20260829-coast.js";
+import { createInitialWorldProgress, completeRegion } from "../src/chapter-progress-20260829-coast-20260905-upgrade.js";
+import { WORLD_DEFINITIONS } from "../src/world-data-20260829-coast-20260905-upgrade.js";
 import { advancePortalTransition, canUsePortal, createPortalTransition } from "../src/portal-transition-20260829-coast.js";
 
 const portal = { destination: { mapId: "forest", x: 2160, y: 3260 } };

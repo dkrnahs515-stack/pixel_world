@@ -3,26 +3,26 @@ import assert from "node:assert/strict";
 import {
   AUTHORITY_LEASE_MS, BOSS_RESPAWN_MS, REWARD_RETENTION_MS,
   COOP_BOSS_MAP_IDS, bossRespawnAt, getCoopBossForMap, scaledBossMaxHp,
-} from "../src/coop-boss-data-20260903-volcano.js";
-import { createBossEnemyView } from "../src/enemies-20260829-coast.js";
-import { isWorldPositionBlocked } from "../src/world-20260903-volcano.js";
-import { getWorldDefinition } from "../src/world-data-20260903-volcano.js";
+} from "../src/coop-boss-data-20260903-volcano-20260905-upgrade.js";
+import { createBossEnemyView } from "../src/enemies-20260829-coast-20260905-upgrade.js";
+import { isWorldPositionBlocked } from "../src/world-20260903-volcano-20260905-upgrade.js";
+import { getWorldDefinition } from "../src/world-data-20260903-volcano-20260905-upgrade.js";
 
 test("활화산 레거시 bossId는 화구 코어 제단에서만 유지된다", () => {
   assert.deepEqual(getCoopBossForMap("coast-tide-core-cave"), {
     id: "coast-core-shark", mapId: "coast-tide-core-cave", name: "심해 코어 포식자",
     enemyKind: "pirate-shark", x: 1600, y: 1280,
-    baseHp: 120, rewardExp: 150, rewardGold: 100,
+    baseHp: 300, rewardExp: 150, rewardGold: 100,
   });
   assert.deepEqual(getCoopBossForMap("volcano-core-caldera"), {
     id: "volcano-core-imp", mapId: "volcano-core-caldera", name: "오염된 선발대장",
     enemyKind: "flame-imp", x: 1560, y: 780,
-    baseHp: 160, rewardExp: 220, rewardGold: 150,
+    baseHp: 450, rewardExp: 220, rewardGold: 150,
   });
   assert.deepEqual(getCoopBossForMap("forest"), {
     id: "forest-core-troll", mapId: "forest", name: "고대 코어 수호자",
     enemyKind: "moss-troll", x: 2160, y: 1400,
-    baseHp: 200, rewardExp: 300, rewardGold: 200,
+    baseHp: 600, rewardExp: 300, rewardGold: 200,
   });
   assert.deepEqual(COOP_BOSS_MAP_IDS, ["coast-tide-core-cave", "volcano-core-caldera", "forest"]);
   assert.equal(getCoopBossForMap("volcano"), null);

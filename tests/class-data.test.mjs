@@ -6,7 +6,7 @@ import {
   DEFAULT_CLASS_ID,
   getClassDefinition,
   normalizeClassId,
-} from "../src/class-data.js";
+} from "../src/class-data-20260905-upgrade.js";
 
 test("세 직업만 허용하고 알 수 없는 런타임 직업은 검사로 복구한다", () => {
   assert.deepEqual(CLASS_IDS, ["warrior", "archer", "mage"]);
@@ -34,21 +34,21 @@ test("직업 정의는 승인된 이름·스킬·기본 무기·성장 수치를
       basicLabel: "전방 검격",
       strongLabel: "회전 베기",
       starterWeaponId: "starter-sword",
-      stats: { baseMaxHp: 120, maxHpPerLevel: 12, baseMaxMp: 80, maxMpPerLevel: 4, moveSpeed: 230 },
+      stats: { baseMaxHp: 120, maxHpPerLevel: 12, baseMaxMp: 80, maxMpPerLevel: 4, attackPerLevel: 2, moveSpeed: 230 },
     },
     archer: {
       name: "궁수",
       basicLabel: "화살",
       strongLabel: "관통 화살",
       starterWeaponId: "training-bow",
-      stats: { baseMaxHp: 100, maxHpPerLevel: 10, baseMaxMp: 100, maxMpPerLevel: 5, moveSpeed: 265 },
+      stats: { baseMaxHp: 100, maxHpPerLevel: 10, baseMaxMp: 100, maxMpPerLevel: 5, attackPerLevel: 2, moveSpeed: 265 },
     },
     mage: {
       name: "마법사",
       basicLabel: "마법탄",
       strongLabel: "폭발 마법탄",
       starterWeaponId: "training-staff",
-      stats: { baseMaxHp: 80, maxHpPerLevel: 8, baseMaxMp: 140, maxMpPerLevel: 7, moveSpeed: 245 },
+      stats: { baseMaxHp: 80, maxHpPerLevel: 8, baseMaxMp: 140, maxMpPerLevel: 7, attackPerLevel: 3, moveSpeed: 245 },
     },
   });
   assert.equal(getClassDefinition("unknown"), null);

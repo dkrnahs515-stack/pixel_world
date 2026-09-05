@@ -4,7 +4,7 @@ import {
   advanceVolcanoEruption,
   createVolcanoEruptionState,
   drawVolcanoEruption,
-} from "../src/volcano-eruption-20260903-volcano.js";
+} from "../src/volcano-eruption-20260903-volcano-20260905-upgrade.js";
 
 const context = (overrides = {}) => ({
   active: true,

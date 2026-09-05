@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PixelRPG, regionEntryMessage } from "../src/game-20260903-volcano.js";
-import { completeRegion, isMapUnlocked } from "../src/chapter-progress-20260829-coast.js";
-import { createInitialProgress } from "../src/quest-state-20260829-coast.js";
+import { PixelRPG, regionEntryMessage } from "../src/game-20260903-volcano-20260905-upgrade.js";
+import { completeRegion, isMapUnlocked } from "../src/chapter-progress-20260829-coast-20260905-upgrade.js";
+import { createInitialProgress } from "../src/quest-state-20260829-coast-20260905-upgrade.js";
 import { canUsePortal } from "../src/portal-transition-20260829-coast.js";
-import { WORLD_DEFINITIONS } from "../src/world-data-20260829-coast.js";
-import { COAST_SUPPORT_FOLLOW_UPS, COAST_TIDE_CORE_REVEAL } from "../src/coast-story-data-20260829-coast.js";
+import { WORLD_DEFINITIONS } from "../src/world-data-20260829-coast-20260905-upgrade.js";
+import { COAST_SUPPORT_FOLLOW_UPS, COAST_TIDE_CORE_REVEAL } from "../src/coast-story-data-20260829-coast-20260905-upgrade.js";
 
 const WRECK_DEVICES = ["wreck-relay-west", "wreck-relay-deck", "wreck-relay-east"];
 const WRECK_RECORDS = [

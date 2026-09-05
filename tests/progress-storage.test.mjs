@@ -1,15 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as storageApi from "../src/progress-storage-20260829-coast.js";
-import { createInitialProgress } from "../src/quest-state-20260829-coast.js";
-import { createInitialEquipmentByClass } from "../src/equipment-state.js";
+import { createInitialProgress } from "../src/quest-state-20260829-coast-20260905-upgrade.js";
+import { createInitialEquipmentByClass } from "../src/equipment-state-20260905-upgrade.js";
 import {
   loadProgress as loadV7Progress,
   progressStorageKey as v7ProgressStorageKey,
   saveProgress as saveV7Progress,
   v6ProgressStorageKey,
-} from "../src/progress-storage-20260903-volcano.js";
-import { createInitialProgress as createInitialV7Progress } from "../src/quest-state-20260903-volcano.js";
+} from "../src/progress-storage-20260903-volcano-20260905-upgrade.js";
+import { createInitialProgress as createInitialV7Progress } from "../src/quest-state-20260903-volcano-20260905-upgrade.js";
 
 const {
   legacyProgressStorageKey,

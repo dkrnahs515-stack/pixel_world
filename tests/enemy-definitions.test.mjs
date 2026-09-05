@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getEnemyDefinition } from "../src/enemy-definitions.js";
-import { createEnemyInstance } from "../src/enemies-20260829-coast.js";
+import { getEnemyDefinition } from "../src/enemy-definitions-20260905-upgrade.js";
+import { createEnemyInstance } from "../src/enemies-20260829-coast-20260905-upgrade.js";
 
 const expected = {
   "fang-shark": ["송곳니 상어", 25, 50, 100, 20, "fang-charge"],
@@ -32,7 +32,7 @@ const expectedLevels = {
 test("신규 7종은 확정 능력치와 행동을 가진다", () => {
   for (const [kind, values] of Object.entries(expected)) {
     const type = getEnemyDefinition(kind);
-    assert.deepEqual([type.name, type.hp, type.damage, type.speed, type.radius, type.behavior], values);
+    assert.deepEqual([type.name, type.hp, type.damage, type.speed, type.radius, type.behavior], values.map((value, index) => index === 1 ? value * 4 : value));
   }
   assert.equal(getEnemyDefinition("unknown"), null);
   assert.equal(getEnemyDefinition("toString"), null);

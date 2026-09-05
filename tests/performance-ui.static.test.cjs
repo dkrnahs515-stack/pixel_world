@@ -5,8 +5,8 @@ const path = require("node:path");
 
 const root = path.resolve(__dirname, "..");
 const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
-const main = fs.readFileSync(path.join(root, "src/main-20260903-volcano.js"), "utf8");
-const css = fs.readFileSync(path.join(root, "styles-20260903-volcano.css"), "utf8");
+const main = fs.readFileSync(path.join(root, "src/main-20260903-volcano-20260905-upgrade.js"), "utf8");
+const css = fs.readFileSync(path.join(root, "styles-20260903-volcano-20260905-upgrade.css"), "utf8");
 
 test("성능 패널은 현재·평균·최저 FPS와 급락 횟수를 실제 DOM 요소로 제공한다", () => {
   assert.match(html, /id="fpsText"/);

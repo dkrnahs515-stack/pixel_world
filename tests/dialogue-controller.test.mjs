@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DialogueController } from "../src/dialogue-controller-20260829-coast.js";
+import { DialogueController } from "../src/dialogue-controller-20260829-coast-20260905-upgrade.js";
 
 function button() {
   const listeners = [];

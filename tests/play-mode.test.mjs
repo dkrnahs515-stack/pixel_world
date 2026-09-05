@@ -8,7 +8,7 @@ import {
   readStoredPlayMode,
   storePlayMode,
   validatePlayMode,
-} from "../src/play-mode.js";
+} from "../src/play-mode-20260905-upgrade.js";
 
 function memoryStorage(value = null, { readError = false, writeError = false } = {}) {
   return {

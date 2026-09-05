@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PixelRPG } from "../src/game-20260903-volcano.js";
-import { completeRegion } from "../src/chapter-progress-20260829-coast.js";
-import { createInitialProgress } from "../src/quest-state-20260829-coast.js";
+import { PixelRPG } from "../src/game-20260903-volcano-20260905-upgrade.js";
+import { completeRegion } from "../src/chapter-progress-20260829-coast-20260905-upgrade.js";
+import { createInitialProgress } from "../src/quest-state-20260829-coast-20260905-upgrade.js";
 
 function fixture({ saveOk = true, claimResults = [true], now = 2000 } = {}) {
   const claimed = [];
