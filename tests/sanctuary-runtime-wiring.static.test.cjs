@@ -1,10 +1,11 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const path = require("node:path");
 
-const main = fs.readFileSync(new URL("../src/main-20260910-sanctuary.js", import.meta?.url || `file://${__filename}`), "utf8");
-const game = fs.readFileSync(new URL("../src/game-20260910-sanctuary.js", import.meta?.url || `file://${__filename}`), "utf8");
-const world = fs.readFileSync(new URL("../src/world-20260910-sanctuary.js", import.meta?.url || `file://${__filename}`), "utf8");
+const main = fs.readFileSync(path.join(__dirname, "../src/main-20260910-sanctuary.js"), "utf8");
+const game = fs.readFileSync(path.join(__dirname, "../src/game-20260910-sanctuary.js"), "utf8");
+const world = fs.readFileSync(path.join(__dirname, "../src/world-20260910-sanctuary.js"), "utf8");
 
 test("main passes the ending DOM contract into PixelRPG", () => {
   for (const id of [
@@ -12,7 +13,7 @@ test("main passes the ending DOM contract into PixelRPG", () => {
     "endingRestoreButton", "endingSealButton", "endingResonateButton", "endingDeferButton",
     "endingConfirmButton", "endingConfirmCancel", "endingLockedReason", "endingSubtitle",
     "endingCredits", "endingCreditsText", "endingCreditsSkip",
-  ]) assert.match(main, new RegExp(`#${id.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}`));
+  ]) assert.match(main, new RegExp(`#${id}`));
   assert.match(game, /new SanctuaryEndingController\s*\(/);
   assert.match(game, /onCreditsComplete:\s*\(\)\s*=>\s*this\.completeSanctuaryCredits\(\)/);
 });
