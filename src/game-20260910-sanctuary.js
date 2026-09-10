@@ -2340,7 +2340,14 @@ export class PixelRPG {
 
   renderableBoss() {
     if (this.isOriginSpectator()) return null;
-    return this.coopBossController?.renderableBoss?.() || null;
+    const view = this.coopBossController?.renderableBoss?.();
+    if (!view) return null;
+    const snapshot = this.coopBossController?.snapshot;
+    return {
+      ...view,
+      bossId: snapshot?.bossId || view.bossId || view.id || null,
+      encounterId: snapshot?.encounterId || view.encounterId || null,
+    };
   }
 
   targetableBosses() {
