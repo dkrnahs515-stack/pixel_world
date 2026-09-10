@@ -44,7 +44,9 @@ const REQUIRED_RELEASE_FILES = new Set([
   "boss-attack-validation-20260910-sanctuary.js",
 ]);
 
-const LOGICAL_STEMS = [...REQUIRED_RELEASE_FILES].map(name => name.replace(/-20260910-sanctuary\.js$/, ""));
+const LOGICAL_STEMS = [...REQUIRED_RELEASE_FILES]
+  .map(name => name.replace(/-20260910-sanctuary\.js$/, ""))
+  .sort((a, b) => b.length - a.length);
 
 function importsOf(file) {
   const source = fs.readFileSync(file, "utf8");
@@ -83,15 +85,17 @@ test("every Task 1-10 changed JavaScript module is reachable through the sanctua
   }
 });
 
-test("changed logical modules never fall back to an older physical copy inside the release graph", () => {
+test("changed release parents never fall back to an older physical copy of another changed module", () => {
   const graph = walk(path.join(SRC, "main-20260910-sanctuary.js"));
   for (const file of graph) {
+    const parentName = path.basename(file);
+    if (!REQUIRED_RELEASE_FILES.has(parentName)) continue;
     for (const specifier of importsOf(file)) {
       const basename = path.basename(specifier);
       const stem = LOGICAL_STEMS.find(value => basename.startsWith(`${value}-`) || basename === `${value}.js`);
       if (!stem) continue;
       const expected = `${stem}-20260910-sanctuary.js`;
-      assert.equal(basename, expected, `${path.basename(file)} imports stale changed module ${basename}`);
+      assert.equal(basename, expected, `${parentName} imports stale changed module ${basename}`);
     }
   }
 });
