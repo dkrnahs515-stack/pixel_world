@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { PixelRPG } from "../src/game-20260910-sanctuary.js";
 import { createInitialProgress } from "../src/quest-state-20260910-sanctuary.js";
-import { LocalBossController } from "../src/local-boss-controller-20260903-volcano-20260905-upgrade.js";
+import { LocalBossController } from "../src/local-boss-controller-20260910-sanctuary.js";
 import { originDefeatedProgress, originReadyProgress, zeroBoundaryUnlockedProgress } from "./helpers/sanctuary-fixtures.mjs";
 
 test("local boss controller creates ORIGIN in the core heart without breaking regional bosses", async () => {

@@ -26,7 +26,7 @@ import { getEnemyDefinition } from "./enemy-definitions-20260910-sanctuary.js";
 import { movementVector } from "./input-20260905-upgrade.js";
 import { createNetworkAdapter, createOfflineNetworkAdapter } from "./network-20260910-sanctuary.js";
 import { createCoopBossController } from "./coop-boss-controller-20260910-sanctuary.js";
-import { createLocalBossController } from "./local-boss-controller-20260903-volcano-20260905-upgrade.js";
+import { createLocalBossController } from "./local-boss-controller-20260910-sanctuary.js";
 import { validateBossPlayerDamageEvent } from "./coop-boss-state-20260910-sanctuary.js";
 import {
   completeRegion,
