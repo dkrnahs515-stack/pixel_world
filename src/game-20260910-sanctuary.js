@@ -1,5 +1,5 @@
 import { questNotifications } from "./quest-notifications-20260905-upgrade.js";
-import { storyGuidance } from "./quest-guidance-20260910-sanctuary.js";
+import { campaignObjective, storyGuidance } from "./quest-guidance-20260910-sanctuary.js";
 import { QuestBanner, drawQuestGuidance } from "./quest-banner-20260905-upgrade.js";
 import { rewardCodeEffects } from "./reward-codes-20260905-upgrade.js";
 import { applyRewardModifiers, drawSlimeBody, drawPencilWeapon } from "./reward-cosmetics-20260905-upgrade.js";
@@ -107,7 +107,7 @@ import {
   markIntroSeen,
   recordAdventureKill,
 } from "./quest-state-20260910-sanctuary.js";
-import { arenDialogueModel } from "./aren-dialogue-20260829-coast-20260905-upgrade.js";
+import { arenDialogueModel } from "./aren-dialogue-20260910-sanctuary.js";
 import { getWorldDefinition, normalizeWorldId } from "./world-data-20260910-sanctuary.js";
 import {
   createWorldLayer,
@@ -1885,13 +1885,13 @@ export class PixelRPG {
     const worldProgress = this.progress?.worldProgress;
     const objective = this.currentChapterObjective();
     if (this.ui.chapterObjective) {
-      this.ui.chapterObjective.textContent = `CHAPTER · ${objective.label}`;
+      this.ui.chapterObjective.textContent = `${objective.eyebrow} · ${objective.text}`;
     }
     this.ui.renderCommunicationLog?.(getCollectedCoastRecords(worldProgress));
   }
 
   currentChapterObjective() {
-    return getVolcanoChapterObjective(this.progress?.worldProgress);
+    return campaignObjective(this.progress, this.mapId);
   }
 
   updateProgressHud() {
