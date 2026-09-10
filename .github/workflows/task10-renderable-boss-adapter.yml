@@ -1,0 +1,42 @@
+name: Task 10 renderable boss adapter
+
+on:
+  push:
+    branches: ["feature/pixel-core-sanctuary"]
+    paths:
+      - ".github/workflows/task10-renderable-boss-adapter.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/pixel-core-sanctuary
+          fetch-depth: 0
+      - name: Add spectator-safe game boss adapter
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('src/game-20260910-sanctuary.js')
+          text = path.read_text()
+          marker = '''  targetableBosses() {\n    if (this.isOriginSpectator()) return [];\n'''
+          replacement = '''  renderableBoss() {\n    if (this.isOriginSpectator()) return null;\n    return this.coopBossController?.renderableBoss?.() || null;\n  }\n\n  targetableBosses() {\n    if (this.isOriginSpectator()) return [];\n'''
+          if marker not in text:
+              raise SystemExit('targetableBosses marker not found')
+          if '  renderableBoss() {' in text:
+              raise SystemExit('renderableBoss adapter already exists')
+          path.write_text(text.replace(marker, replacement, 1))
+          PY
+          node --check src/game-20260910-sanctuary.js
+          node --test tests/game-sanctuary-combat.test.mjs
+      - name: Commit adapter
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/game-20260910-sanctuary.js
+          git commit -m "fix: expose spectator-safe boss adapter"
+          git push origin HEAD:feature/pixel-core-sanctuary
