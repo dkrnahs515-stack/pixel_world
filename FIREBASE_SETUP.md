@@ -2,51 +2,161 @@
 
 Firebase 프로젝트: `pixel-world-8cb9b`
 
-이 프로젝트는 Firebase Hosting, Authentication 익명 로그인, Realtime Database를 사용합니다.
+이 프로젝트는 Firebase Hosting, 익명 Authentication, Realtime Database를 사용합니다. GitHub Pages는 공식 솔로/진입 주소를 유지하고, 온라인 모드에서만 Firebase 네트워크 기능을 사용합니다.
 
-## 현재 완료된 설정
+## 현재 온라인 범위
 
-- Firebase 웹 앱 설정 연결
-- `.firebaserc` 프로젝트 별칭 연결
-- `firebase.json` Hosting 및 Database 규칙 설정
-- Firebase Hosting GitHub Actions 워크플로 추가
-- 익명 인증 및 Realtime Database 클라이언트 코드 구현
-- 원격 플레이어 위치 보간 및 접속 종료 자동 삭제 구현
-- 전체 월드 채팅, 플레이어 말풍선 및 접속 종료 시 채팅 자동 삭제 구현
+- 익명 인증으로 플레이어 UID 발급
+- 최대 10명의 공개방 슬롯
+- 같은 물리 맵 플레이어 위치·방향·직업·장착 무기 동기화
+- 전체 월드 채팅과 같은 맵 말풍선
+- 숲·푸른 해안·활화산 지역 협동 보스
+- 픽셀 코어 성역 최종 보스 `ORIGIN-0` 공유 encounter
+- 위치 2Hz 상한, 보스 상태 2Hz, 채팅/보상 데이터 만료 정리
+- 5초 이상 연결이 끊기면 로컬 진행을 유지한 채 솔로 fallback
 
-## 1. 익명 로그인 활성화
+`introSeen`, 개인 퀘스트/챕터 진행, TRINITY, 엔딩 선택과 칭호는 Firebase에 저장하지 않습니다.
 
-Firebase Console에서 다음 경로로 이동합니다.
+## 1. 익명 로그인
+
+Firebase Console:
 
 `Authentication > Sign-in method > Anonymous > Enable`
 
-## 2. Realtime Database 만들기
+## 2. Realtime Database
 
-1. `Build > Realtime Database > Create Database`로 이동합니다.
-2. 앱 이용자와 가까운 리전을 선택합니다.
-3. 잠금 모드로 생성합니다.
-4. 생성된 Database URL을 복사합니다.
-5. `src/firebase-config.js`의 빈 `databaseURL` 값에 붙여 넣습니다.
+Database URL은 `src/firebase-config.js`의 `databaseURL`에 설정합니다.
 
-예시 형식:
+예시:
 
 ```js
 databaseURL: "https://pixel-world-8cb9b-default-rtdb.REGION.firebasedatabase.app"
 ```
 
-## 3. Database 보안 규칙 배포
+## 3. Database 규칙
 
-저장소의 `database.rules.json`을 Firebase Console의 Realtime Database `Rules` 탭에 붙여 넣고 게시하거나 Firebase CLI로 배포합니다.
+저장소의 `database.rules.json`이 운영 규칙 원본입니다.
 
 ```bash
 firebase deploy --only database
 ```
 
-이 명령은 운영 Realtime Database 규칙을 즉시 변경합니다. 로컬 테스트와 보안 검사를 완료하고 배포 승인을 받은 뒤 실행해야 합니다. 채팅 클라이언트만 먼저 배포하고 규칙을 배포하지 않으면 채팅 쓰기가 거부됩니다.
+운영 규칙 배포 전에는 Firebase Emulator allow/deny 테스트를 통과해야 합니다.
 
-## 4. Firebase Hosting 자동 배포 연결
+### 허용 물리 mapId
 
-워크플로 파일:
+현재 정확히 15개 물리 맵을 사용합니다.
+
+- `village` — 2880×1800
+- `forest` — 4320×3600
+- `coast-beach` — 2160×1800
+- `coast-wreck-bay` — 2160×1800
+- `coast-flooded-station` — 2160×1800
+- `coast-tide-core-cave` — 2160×1800
+- `volcano` — 2160×1800
+- `volcano-magma-route` — 2160×1800
+- `volcano-observatory` — 2160×1800
+- `volcano-core-caldera` — 2160×1800
+- `sanctuary` — 2160×1800
+- `sanctuary-resonance-hall` — 2160×1800
+- `sanctuary-origin-archive` — 2160×1800
+- `sanctuary-zero-boundary` — 2160×1800
+- `sanctuary-core-heart` — 2160×1800
+
+레거시 `coast`, 누락값, 미등록 mapId, 음수 좌표, 맵 경계를 넘는 좌표는 거부합니다.
+
+## 4. 데이터 구조
+
+### 플레이어 presence
+
+`rooms/public/players/{uid}`
+
+현재 위치·방향·물리 `mapId`·직업·장착 무기·온라인 생존 판정에 필요한 제한된 HP 상태를 저장합니다. 이동 중 위치 쓰기는 최대 2Hz이며 정지 중에는 30초 heartbeat를 사용합니다. 최초 `joinedAt`은 같은 UID가 임의로 교체할 수 없습니다.
+
+직업별 장착 무기는 허용된 해당 직업 무기만 전송할 수 있습니다. 히든 무기는 명시적인 일치 `classId`가 있어야 합니다.
+
+다음 값은 presence에 넣지 않습니다.
+
+- `introSeen`
+- 개인 레벨/Gold 전체 저장 객체
+- 개인 챕터 진행
+- 엔딩 선택/칭호
+- `TEACHER` 무적 권한
+- `BOSSKILLBOSS` 삼중 보스 권한
+
+### 전체 채팅
+
+`rooms/public/chat/{uid}/{messageId}`
+
+UID별 최근 메시지는 최대 5개를 유지하고 전체 채팅 구독은 최근 목록을 표시합니다. 정상 종료와 연결 종료 시 해당 UID 채팅을 정리합니다.
+
+### 공유 보스
+
+기존 지역 보스 경로:
+
+- `rooms/public/bosses/forest`
+- `rooms/public/bosses/coast-tide-core-cave`
+- `rooms/public/bosses/volcano-core-caldera`
+
+최종 보스 경로:
+
+- `rooms/public/bosses/sanctuary-core-heart`
+
+보스 하위 구조는 기존 공유 계약을 사용합니다.
+
+- `state` — 현재 encounter/HP/위치/authority lease
+- `attacks/{uid}/{sequence}` — 플레이어 공격 요청
+- `playerDamage/{uid}/{eventId}` — authority가 생성한 피해 이벤트
+- `rewardClaims/{uid}/{encounterId}` — 개인 수령/완료 claim
+
+공격 damage는 클라이언트 요청값을 신뢰하지 않고 서버 역할을 하는 authority가 직업·레벨·무기·스킬 자원·위치·방향·시간·sequence로 다시 계산합니다.
+
+## 5. ORIGIN-0 온라인 계약
+
+`ORIGIN-0 — 최초의 수호자`는 `sanctuary-core-heart`에서만 공유되는 최종 보스입니다.
+
+- 솔로 base HP: 1200
+- 온라인 HP는 기존 party multiplier 계약을 사용
+- 최대 공개방 10명
+- HP·위치·phase·3개 core anchor·rewrite 진행을 공유
+- authority lease가 만료되거나 현재 authority가 나가면 다음 참가자가 마지막 확정 상태를 이어받음
+- Phase 4의 anchor가 활성 상태이면 보스를 1 HP 아래로 끝낼 수 없음
+- 처치 후 기존 지역 보스와 같은 3분 lifecycle을 사용할 수 있지만, 개인적으로 처치 영수증을 가진 플레이어는 재등장 ORIGIN 전투에 다시 참여하지 않음
+
+ORIGIN `rewardClaims`는 일반 EXP/Gold 보상이 아니라 **개인 로컬 처치 영수증 전달용 0/0 claim**입니다. 게임은 해당 claim을 받으면 먼저 닉네임의 v8 로컬 저장에 `originDefeated`와 encounter receipt를 기록합니다. 로컬 저장 성공 후에만 원격 claim을 acknowledge합니다.
+
+저장 성공 후 그 클라이언트는 `sanctuary-core-heart`에서 ORIGIN spectator가 됩니다.
+
+- 이후 공유 ORIGIN을 로컬에 렌더링하지 않음
+- ORIGIN 공격을 보내지 않음
+- ORIGIN의 playerDamage를 적용하지 않음
+- `결정 보류` 후 성역을 다시 탐사하고 엔딩 선택으로 돌아갈 수 있음
+- 같은 온라인 파티의 다른 플레이어 전투/선택에는 영향을 주지 않음
+
+엔딩 `restore`, `seal`, `resonate`, 엔딩 칭호와 EXP/Gold 보상은 Firebase에 쓰지 않습니다. 같은 ORIGIN을 함께 처치한 플레이어가 서로 다른 엔딩을 선택할 수 있습니다.
+
+## 6. TRINITY와 보상 코드 경계
+
+`TRINITY`는 솔로와 온라인 모두 **개인 로컬 중간 보스**이며 Firebase boss 경로를 사용하지 않습니다.
+
+- base HP 800
+- 온라인에서도 다른 플레이어와 HP/phase를 공유하지 않음
+- `BOSSKILLBOSS`로 수가 늘어나지 않음
+
+`TEACHER`와 `BOSSKILLBOSS`는 솔로 전용입니다. Firebase presence/attack payload에 특수 권한을 싣지 않습니다. `BOSSKILLBOSS`는 숲·해안·활화산 기존 지역 보스에만 적용하고 TRINITY와 ORIGIN에는 적용하지 않습니다.
+
+## 7. 캐시 안전 릴리스
+
+현재 브라우저 물리 엔트리:
+
+- JS: `src/main-20260910-sanctuary.js`
+- CSS: `styles-20260910-sanctuary.css`
+
+성역 릴리스에서 변경된 ES 모듈과 그 import 상위 그래프는 `20260910-sanctuary` 물리 파일 체인을 사용합니다. 쿼리 문자열 버전에 의존하지 않습니다. `tests/sanctuary-cache-contract.test.mjs`가 변경된 parent가 이전 physical copy의 변경 child를 참조하지 않는지 검사합니다.
+
+## 8. Firebase Hosting
+
+자동 배포 워크플로:
 
 `.github/workflows/firebase-hosting-merge.yml`
 
@@ -54,20 +164,9 @@ firebase deploy --only database
 
 `FIREBASE_SERVICE_ACCOUNT_PIXEL_WORLD_8CB9B`
 
-Firebase CLI에서 아래 명령을 실행하면 GitHub 저장소 연결, 서비스 계정 생성, Secret 등록 과정을 자동으로 진행할 수 있습니다.
+배포 브랜치는 `main`입니다.
 
-```bash
-firebase login
-firebase init hosting:github
-```
-
-저장소는 `dkrnahs515-stack/pixel_world`, 배포 브랜치는 `main`을 선택합니다.
-
-활화산 릴리스의 변경 모듈과 캐시 의존 상위 모듈은 `coop-boss-network-20260903-volcano.js` → `network-20260903-volcano.js` → `game-20260903-volcano.js` → `main-20260903-volcano.js` 물리 체인을 사용합니다. HTML은 query 없는 `styles-20260903-volcano.css`와 현재 엔트리를 참조합니다. 동작이 바뀌지 않은 해안 조합 모듈은 기존 불변 물리 파일을 유지할 수 있습니다. 새 릴리스에서 모듈을 수정할 때는 변경 모듈부터 엔트리까지 재귀 import 상위 그래프의 물리 버전을 함께 올리고 `tests/volcano-cache-contract.test.mjs`를 통과시켜야 합니다.
-
-## 5. 수동 배포
-
-Firebase CLI가 설치된 컴퓨터에서 저장소 루트 기준으로 실행합니다.
+수동 배포:
 
 ```bash
 npm install -g firebase-tools
@@ -76,64 +175,33 @@ firebase use pixel-world-8cb9b
 firebase deploy --only hosting,database
 ```
 
-배포 주소:
+Hosting 주소:
 
 - `https://pixel-world-8cb9b.web.app`
 - `https://pixel-world-8cb9b.firebaseapp.com`
 
-## 온라인 구조
+## 9. 테스트
 
-- 익명 인증으로 플레이어별 UID 발급
-- `rooms/public/players/{uid}`에 위치, 방향과 현재 `mapId` 저장
-- 위치는 이동 중 초당 최대 2회 전송하고, 정지 중에는 30초 heartbeat만 전송
-- 같은 `mapId`에 있는 원격 캐릭터만 보간하여 부드럽게 표시
-- 누락된 `mapId`나 레거시 `coast`는 presence와 채팅 데이터에서 정규화하지 않고 거부
-- 접속 종료 시 `onDisconnect().remove()`로 플레이어 데이터 삭제
-- `rooms/public/chat/{uid}/{messageId}`에 전체 월드 채팅 저장
-- UID별 메시지는 최대 5개이며 새 메시지 추가와 오래된 메시지 삭제를 한 번의 원자적 갱신으로 처리
-- `rooms/public/chat` 전체를 구독하므로 지역이 달라도 채팅 패널에서는 메시지 확인 가능
-- 캐릭터 말풍선은 같은 `mapId`의 최신 메시지만 4초간 표시
-- 재연결 시 플레이어와 채팅의 `onDisconnect().remove()`를 다시 예약
-- `database.rules.json`에서 본인 데이터만 수정 가능하며, 같은 UID의 플레이어 상태를 교체할 때 최초 `joinedAt`은 변경할 수 없음
+PR과 `main`에서는 다음 검증을 유지합니다.
 
-허용되는 물리 `mapId`는 정확히 `village`, `forest`, `coast-beach`, `coast-wreck-bay`, `coast-flooded-station`, `coast-tide-core-cave`, `volcano`, `volcano-magma-route`, `volcano-observatory`, `volcano-core-caldera`, `sanctuary` 열한 개입니다. 레거시 `coast`, 빈 값, 미등록 ID는 규칙에서 거부합니다.
+```bash
+node --test tests/*.test.mjs tests/*.static.test.cjs
+for file in src/*.js; do node --check "$file"; done
+```
 
-맵별 좌표 경계는 다음과 같습니다.
+Realtime Database:
 
-- `village`: `2,880 × 1,800`
-- `forest`: `4,320 × 3,600`
-- `coast-beach`, `coast-wreck-bay`, `coast-flooded-station`, `coast-tide-core-cave`: 각각 `2,160 × 1,800`
-- `volcano`, `volcano-magma-route`, `volcano-observatory`, `volcano-core-caldera`, `sanctuary`: 각각 `2,160 × 1,800`
+```bash
+firebase emulators:exec --only database -- <rules test command>
+```
 
-좌표가 음수이거나 해당 맵의 최대 경계를 넘으면 플레이어 쓰기와 보스 공격 요청을 거부합니다. 월드 확장 코드를 배포할 때 갱신된 `database.rules.json`도 함께 게시해야 온라인 이동이 거부되지 않습니다.
+브라우저 smoke는 기존 솔로·기본·채팅·해안·활화산 회귀 뒤에 `tests/sanctuary-browser-smoke.cjs`를 실행해 첫 플레이 인트로와 성역 최종장을 검증합니다.
 
-플레이어 presence의 직업별 장착 무기 목록은 기존 상점 무기 일곱 종과 그 직업의 히든 무기 하나만 허용합니다. `classId`가 없는 레거시 presence에는 기존 일곱 종 검만 허용하며, 세 히든 무기는 반드시 일치하는 명시적 `classId`와 함께 전송해야 합니다.
+## 10. 보안
 
-### 협동 보스 동기화와 거부 조건
-
-- 관리자 브라우저는 보스 상태를 `2Hz`(초당 2회)로 게시하며 3분 재등장과 lease 기반 관리자 승계를 유지합니다.
-- 보스 경로는 `forest`, `coast-tide-core-cave`, `volcano-core-caldera`만 허용합니다. 레거시 `volcano` 경로의 state·attack·reward 쓰기는 거부합니다.
-- 검사 `volcanic-heartblade`, 궁수 `ember-tracker-bow`, 마법사 `leyflame-core-staff` 공격은 일치하는 `classId`에서만 허용합니다.
-- 공격 요청의 경로 `sequence`와 숫자 payload `sequence`가 정확히 대응하지 않으면 규칙과 관리자 클라이언트가 요청을 거부하고 실제 경로만 정리합니다.
-- 보상 claim 생성은 현재 처치(`defeated`) 상태인 `encounter`와 경로 ID가 다르면 거부합니다. 이미 생성된 24시간 claim은 이후 보스가 재등장해도 해당 기여자가 수령할 수 있습니다.
-- 처치 상태와 contributor별 claim은 하나의 교차 경로 transaction으로 저장되지 않습니다. 상태 게시 뒤 각 UID claim을 독립적인 멱등 transaction으로 기록하고, 부분 실패·재연결·관리자 승계 시 누락 claim만 재조정합니다.
-
-## Firebase 키와 보안 점검
-
-- `src/firebase-config.js`의 Firebase 웹 API 키는 브라우저에서 사용하는 공개 전제 식별자입니다.
-- Firebase Admin SDK 개인 키 또는 서비스 계정 JSON 값은 소스코드에 저장하지 않습니다.
-- GitHub Actions 워크플로에는 `${{ secrets.FIREBASE_SERVICE_ACCOUNT_PIXEL_WORLD_8CB9B }}` 참조만 저장하고 실제 값은 GitHub Actions Secret에서 관리합니다.
-- Realtime Database 규칙은 인증된 사용자만 읽고, 각 사용자가 자신의 UID 아래 데이터만 수정하도록 제한합니다.
-- Google Cloud HTTP 리퍼러 제한, Firebase App Check, GitHub Secret scanning 상태는 각 서비스 콘솔에서 별도로 확인합니다.
-
-## App Check 운영 적용 순서
-
-App Check는 실제 이용자를 차단하지 않도록 관찰 후 강제 적용합니다.
-
-1. Firebase Console의 App Check에서 GitHub Pages 웹 앱을 등록합니다.
-2. 웹 provider로 reCAPTCHA Enterprise를 선택하고 공식 GitHub Pages 일반 주소를 등록합니다.
-3. 공식 주소와 `?qa=1` 점검 주소에서 요청 metric(메트릭)을 먼저 관찰합니다.
-4. 유효 요청 비율과 세 직업·협동 보스 플레이가 정상인지 확인한 뒤 Realtime Database enforcement(강제 적용)를 켭니다.
-5. 강제 적용 전 로컬·CI 검증은 Firebase Emulator 또는 App Check debug token(디버그 토큰)을 사용합니다.
-
-사이트 키가 실제 프로젝트에 등록되기 전에는 임의 키를 저장소에 넣거나 enforcement를 먼저 활성화하지 않습니다.
+- Firebase 웹 API 키는 브라우저 공개 식별자 전제입니다.
+- Firebase Admin SDK 개인 키/서비스 계정 JSON은 저장소에 커밋하지 않습니다.
+- GitHub Actions에는 Secret 참조만 저장합니다.
+- Realtime Database는 인증 사용자와 경로별 본인 쓰기/authority 쓰기 조건을 규칙으로 제한합니다.
+- App Check는 metric을 먼저 관찰한 뒤 강제합니다.
+- 공식 GitHub Pages 주소와 `?qa=1` QA 주소를 모두 관찰한 후 enforcement를 적용합니다.
