@@ -145,7 +145,7 @@ async function firstPlayerJourney(page) {
     game.player.x = aren.x;
     game.player.y = aren.y + 45;
     game.player.dir = "up";
-    game.updateNearbyNpcPrompt();
+    game.updateNpcPrompt();
     return Boolean(aren);
   });
   assert.equal(arenLabel, true);
