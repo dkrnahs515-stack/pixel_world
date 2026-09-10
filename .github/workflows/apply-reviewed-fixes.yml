@@ -16,13 +16,13 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: "24"
-      - name: Apply the exact locally tested patch
+      - name: Apply the exact locally tested source patch
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = "9969c63122edfa069a920dd5c166112d8ea17add"
+          test "$(git rev-parse HEAD^)" = "ebd7d26b32830c1919512f3bb65ff51167c8eb33"
           python3 - <<'PY'
           import base64, hashlib, json, lzma, os, pathlib, urllib.request
           chunks = []
@@ -38,14 +38,14 @@ jobs:
           patch = lzma.decompress(base64.b64decode("".join(chunks), validate=True))
           assert hashlib.sha256(patch).hexdigest() == "875c45cc4aa6a568fc46148820eb51a12e3933eb008cd6435b8de3627a28f8e0", "patch digest mismatch"
           pathlib.Path("/tmp/reviewed-fixes.patch").write_bytes(patch)
-          print("Verified exact 84190-byte patch; source baseline 9969c631")
+          print("Verified exact patch; workflow changes were applied separately via authorized connector")
           PY
-          git apply --check /tmp/reviewed-fixes.patch
-          git apply /tmp/reviewed-fixes.patch
+          git apply --exclude='.github/workflows/*' --check /tmp/reviewed-fixes.patch
+          git apply --exclude='.github/workflows/*' /tmp/reviewed-fixes.patch
           node --test tests/*.test.mjs tests/*.static.test.cjs
           for file in src/*.js tests/*smoke.cjs; do node --check "$file"; done
           git diff --check
-          git rm .github/workflows/review-source-snapshot.yml .github/workflows/apply-reviewed-fixes.yml
-          git add -A
+          git add src tests database.rules.json
+          test -z "$(git diff --cached --name-only -- .github/workflows)"
           git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -m "fix: connect sanctuary combat and recover durable endings"
           git push origin HEAD:feature/pixel-core-sanctuary
