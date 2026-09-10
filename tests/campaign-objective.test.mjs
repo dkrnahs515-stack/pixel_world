@@ -47,6 +47,15 @@ test("campaign objective follows the first quest states", () => {
     "태고의 숲의 코어 반응을 추적한다.");
 });
 
+test("advanced world progress is never sent back to Chapter 1 by a stale starter quest", () => {
+  const advanced = completeRegions(withQuestStatus("available", 0), "forest", "coast", "volcano");
+  assert.deepEqual(campaignObjective(advanced, "village"), {
+    eyebrow: "CHAPTER 4",
+    text: "픽셀 코어 성역으로 향한다.",
+    targetMapId: "sanctuary",
+  });
+});
+
 test("campaign objective advances through coast, volcano, sanctuary and epilogue", () => {
   const forestDone = completeRegions(withQuestStatus("completed", 3), "forest");
   assert.deepEqual(campaignObjective(forestDone, "village"), {
