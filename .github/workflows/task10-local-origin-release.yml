@@ -1,0 +1,49 @@
+name: Task 10 local ORIGIN release wiring
+
+on:
+  push:
+    branches: ["feature/pixel-core-sanctuary"]
+    paths:
+      - ".github/workflows/task10-local-origin-release.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/pixel-core-sanctuary
+          fetch-depth: 0
+      - name: Wire sanctuary local boss release
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          replacements = {
+            Path('src/game-20260910-sanctuary.js'): (
+              './local-boss-controller-20260903-volcano-20260905-upgrade.js',
+              './local-boss-controller-20260910-sanctuary.js',
+            ),
+            Path('tests/game-sanctuary-combat.test.mjs'): (
+              '../src/local-boss-controller-20260903-volcano-20260905-upgrade.js',
+              '../src/local-boss-controller-20260910-sanctuary.js',
+            ),
+          }
+          for path, (old, new) in replacements.items():
+              text = path.read_text()
+              if old not in text:
+                  raise SystemExit(f'expected import not found in {path}')
+              path.write_text(text.replace(old, new, 1))
+          PY
+          node --check src/game-20260910-sanctuary.js
+          node --check src/local-boss-controller-20260910-sanctuary.js
+          node --test tests/game-sanctuary-combat.test.mjs
+      - name: Commit wiring
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/game-20260910-sanctuary.js tests/game-sanctuary-combat.test.mjs
+          git commit -m "fix: wire sanctuary local ORIGIN controller"
+          git push origin HEAD:feature/pixel-core-sanctuary
