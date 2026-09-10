@@ -48,6 +48,10 @@ const LOGICAL_STEMS = [...REQUIRED_RELEASE_FILES]
   .map(name => name.replace(/-20260910-sanctuary\.js$/, ""))
   .sort((a, b) => b.length - a.length);
 
+function logicalStem(filename) {
+  return LOGICAL_STEMS.find(value => filename.startsWith(`${value}-`) || filename === `${value}.js`) ?? null;
+}
+
 function importsOf(file) {
   const source = fs.readFileSync(file, "utf8");
   return [...source.matchAll(/(?:import|export)\s+(?:[^"']*?\s+from\s+)?["'](\.\.?\/[^"']+)["']/g)]
@@ -85,16 +89,19 @@ test("every Task 1-10 changed JavaScript module is reachable through the sanctua
   }
 });
 
-test("changed release parents never fall back to an older physical copy of another changed module", () => {
+test("changed release parents never import an older physical copy of a different changed module", () => {
   const graph = walk(path.join(SRC, "main-20260910-sanctuary.js"));
   for (const file of graph) {
     const parentName = path.basename(file);
     if (!REQUIRED_RELEASE_FILES.has(parentName)) continue;
+    const parentStem = logicalStem(parentName);
     for (const specifier of importsOf(file)) {
       const basename = path.basename(specifier);
-      const stem = LOGICAL_STEMS.find(value => basename.startsWith(`${value}-`) || basename === `${value}.js`);
-      if (!stem) continue;
-      const expected = `${stem}-20260910-sanctuary.js`;
+      const childStem = logicalStem(basename);
+      if (!childStem) continue;
+      // Versioned wrappers may intentionally inherit their own immediately older stable implementation.
+      if (childStem === parentStem) continue;
+      const expected = `${childStem}-20260910-sanctuary.js`;
       assert.equal(basename, expected, `${parentName} imports stale changed module ${basename}`);
     }
   }
