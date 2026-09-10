@@ -69,6 +69,27 @@ test("origin-records-3 setup collects all optional records without defeating ORI
   assert.equal(sanctuary.originDefeated, false);
 });
 
+test("origin-records-3 preserves a deferred ORIGIN defeat receipt for no-refight recovery", () => {
+  const defeated = prepareSanctuaryQaProgress(createInitialProgress(), "ending-restore-ready");
+  const before = defeated.progress.worldProgress.chapters.sanctuary;
+  assert.equal(before.originDefeated, true);
+  assert.ok(before.originDefeatReceiptId);
+
+  const result = prepareSanctuaryQaProgress(defeated.progress, "origin-records-3");
+  const sanctuary = result.progress.worldProgress.chapters.sanctuary;
+
+  assert.equal(result.ok, true);
+  assert.equal(sanctuary.trinityDefeated, true);
+  assert.equal(sanctuary.originDefeated, true);
+  assert.equal(sanctuary.originDefeatReceiptId, before.originDefeatReceiptId);
+  assert.equal(sanctuary.endingChoice, null);
+  assert.deepEqual([...sanctuary.originRecordIds].sort(), [
+    "origin-record-mutual-validation",
+    "origin-record-sealed-recovery",
+    "origin-record-single-authority",
+  ]);
+});
+
 test("ending-ready setups preserve permanent-choice rules and identify the target ending", () => {
   for (const [setupId, endingId, recordCount] of [
     ["ending-restore-ready", "restore", 0],
