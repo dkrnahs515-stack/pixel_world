@@ -1,0 +1,22 @@
+name: Task 10 campaign regression RED
+
+on:
+  push:
+    branches: ["feature/pixel-core-sanctuary"]
+    paths:
+      - ".github/workflows/task10-campaign-regression-red.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  red:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/pixel-core-sanctuary
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - run: node --test tests/campaign-objective.test.mjs
