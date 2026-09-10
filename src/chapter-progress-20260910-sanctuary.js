@@ -3,7 +3,7 @@ import {
   REGION_IDS,
   getRegionDefinition,
   getRegionForMap,
-} from "./region-data-20260903-volcano-20260905-upgrade.js";
+} from "./region-data-20260910-sanctuary.js";
 
 const COAST_DEVICE_IDS = Object.freeze([
   "coast-beach-transceiver",
@@ -79,12 +79,6 @@ export const SANCTUARY_ORIGIN_RECORD_IDS = Object.freeze([
   "origin-record-mutual-validation",
 ]);
 const SANCTUARY_ENDING_CHOICES = Object.freeze(["restore", "seal", "resonate"]);
-const SANCTUARY_TRANSITION_MAP_IDS = Object.freeze([
-  "sanctuary-resonance-hall",
-  "sanctuary-origin-archive",
-  "sanctuary-zero-boundary",
-  "sanctuary-core-heart",
-]);
 const ORIGIN_RECORD_MAPS = Object.freeze({
   "origin-record-single-authority": "sanctuary-resonance-hall",
   "origin-record-sealed-recovery": "sanctuary-origin-archive",
@@ -166,14 +160,15 @@ function recordValue(value) {
 }
 
 function allowedMapIds() {
-  return [
-    ...REGION_IDS.flatMap(regionId => REGION_DEFINITIONS[regionId].mapIds),
-    ...SANCTUARY_TRANSITION_MAP_IDS,
-  ];
+  return REGION_IDS.flatMap(regionId => REGION_DEFINITIONS[regionId].mapIds);
 }
 
 function normalizeReceiptId(value) {
   return typeof value === "string" && value.length > 0 && value.length <= 160 ? value : null;
+}
+
+function hasAll(values, requiredValues) {
+  return requiredValues.every(value => values.includes(value));
 }
 
 function normalizeWorldProgressValue(value, { repairTerminal = true } = {}) {
@@ -288,10 +283,13 @@ function normalizeWorldProgressValue(value, { repairTerminal = true } = {}) {
     addUnique(normalized.unlockedRegionIds, "volcano");
     addUnique(normalized.unlockedRegionIds, "sanctuary");
     addUnique(normalized.completedRegionIds, "volcano");
-    for (const mapId of [...REGION_DEFINITIONS.volcano.mapIds, ...REGION_DEFINITIONS.sanctuary.mapIds]) {
+    for (const mapId of [
+      ...REGION_DEFINITIONS.volcano.mapIds,
+      REGION_DEFINITIONS.sanctuary.entryMapId,
+      "sanctuary-resonance-hall",
+    ]) {
       addUnique(normalized.unlockedMapIds, mapId);
     }
-    addUnique(normalized.unlockedMapIds, "sanctuary-resonance-hall");
   }
   if (repairTerminal && hasAll(activatedResonanceNodeIds, SANCTUARY_RESONANCE_NODE_IDS)) {
     addUnique(normalized.unlockedMapIds, "sanctuary-origin-archive");
@@ -325,12 +323,8 @@ function unlockMap(progress, effects, mapId) {
   effects.push({ type: "map-unlocked", mapId });
 }
 
-function hasAll(values, requiredValues) {
-  return requiredValues.every(value => values.includes(value));
-}
-
 export function isMapUnlocked(progress, mapId) {
-  if (!getRegionForMap(mapId) && !SANCTUARY_TRANSITION_MAP_IDS.includes(mapId)) return false;
+  if (!getRegionForMap(mapId)) return false;
   return normalizeWorldProgress(progress).unlockedMapIds.includes(mapId);
 }
 
