@@ -1,3 +1,4 @@
+import { drawOriginMechanics } from "./origin-boss-controller-20260910-sanctuary.js";
 import { questNotifications } from "./quest-notifications-20260905-upgrade.js";
 import { campaignObjective, storyGuidance } from "./quest-guidance-20260910-sanctuary.js";
 import { QuestBanner, drawQuestGuidance } from "./quest-banner-20260905-upgrade.js";
@@ -54,7 +55,7 @@ import {
   respawnPlayer,
   tickPlayerStatus,
 } from "./player-combat-20260905-upgrade.js";
-import { advancePortalTransition, canUsePortal, createPortalTransition } from "./portal-transition-20260903-volcano-20260905-upgrade.js";
+import { advancePortalTransition, canUsePortal, createPortalTransition } from "./portal-transition-20260910-sanctuary.js";
 import { grantCoopBossReward, grantHuntingReward, statsForLevel } from "./player-progression-20260905-upgrade.js";
 import { getCoopBossById, getCoopBossForMap } from "./coop-boss-data-20260910-sanctuary.js";
 import {
@@ -565,6 +566,9 @@ export class PixelRPG {
     const progressStorage = browserStorage();
     const loadedProgress = loadPlayerProgress(progressStorage, this.player.name);
     this.progress = loadedProgress.progress;
+    const resumeEnding = Boolean(this.progress.worldProgress?.chapters?.sanctuary?.endingChoice
+      && !this.progress.worldProgress.chapters.sanctuary.endingRewardClaimed);
+    if (resumeEnding) this.retrySanctuaryEndingReward();
     this.savedQuestProgress = null;
     this.questBanner ||= new QuestBanner(document.body);
     this.questBanner.reset();
@@ -614,6 +618,7 @@ export class PixelRPG {
 
     this.persistProgress();
     this.running = true;
+    if (resumeEnding) this.playSavedSanctuaryEnding();
     this.lastFrame = 0;
     this.accumulator = 0;
     this.resetPerformanceMeasurement();
@@ -784,7 +789,8 @@ export class PixelRPG {
   }
 
   createLocalBossController() {
-    if (rewardCodeEffects(this.progress, this.sessionMode).bossCount === 3) return createTripleBossController();
+    if (rewardCodeEffects(this.progress, this.sessionMode).bossCount === 3
+      && getCoopBossForMap(this.mapId)?.bossClass !== "final") return createTripleBossController();
     return createLocalBossController();
   }
 
@@ -1584,6 +1590,7 @@ export class PixelRPG {
 
   openNpcInteraction() {
     if (!this.running || !this.inputEnabled || this.chatInputActive || this.portalTransition || this.player.respawnTimer > 0) return false;
+    if (this.isNearSanctuaryDecisionCore()) return this.openSanctuaryEndingChoice();
     if (this.nearbyStoryInteraction) return this.openStoryInteraction(this.nearbyStoryInteraction);
     const npc = findNearbyNpc(this.npcs, this.player);
     if (!npc) return false;
@@ -2189,9 +2196,12 @@ export class PixelRPG {
       ? findNearbyStoryInteraction(ALL_STORY_INTERACTIONS, { ...this.player, mapId: this.mapId }, this.progress?.worldProgress)
       : null;
     this.nearbyNpc = eligible && !this.nearbyStoryInteraction ? findNearbyNpc(this.npcs, this.player) : null;
-    const nearby = this.nearbyStoryInteraction || this.nearbyNpc;
+    const coreReady = eligible && this.isNearSanctuaryDecisionCore();
+    const nearby = coreReady || this.nearbyStoryInteraction || this.nearbyNpc;
     setPropertyIfChanged(this.ui.npcPrompt, "hidden", !nearby);
-    if (this.nearbyStoryInteraction && this.ui.npcPromptText) {
+    if (coreReady && this.ui.npcPromptText) {
+      setTextIfChanged(this.ui.npcPromptText, "픽셀 코어에서 최종 결정하기");
+    } else if (this.nearbyStoryInteraction && this.ui.npcPromptText) {
       setTextIfChanged(this.ui.npcPromptText, storyInteractionPrompt(this.nearbyStoryInteraction));
     } else if (this.nearbyNpc && this.ui.npcPromptText) {
       const prompt = {
@@ -2283,6 +2293,10 @@ export class PixelRPG {
     const bossOptions = this.sessionMode === "online"
       ? { partySize: this.remotePlayers.size + 1, deferEncounter: true }
       : { partySize: 1 };
+    if (this.sessionMode === "solo" && this.coopBossController) {
+      this.coopBossController.clear?.();
+      this.coopBossController = this.createLocalBossController();
+    }
     this.coopBossController?.setMap(this.mapId, bossOptions).catch(error => {
       console.warn("협동 보스 지역 전환 실패", error);
     });
@@ -2834,6 +2848,7 @@ export class PixelRPG {
       ctx.save(); ctx.strokeStyle = cast.definition.delivery === "meteor" ? "#ff8a42" : "#7dd3fc"; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(cast.x - cameraX, cast.y - cameraY, cast.definition.radius, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
     }
+    if (!this.isOriginSpectator()) drawOriginMechanics(ctx, this.coopBossController?.snapshot, cameraX, cameraY);
     const coopBoss = this.isOriginSpectator() ? null : this.coopBossController?.renderableBoss();
     const visibleBosses = this.isOriginSpectator()
       ? []
@@ -2946,6 +2961,9 @@ export class PixelRPG {
           data.equippedWeaponId,
           classId,
         ).id,
+        level: data.level,
+        mp: data.mp,
+        skillResources: data.skillResources,
         step: current?.step || 0,
         hp: Number.isFinite(data.hp) ? data.hp : 100,
         joinedAt: Number.isFinite(data.joinedAt) ? data.joinedAt : Number.POSITIVE_INFINITY,
@@ -3162,6 +3180,12 @@ export class PixelRPG {
     if (!this.persistProgress?.()) { this.progress = { ...this.progress, worldProgress: before }; return false; }
     return true;
   }
+  isNearSanctuaryDecisionCore() {
+    const state = this.progress?.worldProgress?.chapters?.sanctuary;
+    const core = getCoopBossForMap("sanctuary-core-heart");
+    return this.mapId === core.mapId && state?.originDefeated === true && !state.endingChoice
+      && Math.hypot((this.player?.x ?? Infinity)-core.x, (this.player?.y ?? Infinity)-core.y) <= 110;
+  }
   openSanctuaryEndingChoice() {
     const s = this.progress?.worldProgress?.chapters?.sanctuary;
     if (!s?.originDefeated || s.endingChoice || !this.endingController) return false;
@@ -3175,16 +3199,28 @@ export class PixelRPG {
       deferAllowed: true,
     }) !== false;
   }
+  playSavedSanctuaryEnding() {
+    const choice = this.progress?.worldProgress?.chapters?.sanctuary?.endingChoice;
+    if (!choice || !this.endingController) return false;
+    this.setInputEnabled?.(false);
+    this.endingController.playEnding(sanctuaryEndingScript({
+      choice,
+      captainOutcome: this.progress.worldProgress?.chapters?.volcano?.captainOutcome,
+      supportChoice: this.progress.worldProgress?.chapters?.coast?.supportChoice,
+      playerName: this.player?.name || "모험가",
+    }));
+    return true;
+  }
   confirmSanctuaryEnding(choice) {
-    const chosen = chooseSanctuaryEnding(this.progress, choice); if (!chosen.changed) return false;
-    const beforeChoice = this.progress; this.progress = chosen.progress;
+    const chosen = chooseSanctuaryEnding(this.progress, choice);
+    if (!chosen.changed) return false;
+    const beforeChoice = this.progress;
+    this.progress = chosen.progress;
     if (!this.persistProgress?.()) { this.progress = beforeChoice; return false; }
-    const savedChoice = this.progress;
-    const rewarded = grantSanctuaryEndingReward(this.progress); if (!rewarded.changed) return false;
-    this.progress = rewarded.progress;
-    if (!this.persistProgress?.()) { this.progress = savedChoice; return false; }
-    this.updateProgressHud?.(); this.updateChapterUi?.();
-    this.endingController?.playEnding(sanctuaryEndingScript({ choice, captainOutcome: this.progress.worldProgress?.chapters?.volcano?.captainOutcome, supportChoice: this.progress.worldProgress?.chapters?.coast?.supportChoice, playerName: this.player?.name || "모험가" }));
+    // The first durable write owns the permanent decision. A failed reward write
+    // must not prevent viewing that decision or strand the confirmation modal.
+    this.retrySanctuaryEndingReward();
+    this.playSavedSanctuaryEnding();
     return true;
   }
   retrySanctuaryEndingReward() {
@@ -3197,6 +3233,7 @@ export class PixelRPG {
   }
   completeSanctuaryCredits() {
     this.endingController?.close?.();
+    this.retrySanctuaryEndingReward();
     this.trinityBoss = null;
     const spawn = getWorldDefinition("village").spawn;
     if (typeof this.switchWorld === "function") this.switchWorld("village", spawn.x, spawn.y, false);

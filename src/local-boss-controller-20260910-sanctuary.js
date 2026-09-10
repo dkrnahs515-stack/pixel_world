@@ -1,3 +1,4 @@
+import { originAnchorTargets } from "./origin-boss-state-20260910-sanctuary.js";
 import { getCoopBossForMap } from "./coop-boss-data-20260910-sanctuary.js";
 import { applyBossAttack, createBossEncounter, validateBossAttack } from "./coop-boss-state-20260910-sanctuary.js";
 import { createBossEnemyView, createEnemyContactDamageEvent, updateEnemies } from "./enemies-20260910-sanctuary.js";
@@ -74,15 +75,20 @@ export class LocalBossController {
     return this.snapshot?.status === "alive" && this.view?.targetable ? this.view : null;
   }
 
+  targetableBosses() {
+    return [this.targetableBoss(), ...originAnchorTargets(this.snapshot)].filter(Boolean);
+  }
+
   renderableBoss() {
     return this.view;
   }
 
-  async requestHit({ attackKind, player, classId, weaponId, direction, castId, hitIndex } = {}) {
+  async requestHit({ targetId, attackKind, player, classId, weaponId, direction, castId, hitIndex } = {}) {
     if (!this.snapshot || this.snapshot.status !== "alive" || this.snapshot.mapId !== this.mapId) {
       return { ok: false, reason: "boss_unavailable" };
     }
     const attacker = localPlayer(player, this.mapId, classId, weaponId);
+    const attackKey = `${attackKind}:${targetId || this.snapshot.bossId}`;
     const sequence = ++this.attackSequence;
     const request = {
       attackId: `${attacker?.uid || "local-player"}:${this.snapshot.encounterId}:${sequence}`,
@@ -93,7 +99,7 @@ export class LocalBossController {
       mapId: this.snapshot.mapId,
       classId,
       weaponId,
-      attackKind, castId, hitIndex,
+      attackKind, castId, hitIndex, ...(targetId ? { targetId } : {}),
       playerX: attacker?.x,
       playerY: attacker?.y,
       direction,
@@ -105,8 +111,8 @@ export class LocalBossController {
       authenticatedUid: attacker?.uid,
       player: attacker,
       lastSequence: sequence - 1,
-      lastAttackAt: this.attackTimes.get(attackKind) ?? Number.NEGATIVE_INFINITY,
-      lastCast: this.skillCastStates.get(attackKind),
+      lastAttackAt: this.attackTimes.get(attackKey) ?? Number.NEGATIVE_INFINITY,
+      lastCast: this.skillCastStates.get(attackKey),
       now: this.wallNow(),
     });
     if (!validated.ok) return validated;
@@ -115,8 +121,8 @@ export class LocalBossController {
     if (!result.applied) return { ok: false, reason: "boss_unavailable" };
     this.snapshot = result.encounter;
     this.lastAttackAt = validated.attackAt;
-    this.attackTimes.set(attackKind, validated.attackAt);
-    if (validated.castState) this.skillCastStates.set(attackKind, validated.castState);
+    this.attackTimes.set(attackKey, validated.attackAt);
+    if (validated.castState) this.skillCastStates.set(attackKey, validated.castState);
     if (this.view && validated.slowDuration) { this.view.slowRemaining = validated.slowDuration; this.view.slowMultiplier = validated.slowMultiplier; }
     if (this.view) {
       this.view.hp = this.snapshot.hp;

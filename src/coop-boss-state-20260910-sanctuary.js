@@ -7,6 +7,7 @@ import {
 import {
   acquireOriginAuthority,
   applyOriginAttack,
+  applyOriginAnchorDamage,
   createOriginEncounter,
   normalizeOriginEncounter,
   renewOriginAuthority,
@@ -54,6 +55,16 @@ export function validateBossAttack(request, validation = {}) {
 }
 
 export function applyBossAttack(value, validated, now = Date.now()) {
+  if (isFinal(value) && validated?.ok && validated.targetId && validated.targetId !== value.bossId) {
+    const result = applyOriginAnchorDamage(value, validated.targetId, validated.damage);
+    if (result.applied) {
+      const previous = value.contributors?.[validated.uid];
+      result.encounter.contributors = { ...result.encounter.contributors,
+        [validated.uid]: { firstHitAt: previous?.firstHitAt ?? now, lastHitAt: now } };
+      result.encounter.updatedAt = now;
+    }
+    return { ...result, defeated: false };
+  }
   return isFinal(value)
     ? applyOriginAttack(value, validated, now)
     : legacy.applyBossAttack(value, validated, now);

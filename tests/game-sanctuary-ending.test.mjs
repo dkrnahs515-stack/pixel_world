@@ -22,6 +22,7 @@ function endingHarness(worldProgress) {
     startCredits(credits, postCredit) { this.credits = { credits, postCredit }; return true; },
     close() {},
   };
+  game.setInputEnabled = enabled => { game.inputEnabled = enabled; };
   game.notify = () => {};
   game.updateProgressHud = () => {};
   game.updateChapterUi = () => {};

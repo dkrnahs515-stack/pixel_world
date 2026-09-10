@@ -1,3 +1,4 @@
+import { originAnchorTargets } from "./origin-boss-state-20260910-sanctuary.js";
 import { BOSS_STATE_SEND_HZ, getCoopBossForMap } from "./coop-boss-data-20260910-sanctuary.js";
 import { normalizeBossEncounter } from "./coop-boss-state-20260910-sanctuary.js";
 import { applyBossAttack, createBossPlayerDamageEvent, createRewardClaims, validateBossAttack } from "./coop-boss-state-20260910-sanctuary.js";
@@ -280,11 +281,15 @@ export class CoopBossController {
     return this.snapshot?.status === "alive" && this.view?.targetable ? this.view : null;
   }
 
+  targetableBosses() {
+    return [this.targetableBoss(), ...originAnchorTargets(this.snapshot)].filter(Boolean);
+  }
+
   renderableBoss() {
     return this.view;
   }
 
-  async requestHit({ attackKind, player, classId, weaponId, direction, castId, hitIndex }) {
+  async requestHit({ targetId, attackKind, player, classId, weaponId, direction, castId, hitIndex }) {
     if (!this.snapshot || this.snapshot.status !== "alive" || this.snapshot.mapId !== this.mapId) {
       return { ok: false, reason: "boss_unavailable" };
     }
@@ -301,7 +306,7 @@ export class CoopBossController {
       mapId: this.snapshot.mapId,
       classId,
       weaponId,
-      attackKind, ...(castId ? { castId, hitIndex } : {}),
+      attackKind, ...(targetId ? { targetId } : {}), ...(castId ? { castId, hitIndex } : {}),
       playerX: Math.round(player.x * 10) / 10,
       playerY: Math.round(player.y * 10) / 10,
       direction,
@@ -344,8 +349,8 @@ export class CoopBossController {
           authenticatedUid: request.uid,
           player,
           lastSequence: this.lastSequences.get(request.uid) || 0,
-          lastAttackAt: this.lastAttackTimes.get(`${request.uid}:${request.attackKind}`) ?? Number.NEGATIVE_INFINITY,
-          lastCast: this.skillCastStates.get(`${request.uid}:${request.attackKind}`),
+          lastAttackAt: this.lastAttackTimes.get(`${request.uid}:${request.attackKind}:${request.targetId || request.bossId}`) ?? Number.NEGATIVE_INFINITY,
+          lastCast: this.skillCastStates.get(`${request.uid}:${request.attackKind}:${request.targetId || request.bossId}`),
           now: this.wallNow(),
         })
         : { ok: false, reason: "sequence_path_mismatch" };
@@ -358,8 +363,8 @@ export class CoopBossController {
           this.view.targetable = this.snapshot.status === "alive";
         }
         this.lastSequences.set(request.uid, request.sequence);
-        this.lastAttackTimes.set(`${request.uid}:${request.attackKind}`, validated.attackAt);
-        if (validated.castState) this.skillCastStates.set(`${request.uid}:${request.attackKind}`, validated.castState);
+        this.lastAttackTimes.set(`${request.uid}:${request.attackKind}:${request.targetId || request.bossId}`, validated.attackAt);
+        if (validated.castState) this.skillCastStates.set(`${request.uid}:${request.attackKind}:${request.targetId || request.bossId}`, validated.castState);
         if (this.view && validated.slowDuration) { this.view.slowRemaining = validated.slowDuration; this.view.slowMultiplier = validated.slowMultiplier; }
         await this.network?.publishState?.(this.snapshot);
         if (result.defeated) {

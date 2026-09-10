@@ -1,4 +1,4 @@
-import { normalizeSkillResource } from "./skill-validation-20260905-upgrade.js";
+import { normalizeSkillResource } from "./skill-validation-20260910-sanctuary.js";
 import { statsForLevel } from "./player-progression-20260905-upgrade.js";
 import { normalizeClassId } from "./class-data-20260905-upgrade.js";
 import { WORLD_IDS, getWorldDefinition } from "./world-data-20260910-sanctuary.js";

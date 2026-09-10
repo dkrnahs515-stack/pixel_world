@@ -302,5 +302,5 @@ export function isWorldPositionBlocked(mapIdOrX, xOrY, yOrRadius, radius = 0) {
   if (x - padding < 0 || y - padding < 0 || x + padding > world.width || y + padding > world.height) {
     return true;
   }
-  return world.obstacles.some(rect => pointInRect(x, y, rect, padding));
+  return world.obstacles.some(rect => rect.solid !== false && pointInRect(x, y, rect, padding));
 }

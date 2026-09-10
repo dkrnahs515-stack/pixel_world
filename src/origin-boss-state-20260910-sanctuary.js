@@ -11,6 +11,35 @@ export const ORIGIN_ANCHOR_IDS = Object.freeze([
   "origin-anchor-energy",
 ]);
 
+export const ORIGIN_ANCHOR_LAYOUT = Object.freeze({
+  "origin-anchor-life": Object.freeze({ active: true, hp: 40, maxHp: 40, x: 520, y: 620 }),
+  "origin-anchor-memory": Object.freeze({ active: true, hp: 40, maxHp: 40, x: 1080, y: 500 }),
+  "origin-anchor-energy": Object.freeze({ active: true, hp: 40, maxHp: 40, x: 1640, y: 620 }),
+});
+
+export function createOriginAnchors() {
+  return Object.fromEntries(ORIGIN_ANCHOR_IDS.map(id => [id, { ...ORIGIN_ANCHOR_LAYOUT[id] }]));
+}
+
+export function originAnchorTargets(value) {
+  if (value?.bossId !== "origin-zero" || value.status !== "alive") return [];
+  return ORIGIN_ANCHOR_IDS.flatMap(id => {
+    const anchor = value.anchors?.[id];
+    return anchor?.active && anchor.hp > 0
+      ? [{ ...anchor, id, radius: 24, targetable: true, isCoopBoss: true, isOriginAnchor: true }]
+      : [];
+  });
+}
+
+function normalizedWarning(value) {
+  if (!value || !["life", "memory", "energy", "rewrite"].includes(value.kind)
+    || ![value.sourceX,value.sourceY,value.targetX,value.targetY,value.radius].every(Number.isFinite)
+    || value.radius < 0 || value.radius > 200
+    || value.sourceX < 0 || value.sourceX > 2160 || value.targetX < 0 || value.targetX > 2160
+    || value.sourceY < 0 || value.sourceY > 1800 || value.targetY < 0 || value.targetY > 1800) return null;
+  return {kind:value.kind,sourceX:value.sourceX,sourceY:value.sourceY,targetX:value.targetX,targetY:value.targetY,radius:value.radius};
+}
+
 const STATUSES = new Set(["alive", "defeated", "respawning"]);
 const DIRECTIONS = new Set(["up", "down", "left", "right"]);
 
@@ -61,6 +90,7 @@ function normalizeRewriteCycle(value) {
     phase,
     elapsed: Math.max(0, finite(cycle.elapsed)),
     sequence: Math.max(0, Math.trunc(finite(cycle.sequence))),
+    ...(normalizedWarning(cycle.attack) ? { attack: normalizedWarning(cycle.attack) } : {}),
   };
 }
 
@@ -190,7 +220,7 @@ export function hasActiveOriginAnchors(value) {
 
 export function applyOriginAttack(value, validated, now = Date.now()) {
   const encounter = normalizeOriginEncounter(value);
-  if (!encounter || encounter.status !== "alive" || !validated?.ok || !(validated.damage > 0)) {
+  if (!encounter || encounter.status !== "alive" || !validated?.ok || (!Number.isFinite(validated.damage) || !(validated.damage > 0))) {
     return {
       encounter: encounter || value,
       applied: false,
@@ -199,8 +229,12 @@ export function applyOriginAttack(value, validated, now = Date.now()) {
     };
   }
 
-  const activeAnchors = Object.values(encounter.anchors).some(anchor => anchor.active && anchor.hp > 0);
   let hp = rounded(Math.max(0, encounter.hp - validated.damage));
+  // A large hit must not skip the mandatory final-phase mechanic between frames.
+  if (hp <= encounter.maxHp * 0.25 && Object.keys(encounter.anchors).length === 0) {
+    encounter.anchors = createOriginAnchors();
+  }
+  const activeAnchors = Object.values(encounter.anchors).some(anchor => anchor.active && anchor.hp > 0);
   const blockedByAnchors = activeAnchors && hp === 0;
   if (blockedByAnchors) hp = 1;
 
@@ -236,7 +270,7 @@ export function applyOriginAttack(value, validated, now = Date.now()) {
 
 export function applyOriginAnchorDamage(value, anchorId, damage) {
   const encounter = normalizeOriginEncounter(value);
-  if (!encounter || encounter.status !== "alive" || !ORIGIN_ANCHOR_IDS.includes(anchorId) || !(damage > 0)) {
+  if (!encounter || encounter.status !== "alive" || !ORIGIN_ANCHOR_IDS.includes(anchorId) || !Number.isFinite(damage) || !(damage > 0)) {
     return { encounter: encounter || value, applied: false, destroyed: false };
   }
   const anchor = encounter.anchors[anchorId];

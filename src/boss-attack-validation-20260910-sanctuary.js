@@ -1,5 +1,7 @@
+import { isTargetInAttackArc, directionVector } from "./combat-20260903-volcano-20260905-upgrade.js";
+import { originAnchorTargets } from "./origin-boss-state-20260910-sanctuary.js";
 import { getClassDefinition } from "./class-data-20260905-upgrade.js";
-import { normalizeSkillResource, isBossInSkillGeometry } from "./skill-validation-20260905-upgrade.js";
+import { normalizeSkillResource, isBossInSkillGeometry } from "./skill-validation-20260910-sanctuary.js";
 import { statsForLevel } from "./player-progression-20260905-upgrade.js";
 import { attackDefinition } from "./combat-20260903-volcano-20260905-upgrade.js";
 import { getWeaponDefinition } from "./weapon-data-20260903-volcano-20260905-upgrade.js";
@@ -25,8 +27,15 @@ function normalizedEncounter(value, definition) {
 }
 
 export function validatePlayerBossAttack(request, validation = {}) {
-  const definition = validation.bossDefinition;
-  const encounter = normalizedEncounter(validation.encounter, definition);
+  let definition = validation.bossDefinition;
+  let encounter = normalizedEncounter(validation.encounter, definition);
+  const targetId = request?.targetId || encounter?.bossId;
+  if (definition?.bossClass === "final" && targetId !== encounter?.bossId) {
+    const anchor = originAnchorTargets(encounter).find(value => value.id === targetId);
+    if (!anchor) return { ok: false, reason: "invalid_anchor" };
+    encounter = { ...encounter, x: anchor.x, y: anchor.y, hp: anchor.hp, maxHp: anchor.maxHp };
+    definition = { ...definition, radius: anchor.radius };
+  }
   if (!encounter || encounter.status !== "alive" || !definition
     || request?.encounterId !== encounter.encounterId || request?.bossId !== encounter.bossId
     || request?.mapId !== encounter.mapId || definition.id !== encounter.bossId) {
@@ -34,7 +43,7 @@ export function validatePlayerBossAttack(request, validation = {}) {
   }
   if (request.uid !== validation.authenticatedUid) return { ok: false, reason: "uid_mismatch" };
   const player = validation.player;
-  if (!player || player.uid !== request.uid || player.mapId !== encounter.mapId
+  if (!player || player.hp === 0 || player.alive === false || player.uid !== request.uid || player.mapId !== encounter.mapId
     || !Number.isFinite(player.x) || !Number.isFinite(player.y)
     || !Number.isFinite(request.playerX) || !Number.isFinite(request.playerY)) {
     return { ok: false, reason: "invalid_player" };
@@ -86,8 +95,20 @@ export function validatePlayerBossAttack(request, validation = {}) {
   }
   const distance = Math.hypot(request.playerX - encounter.x, request.playerY - encounter.y);
   if (!isSkill && distance > attack.range + 64) return { ok: false, reason: "out_of_range" };
+  if (!isSkill && definition.bossClass === "final") {
+    const target = { ...encounter, radius: (definition.radius || 38) + 12 };
+    const source = {x:request.playerX,y:request.playerY};
+    if (attack.delivery === "melee") {
+      if (!isTargetInAttackArc(source, request.direction, target, attack.range, attack.arcDegrees)) return {ok:false,reason:"out_of_geometry"};
+    } else {
+      const vector = directionVector(request.direction);
+      const dx=target.x-source.x, dy=target.y-source.y;
+      if (dx*vector.x+dy*vector.y < -target.radius || Math.abs(dx*vector.y-dy*vector.x) > target.radius + (attack.explosionRadius || 8)) return {ok:false,reason:"out_of_geometry"};
+    }
+  }
   return {
     ok: true,
+    ...(definition.bossClass === "final" ? { targetId } : {}),
     uid: request.uid,
     sequence: request.sequence,
     attackAt,

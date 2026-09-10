@@ -127,7 +127,7 @@ export const SANCTUARY_WORLD_DEFINITIONS = Object.freeze({
     obstacles: Object.freeze([
       { x: 0, y: 0, w: 160, h: HEIGHT, type: "coreVoid" },
       { x: WIDTH - 160, y: 0, w: 160, h: HEIGHT, type: "coreVoid" },
-      { x: 890, y: 560, w: 380, h: 280, type: "pixelCore" },
+      { x: 890, y: 560, w: 380, h: 280, type: "pixelCore", solid: false },
     ]),
   }),
 });
