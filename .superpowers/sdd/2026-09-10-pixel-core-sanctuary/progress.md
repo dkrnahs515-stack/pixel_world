@@ -32,12 +32,19 @@
 
 Ruling: this ChatGPT session does not expose an actual subagent-dispatch runtime. I will preserve the same isolation/review gates with one feature branch, task-scoped commits, CI-backed RED/GREEN evidence where local network prevents cloning, and explicit diff review between tasks. Cost if wrong: less context isolation than true fresh subagents, but no change to repository safety gates.
 
-Ruling: Task 1 must persist `sanctuary-resonance-hall` before Task 2 formally adds that map to the region/world registry. Task 1 will temporarily include that single future map ID in the chapter-progress save allow-list and unlock effect; Task 2 will replace the temporary allowance by the canonical registry entry. Cost if wrong: the temporary constant could drift from Task 2's ID, so Task 2 must assert the exact same string and remove the transitional special case.
+Ruling: Task 1 must persist `sanctuary-resonance-hall` before Task 2 formally adds that map to the region/world registry. Task 1 temporarily allowed the future map IDs; Task 2 replaced that with the canonical registry.
 
-Task 1: complete (RED `6688d07` → GREEN `219f2ec`; task report `task-1-report.md`; review clean).
+Task 1: complete (RED `6688d07` → GREEN `219f2ec`; report present; review clean).
 
-Ruling: the approved Task 2 plan omitted a new portal-transition module, but the existing module statically imports the pre-sanctuary chapter-progress implementation. Added `portal-transition-20260910-sanctuary.js` so interior unlocks use v8 sanctuary progress. Cost if wrong: one extra versioned module; without it, valid sanctuary progress cannot open new portals.
+Ruling: the approved Task 2 plan omitted a new portal-transition module, but the existing module statically imports the pre-sanctuary chapter-progress implementation. Added `portal-transition-20260910-sanctuary.js`.
 
-Task 2: complete (RED `e23049d` → GREEN `c24124d`; task report `task-2-report.md`; review clean).
+Task 2: complete (RED `e23049d` → GREEN `c24124d`; report present; review clean).
+Task 3: complete (RED `ae65256` → GREEN `cafe87a`; report present; review clean).
+Task 4: complete (RED `7082e05` → GREEN `e818b27`; report present; review clean).
+Task 5: complete (RED `b1361ee` → GREEN `9493bab`; report present; review clean).
+Task 6: complete for its game/rules gates (RED `3c27ff2` → GREEN `2aca653`; Rules Emulator green; report present).
+Task 7: complete (RED `be0362c` → GREEN `7b5c696`; report present; review clean).
 
-Task 3: complete (RED `ae65256` → GREEN `cafe87a`; task report `task-3-report.md`; review clean).
+Ruling: Task 8 initial controller test incorrectly treated an ending button click as final confirmation. The approved design requires a second confirmation. The contract was corrected to `requestChoice()` → `confirmChoice()` before implementation. Cost if wrong: one extra controller state and confirmation surface; without it an irreversible ending could be selected by a single accidental click.
+
+Task 8: implementation present; one-shot HTML patch tooling removed; verification checkpoint triggered by this commit.
