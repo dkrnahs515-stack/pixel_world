@@ -1,7 +1,6 @@
-import { getCoopBossForMap } from "./coop-boss-data-20260910-sanctuary.js";
-import { applyBossAttack, createBossEncounter, validateBossAttack } from "./coop-boss-state-20260910-sanctuary.js";
-import { createBossEnemyView, createEnemyContactDamageEvent, updateEnemies } from "./enemies-20260910-sanctuary.js";
-import { advanceOriginAuthorityState } from "./origin-boss-controller-20260910-sanctuary.js";
+import { getCoopBossForMap } from "./coop-boss-data-20260903-volcano-20260905-upgrade.js";
+import { applyBossAttack, createBossEncounter, validateBossAttack } from "./coop-boss-state-20260903-volcano-20260905-upgrade.js";
+import { createBossEnemyView, createEnemyContactDamageEvent, updateEnemies } from "./enemies-20260829-coast-20260905-upgrade.js";
 
 function regionIdFor(definition) {
   return definition.id.split("-")[0];
@@ -140,44 +139,7 @@ export class LocalBossController {
   update(dt, context = {}) {
     if (!this.snapshot || !this.view || this.snapshot.status !== "alive") return [];
     const player = localPlayer(context.player, this.mapId, context.player?.classId, context.player?.equippedWeaponId)
-      || { x: this.view.x, y: this.view.y, uid: "local-player", mapId: this.mapId, hp: 1 };
-    const definition = getCoopBossForMap(this.mapId);
-
-    if (definition?.bossClass === "final") {
-      const result = advanceOriginAuthorityState(this.snapshot, dt, {
-        now: this.wallNow(),
-        rng: context.random || Math.random,
-        arena: { width: 2160, height: 1800 },
-        players: [player],
-      });
-      this.snapshot = result.encounter;
-      this.view.prevX = this.view.x;
-      this.view.prevY = this.view.y;
-      this.view.x = this.snapshot.x;
-      this.view.y = this.snapshot.y;
-      this.view.hp = this.snapshot.hp;
-      this.view.maxHp = this.snapshot.maxHp;
-      this.view.targetable = this.snapshot.status === "alive";
-      const events = [];
-      for (const event of result.events || []) {
-        const isLocalDamage = event?.targetUid === player.uid && event.damage > 0
-          && ["origin-player-damage", "origin-projectile", "origin-eruption", "rewrite-impact"].includes(event.type);
-        const normalized = isLocalDamage
-          ? {
-            type: "damage-player",
-            enemyId: this.snapshot.bossId,
-            attackId: `${this.snapshot.encounterId}:origin:${event.sequence || 0}:${event.type}`,
-            targetUid: player.uid,
-            amount: event.damage,
-            source: event.source || event.target || { x: this.snapshot.x, y: this.snapshot.y },
-          }
-          : event;
-        this.pendingEvents.push(normalized);
-        events.push(normalized);
-      }
-      return events;
-    }
-
+      || { x: this.view.x, y: this.view.y };
     const contactBeforeMove = createEnemyContactDamageEvent(this.view, player);
     const result = this.simulate([this.view], player, dt, {
       isBlocked: context.isBlocked || (() => false),
