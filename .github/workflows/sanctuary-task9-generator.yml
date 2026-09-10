@@ -123,9 +123,9 @@ jobs:
               this.notify?.("PIXEL WORLD — 제1부 완료"); return true;
             }
           '''
-          close = game.rfind('\n}')
-          if close < 0: raise SystemExit('class close not found')
-          game = game[:close] + methods + game[close:]
+          marker = '\n}\n\nfunction drawChatBubble('
+          if marker not in game: raise SystemExit('PixelRPG class boundary not found')
+          game = game.replace(marker, '\n' + methods + '}\n\nfunction drawChatBubble(', 1)
           (root/'src/game-20260910-sanctuary.js').write_text(game)
           world = (root/'src/world-20260903-volcano-20260905-upgrade.js').read_text().replace('./story-interactions-20260903-volcano-20260905-upgrade.js','./story-interactions-20260910-sanctuary.js').replace('./world-data-20260903-volcano-20260905-upgrade.js','./world-data-20260910-sanctuary.js')
           world = world.replace('  "sanctuary",\n]);','  "sanctuary",\n  "sanctuary-resonance-hall",\n  "sanctuary-origin-archive",\n  "sanctuary-zero-boundary",\n  "sanctuary-core-heart",\n]);')
