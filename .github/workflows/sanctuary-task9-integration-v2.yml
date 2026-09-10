@@ -1,0 +1,278 @@
+name: Sanctuary Task 9 Integration V2
+on:
+  push:
+    branches: ["feature/pixel-core-sanctuary"]
+    paths: [".github/workflows/sanctuary-task9-integration-v2.yml"]
+permissions:
+  contents: write
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/pixel-core-sanctuary
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - name: Patch Task 9 runtime
+        shell: python
+        run: |
+          from pathlib import Path
+          root=Path('.')
+          p=root/'src/game-20260910-sanctuary.js'
+          s=p.read_text()
+
+          def must(old,new,name,count=1):
+            global s
+            if old not in s: raise SystemExit(f'{name} marker missing')
+            s=s.replace(old,new,count)
+
+          must('import { sanctuaryEndingScript } from "./sanctuary-ending-script-20260910-sanctuary.js";\nimport { applyTrinityDamage, createTrinityEncounter } from "./trinity-boss-20260910-sanctuary.js";',
+               'import { sanctuaryEndingScript } from "./sanctuary-ending-script-20260910-sanctuary.js";\nimport { SanctuaryEndingController } from "./sanctuary-ending-controller-20260910-sanctuary.js";\nimport { advanceTrinityEncounter, applyTrinityDamage, createTrinityEncounter } from "./trinity-boss-20260910-sanctuary.js";', 'imports')
+
+          must('    this.progress = createInitialProgress();\n', '''    this.progress = createInitialProgress();
+    this.trinityBoss = null;
+    this.endingController = elements.sanctuaryEndingOverlay ? new SanctuaryEndingController({
+      elements: {
+        overlay: elements.sanctuaryEndingOverlay,
+        choicePanel: elements.endingChoicePanel,
+        confirmPanel: elements.endingConfirmPanel,
+        restoreButton: elements.endingRestoreButton,
+        sealButton: elements.endingSealButton,
+        resonateButton: elements.endingResonateButton,
+        deferButton: elements.endingDeferButton,
+        confirmButton: elements.endingConfirmButton,
+        cancelButton: elements.endingConfirmCancel,
+        confirmText: elements.endingConfirmText,
+        lockedReason: elements.endingLockedReason,
+        subtitle: elements.endingSubtitle,
+        credits: elements.endingCredits,
+        creditsText: elements.endingCreditsText,
+        skipButton: elements.endingCreditsSkip,
+      },
+      onChoose: choice => this.confirmSanctuaryEnding(choice),
+      onDefer: () => { if (this.running && this.player.respawnTimer <= 0) this.setInputEnabled(true); },
+      onCreditsComplete: () => this.completeSanctuaryCredits(),
+    }) : null;
+''','constructor')
+
+          must('  receiveBossPlayerDamage(values) {\n    const events = Array.isArray(values) ? values : Object.values(values || {});',
+               '  receiveBossPlayerDamage(values) {\n    if (this.isOriginSpectator()) return;\n    const events = Array.isArray(values) ? values : Object.values(values || {});','spectator damage')
+
+          must('''  handleBossControllerEvents(events) {
+    for (const event of events || []) {
+      if (event?.type === "damage-player") {
+        this.damagePlayer(event.amount ?? event.damage, this.coopBossController?.renderableBoss() || this.player);
+      } else if (event?.type === "boss-defeated") {
+        this.processBossReward(event, "local-player");
+      }
+    }
+  }''','''  handleBossControllerEvents(events) {
+    for (const event of events || []) {
+      if (event?.type === "damage-player") {
+        if (!this.isOriginSpectator()) this.damagePlayer(event.amount ?? event.damage, this.coopBossController?.renderableBoss() || this.player);
+      } else if (event?.type === "boss-defeated") {
+        if (event.bossId === "origin-zero") {
+          if (this.recordLocalOriginDefeat(event.encounterId)) this.openSanctuaryEndingChoice();
+        } else this.processBossReward(event, "local-player");
+      }
+    }
+  }''','boss events')
+
+          must('  updateBossController(dt, context = {}, timestamp = performance.now()) {\n    const controller = this.coopBossController;',
+               '  updateBossController(dt, context = {}, timestamp = performance.now()) {\n    if (this.isOriginSpectator()) return [];\n    const controller = this.coopBossController;','boss spectator')
+
+          # Patch only inside receiveBossRewardClaims.
+          start=s.index('  async receiveBossRewardClaims(values) {')
+          end=s.index('\n  isDialogueOpen() {',start)
+          method=s[start:end]
+          needle='''      const claimedRewardIds = Array.isArray(this.progress.claimedBossRewardIds)
+        ? this.progress.claimedBossRewardIds
+        : [];'''
+          if needle not in method: raise SystemExit('claim scoped marker missing')
+          branch='''      if (claim.bossId === "origin-zero") {
+        const localSaved = this.progress?.worldProgress?.chapters?.sanctuary?.originDefeated === true
+          || this.recordLocalOriginDefeat(claim.encounterId);
+        if (!localSaved) continue;
+        try {
+          const claimResult = await this.network.coopBoss.claimReward(claim.encounterId, claim);
+          if (claimResult?.ok) {
+            this.processedBossRewardIds.add(rewardId);
+            this.openSanctuaryEndingChoice();
+          }
+        } catch {
+          // 로컬 영수증이 있으므로 다음 수신에서 원격 claim 정리만 재시도한다.
+        }
+        continue;
+      }
+'''+needle
+          method=method.replace(needle,branch,1)
+          s=s[:start]+method+s[end:]
+
+          must('''  targetableBosses() {
+    return this.coopBossController?.targetableBosses?.() || [this.coopBossController?.targetableBoss?.()].filter(Boolean);
+  }''','''  targetableBosses() {
+    if (this.isOriginSpectator()) return [];
+    const trinity = this.ensureTrinityEncounter();
+    if (trinity) return [{ ...trinity, radius: 38, targetable: true, isTrinity: true, isCoopBoss: false }];
+    return this.coopBossController?.targetableBosses?.() || [this.coopBossController?.targetableBoss?.()].filter(Boolean);
+  }
+
+  updateTrinity(dt) {
+    const boss = this.ensureTrinityEncounter();
+    if (!boss) return [];
+    const tick = advanceTrinityEncounter(boss, dt, { player: { ...this.player, uid: this.network?.uid || "local-player" }, rng: Math.random, now: Date.now() });
+    this.trinityBoss = tick.state;
+    for (const event of tick.events) {
+      if (["damage-player", "trinity-projectile", "trinity-eruption"].includes(event.type)) {
+        this.damagePlayer(event.amount ?? event.damage, event.source || { x: boss.x, y: boss.y });
+      }
+    }
+    return tick.events;
+  }''','trinity targets')
+
+          must('    this.updateVolcanoEruption(dt);\n\n    if (this.portalTransition) {',
+               '    this.updateVolcanoEruption(dt);\n    this.updateTrinity(dt);\n\n    if (this.portalTransition) {','trinity update')
+
+          must('''          if (target.isCoopBoss) {
+            this.coopBossController.requestHit({ targetId: target.id, attackKind: cast.kind, castId: cast.id, hitIndex: pulse.hitIndex, player: { ...cast.player, x: this.player.x, y: this.player.y }, classId: cast.classId, weaponId: cast.weaponId, direction: cast.direction }).catch?.(error => console.warn("스킬 요청 실패", error));
+          } else {''','''          if (target.isTrinity) {
+            this.damageTrinity(d.damage);
+          } else if (target.isCoopBoss) {
+            this.coopBossController.requestHit({ targetId: target.id, attackKind: cast.kind, castId: cast.id, hitIndex: pulse.hitIndex, player: { ...cast.player, x: this.player.x, y: this.player.y }, classId: cast.classId, weaponId: cast.weaponId, direction: cast.direction }).catch?.(error => console.warn("스킬 요청 실패", error));
+          } else {''','skill trinity')
+
+          must('''      if (event.targetType === "coop-boss") {
+        this.processedProjectileHitIds.add(eventId);
+        this.coopBossController?.requestHit({''','''      if (event.targetType === "coop-boss") {
+        this.processedProjectileHitIds.add(eventId);
+        if (event.enemyId === "trinity") { this.damageTrinity(event.damage); continue; }
+        this.coopBossController?.requestHit({''','projectile trinity')
+
+          must('''      this.coopBossController.requestHit({
+        targetId: boss.id,
+        attackKind: kind,''','''      if (boss.isTrinity) {
+        this.damageTrinity(definition.damage);
+        hit = true;
+        continue;
+      }
+      this.coopBossController.requestHit({
+        targetId: boss.id,
+        attackKind: kind,''','melee trinity')
+
+          must('''  isInteractionOpen() {
+    return this.isSaleConfirmOpen() || this.isBlacksmithOpen()
+      || this.isQaOpen() || this.isDialogueOpen() || this.isShopOpen() || this.isInventoryOpen()
+      || this.isCommunicationLogOpen();
+  }''','''  isInteractionOpen() {
+    return this.isSaleConfirmOpen() || this.isBlacksmithOpen()
+      || this.isQaOpen() || this.isDialogueOpen() || this.isShopOpen() || this.isInventoryOpen()
+      || this.isCommunicationLogOpen() || Boolean(this.endingController?.active);
+  }''','interaction ending')
+
+          must('''  openSanctuaryEndingChoice() {
+    const s = this.progress?.worldProgress?.chapters?.sanctuary;
+    if (!s?.originDefeated || s.endingChoice || !this.endingController) return false;
+    return this.endingController.openChoice({ choices: availableSanctuaryEndings(this.progress), deferAllowed: true }) !== false;
+  }''','''  openSanctuaryEndingChoice() {
+    const s = this.progress?.worldProgress?.chapters?.sanctuary;
+    if (!s?.originDefeated || s.endingChoice || !this.endingController) return false;
+    this.keys?.clear?.();
+    if (this.player) this.player.moving = false;
+    this.attackState = null;
+    this.setInputEnabled?.(false);
+    return this.endingController.openChoice({ choices: availableSanctuaryEndings(this.progress), deferAllowed: true }) !== false;
+  }''','open ending')
+
+          must('''  completeSanctuaryCredits() {
+    this.endingController?.close?.(); this.trinityBoss = null; this.mapId = "village";
+    const spawn = getWorldDefinition("village").spawn;
+    if (this.player) { this.player.x=spawn.x; this.player.y=spawn.y; this.player.prevX=spawn.x; this.player.prevY=spawn.y; }
+    this.notify?.("PIXEL WORLD — 제1부 완료"); return true;
+  }''','''  completeSanctuaryCredits() {
+    this.endingController?.close?.();
+    this.trinityBoss = null;
+    const spawn = getWorldDefinition("village").spawn;
+    if (typeof this.switchWorld === "function") this.switchWorld("village", spawn.x, spawn.y, false);
+    else { this.mapId = "village"; if (this.player) { this.player.x=spawn.x; this.player.y=spawn.y; this.player.prevX=spawn.x; this.player.prevY=spawn.y; } }
+    this.resetCombatState?.();
+    this.setInputEnabled?.(true);
+    this.notify?.("PIXEL WORLD — 제1부 완료");
+    return true;
+  }''','credits return')
+
+          must('''    const coopBoss = this.coopBossController?.renderableBoss();
+    const visibleBosses = this.coopBossController?.renderableBosses?.() || (coopBoss ? [coopBoss] : []);
+    for (const boss of visibleBosses) {
+      if (boss.hp > 0) entities.push({ entityType: "coop-boss", enemy: boss, x: boss.x, y: boss.y });
+    }''','''    const coopBoss = this.isOriginSpectator() ? null : this.coopBossController?.renderableBoss();
+    const visibleBosses = this.isOriginSpectator() ? [] : (this.coopBossController?.renderableBosses?.() || (coopBoss ? [coopBoss] : []));
+    for (const boss of visibleBosses) {
+      if (boss.hp > 0) entities.push({ entityType: "coop-boss", enemy: boss, x: boss.x, y: boss.y });
+    }
+    const trinity = this.ensureTrinityEncounter();
+    if (trinity?.hp > 0) entities.push({ entityType: "coop-boss", enemy: { ...trinity, radius: 38 }, x: trinity.x, y: trinity.y });''','render bosses')
+
+          must('''  currentChapterObjective() {
+    return getVolcanoChapterObjective(this.progress?.worldProgress);
+  }''','''  currentChapterObjective() {
+    const sanctuary = this.progress?.worldProgress?.chapters?.sanctuary;
+    if (this.progress?.worldProgress?.unlockedMapIds?.includes("sanctuary-resonance-hall") || sanctuary?.originDefeated) {
+      return { label: storyGuidance({ interactions: ALL_STORY_INTERACTIONS, worldProgress: this.progress.worldProgress, mapId: this.mapId, player: this.player, camera: { x: this.camera.x, y: this.camera.y, width: globalThis.innerWidth || 1280, height: globalThis.innerHeight || 720 }, world: getWorldDefinition(this.mapId), minimap: { width: this.minimap?.width || 220, height: this.minimap?.height || 140 } }).objective.text };
+    }
+    return getVolcanoChapterObjective(this.progress?.worldProgress);
+  }''','chapter objective')
+          p.write_text(s)
+
+          wp=root/'src/world-20260910-sanctuary.js'; w=wp.read_text()
+          if 'SANCTUARY_STORY_INTERACTIONS' not in w:
+            w=w.replace('import { getVolcanoStoryContent } from "./volcano-story-data-20260903-volcano-20260905-upgrade.js";', 'import { getVolcanoStoryContent } from "./volcano-story-data-20260903-volcano-20260905-upgrade.js";\nimport { SANCTUARY_STORY_INTERACTIONS } from "./sanctuary-story-data-20260910-sanctuary.js";\nimport { sanctuaryObjective } from "./quest-guidance-20260910-sanctuary.js";')
+          old='export function getStoryRenderablesForMap(mapId, worldProgress = null) {\n  const content = getVolcanoStoryContent(mapId);'
+          new='''export function getStoryRenderablesForMap(mapId, worldProgress = null) {
+  if (mapId.startsWith("sanctuary")) {
+    const interactions = SANCTUARY_STORY_INTERACTIONS.filter(value => value.mapId === mapId);
+    const active = interactions.find(value => isStoryInteractionEligible(value, worldProgress));
+    return { signals: interactions.map(interaction => ({ id: interaction.id, interactionId: interaction.id, chapterId: "sanctuary", signalKind: interaction.type, x: interaction.x, y: interaction.y, active: isStoryInteractionEligible(interaction, worldProgress) })), objective: active ? { x: active.x, y: active.y, radius: Math.max(96, active.interactionRadius) } : null, chapterObjective: sanctuaryObjective(worldProgress) };
+  }
+  const content = getVolcanoStoryContent(mapId);'''
+          if old not in w: raise SystemExit('world story marker missing')
+          w=w.replace(old,new,1)
+          old='export function drawStorySignal(context, signal, cameraX = 0, cameraY = 0) {\n  if (signal?.chapterId !== "volcano") {'
+          new='''export function drawStorySignal(context, signal, cameraX = 0, cameraY = 0) {
+  if (signal?.chapterId === "sanctuary") {
+    if (!context || !Number.isFinite(signal.x) || !Number.isFinite(signal.y)) return;
+    const x=Math.round(signal.x-cameraX), y=Math.round(signal.y-cameraY);
+    context.save(); context.globalAlpha=signal.active?1:0.42; context.fillStyle="#c4b5fd"; context.strokeStyle="#f5f3ff"; context.lineWidth=3; context.beginPath(); context.arc(x,y,14,0,Math.PI*2); context.fill(); context.stroke(); context.restore(); return;
+  }
+  if (signal?.chapterId !== "volcano") {'''
+          if old not in w: raise SystemExit('world draw marker missing')
+          w=w.replace(old,new,1).replace('const sanctuary = world.id === "sanctuary";','const sanctuary = world.id.startsWith("sanctuary");').replace('context.fillStyle = world.id === "sanctuary" ? "#fef3c7" : "#ffb199";','context.fillStyle = world.id.startsWith("sanctuary") ? "#fef3c7" : "#ffb199";')
+          wp.write_text(w)
+
+          mp=root/'src/main-20260910-sanctuary.js'; m=mp.read_text()
+          old='  goldText: document.querySelector("#goldText"),\n};'
+          new='''  goldText: document.querySelector("#goldText"),
+  sanctuaryEndingOverlay: document.querySelector("#sanctuaryEndingOverlay"), endingChoicePanel: document.querySelector("#endingChoicePanel"), endingConfirmPanel: document.querySelector("#endingConfirmPanel"),
+  endingRestoreButton: document.querySelector("#endingRestoreButton"), endingSealButton: document.querySelector("#endingSealButton"), endingResonateButton: document.querySelector("#endingResonateButton"), endingDeferButton: document.querySelector("#endingDeferButton"),
+  endingConfirmButton: document.querySelector("#endingConfirmButton"), endingConfirmCancel: document.querySelector("#endingConfirmCancel"), endingConfirmText: document.querySelector("#endingConfirmText"), endingLockedReason: document.querySelector("#endingLockedReason"),
+  endingSubtitle: document.querySelector("#endingSubtitle"), endingCredits: document.querySelector("#endingCredits"), endingCreditsText: document.querySelector("#endingCreditsText"), endingCreditsSkip: document.querySelector("#endingCreditsSkip"),
+};'''
+          if old not in m: raise SystemExit('main ending marker missing')
+          mp.write_text(m.replace(old,new,1))
+      - name: Verify focused Task 9
+        run: |
+          node --test tests/game-sanctuary-story.test.mjs tests/game-sanctuary-combat.test.mjs tests/game-sanctuary-ending.test.mjs tests/sanctuary-ending-controller.test.mjs tests/sanctuary-runtime-wiring.static.test.cjs
+          node --check src/game-20260910-sanctuary.js
+          node --check src/world-20260910-sanctuary.js
+          node --check src/main-20260910-sanctuary.js
+      - name: Verify full Node suite
+        run: node --test tests/*.test.mjs tests/*.static.test.cjs
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/game-20260910-sanctuary.js src/world-20260910-sanctuary.js src/main-20260910-sanctuary.js
+          git commit -m "feat: wire sanctuary combat endings and spectator flow"
+          git push origin HEAD:feature/pixel-core-sanctuary
