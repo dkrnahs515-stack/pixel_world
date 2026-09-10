@@ -123,9 +123,14 @@ function normalizeEndingTitle(value) {
   return ENDING_TITLES.has(value) ? value : null;
 }
 
+function isValidIntroSeen(value) {
+  return value === undefined || typeof value === "boolean";
+}
+
 function isValidProgress(progress) {
   return isValidBaseProgress(progress)
     && isValidInventory(progress.inventory)
+    && isValidIntroSeen(progress.introSeen)
     && isValidEndingTitle(progress.endingTitle)
     && (!Object.hasOwn(progress, "claimedBossRewardIds")
       || isValidClaimedBossRewardIds(progress.claimedBossRewardIds));
@@ -142,12 +147,13 @@ function isValidLegacyProgress(progress) {
     && isReachableQuest(progress.quests[ADVENTURE_QUEST.id]);
 }
 
-function toBaseAndInventoryProgress(value) {
+function toBaseAndInventoryProgress(value, { introSeenDefault = false } = {}) {
   return {
     level: value.level,
     exp: value.exp,
     nextLevelExp: value.nextLevelExp,
     gold: value.gold,
+    introSeen: typeof value.introSeen === "boolean" ? value.introSeen : introSeenDefault,
     inventory: {
       hpPotion: value.inventory.hpPotion,
       mpPotion: value.inventory.mpPotion,
@@ -167,10 +173,10 @@ function toBaseAndInventoryProgress(value) {
   };
 }
 
-function toProgress(value) {
+function toProgress(value, options = {}) {
   const equipmentByClass = normalizeEquipmentByClass(value.equipmentByClass);
   return {
-    ...toBaseAndInventoryProgress(value),
+    ...toBaseAndInventoryProgress(value, options),
     equipmentByClass: Object.fromEntries(Object.entries(equipmentByClass).map(
       ([classId, equipment]) => [classId, {
         ownedWeaponIds: [...equipment.ownedWeaponIds],
@@ -182,7 +188,7 @@ function toProgress(value) {
 
 function migrateV4Progress(value) {
   return {
-    ...toBaseAndInventoryProgress(value),
+    ...toBaseAndInventoryProgress(value, { introSeenDefault: true }),
     equipmentByClass: {
       ...createInitialEquipmentByClass(),
       warrior: normalizeClassEquipment("warrior", value.equipment),
@@ -192,7 +198,7 @@ function migrateV4Progress(value) {
 
 function migrateV3Progress(value) {
   return {
-    ...toBaseAndInventoryProgress(value),
+    ...toBaseAndInventoryProgress(value, { introSeenDefault: true }),
     equipmentByClass: createInitialEquipmentByClass(),
   };
 }
@@ -203,6 +209,7 @@ function migrateV2Progress(value) {
     exp: value.exp,
     nextLevelExp: value.nextLevelExp,
     gold: value.gold,
+    introSeen: true,
     inventory: { hpPotion: 0, mpPotion: 0 },
     claimedBossRewardIds: [],
     endingTitle: null,
@@ -223,6 +230,7 @@ function migrateLegacyProgress(legacy) {
   const quest = legacy.quests[ADVENTURE_QUEST.id];
   return {
     ...rewarded.progress,
+    introSeen: true,
     completedQuests: quest.status === "completed" ? [ADVENTURE_QUEST.id] : [],
     quests: { [ADVENTURE_QUEST.id]: { ...quest } },
   };
@@ -281,22 +289,22 @@ export function loadProgressWithStatus(storage, nickname) {
   try {
     const v8 = parseStoredValue(storage?.getItem(progressStorageKey(nickname)));
     if (v8?.version === STORAGE_VERSION && isValidProgress(v8)) {
-      return { progress: toProgress(v8), migrationWriteFailed: false };
+      return { progress: toProgress(v8, { introSeenDefault: false }), migrationWriteFailed: false };
     }
 
     const v7 = parseStoredValue(storage?.getItem(v7ProgressStorageKey(nickname)));
     if (v7?.version === V7_STORAGE_VERSION && isValidProgress(v7)) {
-      return migratedResult(storage, nickname, toProgress(v7));
+      return migratedResult(storage, nickname, toProgress(v7, { introSeenDefault: true }));
     }
 
     const v6 = parseStoredValue(storage?.getItem(v6ProgressStorageKey(nickname)));
     if (v6?.version === V6_STORAGE_VERSION && isValidProgress(v6)) {
-      return migratedResult(storage, nickname, toProgress(v6));
+      return migratedResult(storage, nickname, toProgress(v6, { introSeenDefault: true }));
     }
 
     const v5 = parseStoredValue(storage?.getItem(v5ProgressStorageKey(nickname)));
     if (v5?.version === V5_STORAGE_VERSION && isValidProgress(v5)) {
-      return migratedResult(storage, nickname, toProgress(v5));
+      return migratedResult(storage, nickname, toProgress(v5, { introSeenDefault: true }));
     }
 
     const v4 = parseStoredValue(storage?.getItem(v4ProgressStorageKey(nickname)));
@@ -336,7 +344,7 @@ export function saveProgress(storage, nickname, progress) {
     if (!isValidProgress(progress) || typeof storage?.setItem !== "function") {
       return { ok: false };
     }
-    const payload = { version: STORAGE_VERSION, ...toProgress(progress) };
+    const payload = { version: STORAGE_VERSION, ...toProgress(progress, { introSeenDefault: false }) };
     storage.setItem(progressStorageKey(nickname), JSON.stringify(payload));
     return { ok: true };
   } catch {
