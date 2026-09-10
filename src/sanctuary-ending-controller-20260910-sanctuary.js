@@ -1,4 +1,5 @@
 const DEFAULT_POST_CREDIT_MS = 2_000;
+const DEFAULT_SCENE_DURATION_MS = 1_500;
 
 function setHidden(element, hidden) {
   if (element) element.hidden = hidden;
@@ -14,6 +15,7 @@ export class SanctuaryEndingController {
     now = () => Date.now(),
     setTimer = (callback, delay) => setTimeout(callback, delay),
     clearTimer = handle => clearTimeout(handle),
+    sceneDurationMs = DEFAULT_SCENE_DURATION_MS,
     onChoose = () => {},
     onDefer = () => {},
     onPostCredit = () => {},
@@ -23,6 +25,9 @@ export class SanctuaryEndingController {
     this.now = now;
     this.setTimer = setTimer;
     this.clearTimer = clearTimer;
+    this.sceneDurationMs = Number.isFinite(sceneDurationMs) && sceneDurationMs > 0
+      ? sceneDurationMs
+      : DEFAULT_SCENE_DURATION_MS;
     this.onChoose = onChoose;
     this.onDefer = onDefer;
     this.onPostCredit = onPostCredit;
@@ -33,6 +38,7 @@ export class SanctuaryEndingController {
     this.creditsStartedAt = null;
     this.creditTimer = null;
     this.postCreditTimer = null;
+    this.sceneTimer = null;
     this.postCredit = null;
     this._bindDom();
   }
@@ -70,6 +76,7 @@ export class SanctuaryEndingController {
     setHidden(overlay, false);
     setHidden(choicePanel, false);
     setHidden(confirmPanel, true);
+    setHidden(this.elements.credits, true);
     const byId = new Map((this.choiceModel?.choices || []).map(choice => [choice.id, choice]));
     for (const [id, button] of [["restore", restoreButton], ["seal", sealButton], ["resonate", resonateButton]]) {
       if (!button) continue;
@@ -125,13 +132,35 @@ export class SanctuaryEndingController {
 
   playEnding(script) {
     if (!script) return false;
+    this._clearTimers();
     this.mode = "ending";
     setHidden(this.elements.overlay, false);
     setHidden(this.elements.choicePanel, true);
     setHidden(this.elements.confirmPanel, true);
     setHidden(this.elements.credits, true);
-    const finalFrame = script.scenes?.at?.(-1);
-    if (finalFrame) this.showSubtitle(finalFrame.speaker, finalFrame.text);
+    const frames = [...(script.commonIntro || []), ...(script.scenes || [])];
+    if (!frames.length) {
+      return this.startCredits(script.credits, script.postCredit);
+    }
+    let index = 0;
+    const showFrame = () => {
+      if (this.mode !== "ending") return;
+      const frame = frames[index];
+      this.showSubtitle(frame?.speaker, frame?.text);
+      index += 1;
+      if (index >= frames.length) {
+        this.sceneTimer = this.setTimer(() => {
+          this.sceneTimer = null;
+          if (this.mode === "ending") this.startCredits(script.credits, script.postCredit);
+        }, Number.isFinite(frame?.durationMs) ? frame.durationMs : this.sceneDurationMs);
+        return;
+      }
+      this.sceneTimer = this.setTimer(() => {
+        this.sceneTimer = null;
+        showFrame();
+      }, Number.isFinite(frame?.durationMs) ? frame.durationMs : this.sceneDurationMs);
+    };
+    showFrame();
     return true;
   }
 
@@ -184,8 +213,10 @@ export class SanctuaryEndingController {
   }
 
   _clearTimers() {
+    if (this.sceneTimer !== null) this.clearTimer(this.sceneTimer);
     if (this.creditTimer !== null) this.clearTimer(this.creditTimer);
     if (this.postCreditTimer !== null) this.clearTimer(this.postCreditTimer);
+    this.sceneTimer = null;
     this.creditTimer = null;
     this.postCreditTimer = null;
   }
