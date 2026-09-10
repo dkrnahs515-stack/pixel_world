@@ -7,7 +7,7 @@ import {
   getWorldDefinition,
   isSafeWorld,
 } from "../src/world-data-20260910-sanctuary.js";
-import { canUsePortal } from "../src/portal-transition-20260903-volcano-20260905-upgrade.js";
+import { canUsePortal } from "../src/portal-transition-20260910-sanctuary.js";
 import {
   SANCTUARY_ARCHIVE_IDS,
   SANCTUARY_RESONANCE_NODE_IDS,
