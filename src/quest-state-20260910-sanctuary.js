@@ -23,6 +23,7 @@ export function createInitialProgress() {
     exp: 0,
     nextLevelExp: 100,
     gold: 0,
+    introSeen: false,
     inventory: createInitialInventory(),
     equipmentByClass: createInitialEquipmentByClass(),
     claimedBossRewardIds: [],
@@ -43,6 +44,7 @@ function cloneProgress(progress) {
   const equipmentByClass = normalizeEquipmentByClass(progress.equipmentByClass);
   return {
     ...progress,
+    introSeen: progress.introSeen === true,
     inventory: { ...progress.inventory },
     equipmentByClass: Object.fromEntries(Object.entries(equipmentByClass).map(
       ([classId, equipment]) => [classId, {
@@ -59,6 +61,12 @@ function cloneProgress(progress) {
       [ADVENTURE_QUEST.id]: { ...quest },
     },
   };
+}
+
+export function markIntroSeen(progress) {
+  const next = cloneProgress(progress);
+  next.introSeen = true;
+  return next;
 }
 
 export function acceptAdventureQuest(progress) {
