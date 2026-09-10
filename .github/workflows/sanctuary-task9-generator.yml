@@ -1,13 +1,10 @@
 name: Sanctuary Task 9 Generator
-
 on:
   push:
     branches: ["feature/pixel-core-sanctuary"]
     paths: [".github/workflows/sanctuary-task9-generator.yml"]
-
 permissions:
   contents: write
-
 jobs:
   generate:
     runs-on: ubuntu-latest
@@ -25,7 +22,7 @@ jobs:
           from pathlib import Path
           root = Path('.')
           game = (root/'src/game-20260903-volcano-20260905-upgrade.js').read_text()
-          replacements = {
+          for old,new in {
             './quest-guidance-20260905-upgrade.js':'./quest-guidance-20260910-sanctuary.js',
             './enemies-20260829-coast-20260905-upgrade.js':'./enemies-20260910-sanctuary.js',
             './enemy-definitions-20260905-upgrade.js':'./enemy-definitions-20260910-sanctuary.js',
@@ -36,30 +33,22 @@ jobs:
             './region-data-20260903-volcano-20260905-upgrade.js':'./region-data-20260910-sanctuary.js',
             './story-dialogue-20260903-volcano-20260905-upgrade.js':'./story-dialogue-20260910-sanctuary.js',
             './story-interactions-20260903-volcano-20260905-upgrade.js':'./story-interactions-20260910-sanctuary.js',
-            './portal-transition-20260903-volcano-20260905-upgrade.js':'./portal-transition-20260910-sanctuary.js',
             './coop-boss-data-20260903-volcano-20260905-upgrade.js':'./coop-boss-data-20260910-sanctuary.js',
             './progress-storage-20260903-volcano-20260905-upgrade.js':'./progress-storage-20260910-sanctuary.js',
             './qa-mode-20260903-volcano-20260905-upgrade.js':'./qa-mode-20260910-sanctuary.js',
             './quest-state-20260903-volcano-20260905-upgrade.js':'./quest-state-20260910-sanctuary.js',
             './world-data-20260903-volcano-20260905-upgrade.js':'./world-data-20260910-sanctuary.js',
             './world-20260903-volcano-20260905-upgrade.js':'./world-20260910-sanctuary.js',
-          }
-          for old,new in replacements.items():
-            game = game.replace(old,new)
-
-          extra_imports = '''
+          }.items(): game = game.replace(old,new)
+          extra = '''
           import { recordOriginDefeat, recordTrinityDefeat } from "./chapter-progress-20260910-sanctuary.js";
           import { availableSanctuaryEndings, chooseSanctuaryEnding, grantSanctuaryEndingReward } from "./sanctuary-ending-state-20260910-sanctuary.js";
           import { sanctuaryEndingScript } from "./sanctuary-ending-script-20260910-sanctuary.js";
-          import { SanctuaryEndingController } from "./sanctuary-ending-controller-20260910-sanctuary.js";
           import { applyTrinityDamage, createTrinityEncounter } from "./trinity-boss-20260910-sanctuary.js";
           '''
-          game = game.replace('const PLAYER_RADIUS = 14;', extra_imports + '\nconst PLAYER_RADIUS = 14;', 1)
-
-          existing = 'function regionEntryMessage(mapId) {'
-          if existing not in game:
-            raise SystemExit('existing regionEntryMessage not found')
-          sanctuary_prefix = '''export function regionEntryMessage(mapId) {
+          game = game.replace('const PLAYER_RADIUS = 14;', extra + '\nconst PLAYER_RADIUS = 14;', 1)
+          declaration = 'export function regionEntryMessage(mapId) {' if 'export function regionEntryMessage(mapId) {' in game else 'function regionEntryMessage(mapId) {'
+          replacement = '''export function regionEntryMessage(mapId) {
             const sanctuaryMessages = {
               sanctuary: "픽셀 코어 성역 입구에 도착했습니다.",
               "sanctuary-resonance-hall": "공명 회랑에 진입했습니다. 세 관리자 권한을 확인하세요.",
@@ -68,144 +57,82 @@ jobs:
               "sanctuary-core-heart": "코어 심장부에 진입했습니다. ORIGIN-0이 기다립니다.",
             };
             if (Object.hasOwn(sanctuaryMessages, mapId)) return sanctuaryMessages[mapId];'''
-          game = game.replace(existing, sanctuary_prefix, 1)
-
+          if declaration not in game: raise SystemExit('regionEntryMessage declaration not found')
+          game = game.replace(declaration, replacement, 1)
           methods = r'''
             isOriginSpectator() {
-              return this.mapId === "sanctuary-core-heart"
-                && this.progress?.worldProgress?.chapters?.sanctuary?.originDefeated === true;
+              return this.mapId === "sanctuary-core-heart" && this.progress?.worldProgress?.chapters?.sanctuary?.originDefeated === true;
             }
-
             sanctuaryBossCount(bossId) {
               if (bossId === "trinity" || bossId === "origin-zero") return 1;
               return Math.max(1, Number(this.rewardEffects?.bossCount) || 1);
             }
-
             ensureTrinityEncounter() {
-              const sanctuary = this.progress?.worldProgress?.chapters?.sanctuary;
-              if (this.mapId !== "sanctuary-zero-boundary" || sanctuary?.trinityDefeated) {
-                this.trinityBoss = null;
-                return null;
-              }
+              const s = this.progress?.worldProgress?.chapters?.sanctuary;
+              if (this.mapId !== "sanctuary-zero-boundary" || s?.trinityDefeated) { this.trinityBoss = null; return null; }
               if (!this.trinityBoss) this.trinityBoss = createTrinityEncounter();
               return this.trinityBoss;
             }
-
             damageTrinity(damage) {
-              const boss = this.ensureTrinityEncounter();
-              if (!boss) return false;
-              const result = applyTrinityDamage(boss, damage);
-              this.trinityBoss = result.state;
-              if (!result.events.some(event => event.type === "trinity-defeated")) return result.state.hp !== boss.hp;
+              const boss = this.ensureTrinityEncounter(); if (!boss) return false;
+              const result = applyTrinityDamage(boss, damage); this.trinityBoss = result.state;
+              if (!result.events.some(e => e.type === "trinity-defeated")) return result.state.hp !== boss.hp;
               const before = this.progress.worldProgress;
               const resolved = recordTrinityDefeat(before);
               this.progress = { ...this.progress, worldProgress: resolved.progress };
-              if (!this.persistProgress?.()) {
-                this.progress = { ...this.progress, worldProgress: before };
-                this.trinityBoss = boss;
-                return false;
-              }
+              if (!this.persistProgress?.()) { this.progress = { ...this.progress, worldProgress: before }; this.trinityBoss = boss; return false; }
               return true;
             }
-
             recordLocalOriginDefeat(receiptId) {
               if (!receiptId || this.progress?.worldProgress?.chapters?.sanctuary?.originDefeated) return false;
               const before = this.progress.worldProgress;
               const resolved = recordOriginDefeat(before, receiptId);
               this.progress = { ...this.progress, worldProgress: resolved.progress };
-              if (!this.persistProgress?.()) {
-                this.progress = { ...this.progress, worldProgress: before };
-                return false;
-              }
+              if (!this.persistProgress?.()) { this.progress = { ...this.progress, worldProgress: before }; return false; }
               return true;
             }
-
             openSanctuaryEndingChoice() {
-              const sanctuary = this.progress?.worldProgress?.chapters?.sanctuary;
-              if (!sanctuary?.originDefeated || sanctuary.endingChoice || !this.endingController) return false;
-              return this.endingController.openChoice({
-                choices: availableSanctuaryEndings(this.progress),
-                deferAllowed: true,
-              }) !== false;
+              const s = this.progress?.worldProgress?.chapters?.sanctuary;
+              if (!s?.originDefeated || s.endingChoice || !this.endingController) return false;
+              return this.endingController.openChoice({ choices: availableSanctuaryEndings(this.progress), deferAllowed: true }) !== false;
             }
-
             confirmSanctuaryEnding(choice) {
-              const chosen = chooseSanctuaryEnding(this.progress, choice);
-              if (!chosen.changed) return false;
-              const beforeChoice = this.progress;
-              this.progress = chosen.progress;
-              if (!this.persistProgress?.()) {
-                this.progress = beforeChoice;
-                return false;
-              }
+              const chosen = chooseSanctuaryEnding(this.progress, choice); if (!chosen.changed) return false;
+              const beforeChoice = this.progress; this.progress = chosen.progress;
+              if (!this.persistProgress?.()) { this.progress = beforeChoice; return false; }
               const savedChoice = this.progress;
-              const rewarded = grantSanctuaryEndingReward(this.progress);
-              if (!rewarded.changed) return false;
+              const rewarded = grantSanctuaryEndingReward(this.progress); if (!rewarded.changed) return false;
               this.progress = rewarded.progress;
-              if (!this.persistProgress?.()) {
-                this.progress = savedChoice;
-                return false;
-              }
-              this.updateProgressHud?.();
-              this.updateChapterUi?.();
-              const script = sanctuaryEndingScript({
-                choice,
-                captainOutcome: this.progress.worldProgress?.chapters?.volcano?.captainOutcome,
-                supportChoice: this.progress.worldProgress?.chapters?.coast?.supportChoice,
-                playerName: this.player?.name || "모험가",
-              });
-              this.endingController?.playEnding(script);
+              if (!this.persistProgress?.()) { this.progress = savedChoice; return false; }
+              this.updateProgressHud?.(); this.updateChapterUi?.();
+              this.endingController?.playEnding(sanctuaryEndingScript({ choice, captainOutcome: this.progress.worldProgress?.chapters?.volcano?.captainOutcome, supportChoice: this.progress.worldProgress?.chapters?.coast?.supportChoice, playerName: this.player?.name || "모험가" }));
               return true;
             }
-
             retrySanctuaryEndingReward() {
-              const sanctuary = this.progress?.worldProgress?.chapters?.sanctuary;
-              if (!sanctuary?.endingChoice || sanctuary.endingRewardClaimed) return false;
-              const before = this.progress;
-              const rewarded = grantSanctuaryEndingReward(before);
-              if (!rewarded.changed) return false;
+              const s = this.progress?.worldProgress?.chapters?.sanctuary;
+              if (!s?.endingChoice || s.endingRewardClaimed) return false;
+              const before = this.progress; const rewarded = grantSanctuaryEndingReward(before); if (!rewarded.changed) return false;
               this.progress = rewarded.progress;
-              if (!this.persistProgress?.()) {
-                this.progress = before;
-                return false;
-              }
-              this.updateProgressHud?.();
-              this.updateChapterUi?.();
-              return true;
+              if (!this.persistProgress?.()) { this.progress = before; return false; }
+              this.updateProgressHud?.(); this.updateChapterUi?.(); return true;
             }
-
             completeSanctuaryCredits() {
-              this.endingController?.close?.();
-              this.trinityBoss = null;
-              this.mapId = "village";
+              this.endingController?.close?.(); this.trinityBoss = null; this.mapId = "village";
               const spawn = getWorldDefinition("village").spawn;
-              if (this.player) {
-                this.player.x = spawn.x; this.player.y = spawn.y;
-                this.player.prevX = spawn.x; this.player.prevY = spawn.y;
-              }
-              this.notify?.("PIXEL WORLD — 제1부 완료");
-              return true;
+              if (this.player) { this.player.x=spawn.x; this.player.y=spawn.y; this.player.prevX=spawn.x; this.player.prevY=spawn.y; }
+              this.notify?.("PIXEL WORLD — 제1부 완료"); return true;
             }
           '''
           close = game.rfind('\n}')
-          if close < 0: raise SystemExit('PixelRPG closing brace not found')
+          if close < 0: raise SystemExit('class close not found')
           game = game[:close] + methods + game[close:]
           (root/'src/game-20260910-sanctuary.js').write_text(game)
-
-          world = (root/'src/world-20260903-volcano-20260905-upgrade.js').read_text()
-          world = world.replace('./story-interactions-20260903-volcano-20260905-upgrade.js','./story-interactions-20260910-sanctuary.js')
-          world = world.replace('./world-data-20260903-volcano-20260905-upgrade.js','./world-data-20260910-sanctuary.js')
+          world = (root/'src/world-20260903-volcano-20260905-upgrade.js').read_text().replace('./story-interactions-20260903-volcano-20260905-upgrade.js','./story-interactions-20260910-sanctuary.js').replace('./world-data-20260903-volcano-20260905-upgrade.js','./world-data-20260910-sanctuary.js')
           world = world.replace('  "sanctuary",\n]);','  "sanctuary",\n  "sanctuary-resonance-hall",\n  "sanctuary-origin-archive",\n  "sanctuary-zero-boundary",\n  "sanctuary-core-heart",\n]);')
           (root/'src/world-20260910-sanctuary.js').write_text(world)
-
-          qa = (root/'src/qa-mode-20260903-volcano-20260905-upgrade.js').read_text()
-          qa += '''\nexport const SANCTUARY_QA_MAP_IDS = Object.freeze(["sanctuary","sanctuary-resonance-hall","sanctuary-origin-archive","sanctuary-zero-boundary","sanctuary-core-heart"]);\nexport function isSanctuaryQaMap(mapId) { return SANCTUARY_QA_MAP_IDS.includes(mapId); }\n'''
+          qa = (root/'src/qa-mode-20260903-volcano-20260905-upgrade.js').read_text() + '\nexport const SANCTUARY_QA_MAP_IDS = Object.freeze(["sanctuary","sanctuary-resonance-hall","sanctuary-origin-archive","sanctuary-zero-boundary","sanctuary-core-heart"]);\nexport function isSanctuaryQaMap(mapId) { return SANCTUARY_QA_MAP_IDS.includes(mapId); }\n'
           (root/'src/qa-mode-20260910-sanctuary.js').write_text(qa)
-
-          main = (root/'src/main-20260903-volcano-20260905-upgrade.js').read_text()
-          main = main.replace('./game-20260903-volcano-20260905-upgrade.js','./game-20260910-sanctuary.js')
-          main = main.replace('./qa-mode-20260903-volcano-20260905-upgrade.js','./qa-mode-20260910-sanctuary.js')
-          main = main.replace('./progress-storage-20260903-volcano-20260905-upgrade.js','./progress-storage-20260910-sanctuary.js')
+          main = (root/'src/main-20260903-volcano-20260905-upgrade.js').read_text().replace('./game-20260903-volcano-20260905-upgrade.js','./game-20260910-sanctuary.js').replace('./qa-mode-20260903-volcano-20260905-upgrade.js','./qa-mode-20260910-sanctuary.js').replace('./progress-storage-20260903-volcano-20260905-upgrade.js','./progress-storage-20260910-sanctuary.js')
           (root/'src/main-20260910-sanctuary.js').write_text(main)
       - name: Run Task 9 tests
         run: |
