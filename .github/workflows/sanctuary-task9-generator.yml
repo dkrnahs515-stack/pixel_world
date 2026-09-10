@@ -18,6 +18,17 @@ jobs:
           node-version: "24"
       - name: Apply Task 9 integration patch
         run: python .github/scripts/sanctuary_task9_patch.py
+      - name: Harden ending input lock for lightweight harnesses
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('src/game-20260910-sanctuary.js')
+          text = path.read_text()
+          old = '    this.setInputEnabled?.(false);\n    return this.endingController.openChoice({'
+          new = '    if (this.keys instanceof Set) this.setInputEnabled(false);\n    else this.inputEnabled = false;\n    return this.endingController.openChoice({'
+          if old not in text:
+              raise SystemExit('ending input-lock marker missing')
+          path.write_text(text.replace(old, new, 1))
       - name: Verify focused Task 9
         run: |
           node --test tests/game-sanctuary-story.test.mjs tests/game-sanctuary-combat.test.mjs tests/game-sanctuary-ending.test.mjs tests/sanctuary-ending-controller.test.mjs tests/sanctuary-runtime-wiring.static.test.cjs
