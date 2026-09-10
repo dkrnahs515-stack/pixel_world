@@ -73,6 +73,7 @@ import {
   findQaBossApproachPosition,
   findQaSpawnPosition,
   getQaMonster,
+  prepareSanctuaryQaProgress,
   prepareWeaponQaProgress,
 } from "./qa-mode-20260910-sanctuary.js";
 import { SHOP_ITEMS, buyShopItem, usePotion } from "./shop-state-20260905-upgrade.js";
@@ -492,6 +493,9 @@ export class PixelRPG {
     for (const button of elements.qaWorldButtons || []) {
       button.addEventListener("click", () => this.qaTravel(button.dataset.qaWorld));
     }
+    for (const button of elements.qaSanctuarySetupButtons || []) {
+      button.addEventListener("click", () => this.qaPrepareSanctuary(button.dataset.qaSanctuarySetup));
+    }
     for (const button of elements.qaMonsterButtons || []) {
       button.addEventListener("click", () => this.qaSpawnMonster(button.dataset.qaMonster));
     }
@@ -500,6 +504,7 @@ export class PixelRPG {
       const controls = [
         elements.qaCloseButton,
         ...(elements.qaWorldButtons || []),
+        ...(elements.qaSanctuarySetupButtons || []),
         ...(elements.qaMonsterButtons || []),
         elements.qaWeaponButton,
         elements.qaBlacksmithButton,
@@ -1312,6 +1317,40 @@ export class PixelRPG {
     }
     this.updateNpcPrompt();
     return wasOpen;
+  }
+
+  qaPrepareSanctuary(setupId) {
+    if (!this.qaEnabled || !this.running || !this.isQaOpen()) return false;
+    const previousProgress = this.progress;
+    const prepared = prepareSanctuaryQaProgress(previousProgress, setupId);
+    if (!prepared.ok) {
+      this.notify(prepared.reason === "terminal_state"
+        ? "이미 정식 엔딩이 기록된 세이브는 성역 QA 진행을 덮어쓸 수 없습니다."
+        : "지원하지 않는 성역 QA 상태입니다.");
+      return false;
+    }
+
+    this.progress = prepared.progress;
+    if (!this.persistProgress("성역 QA 진행 상태를 저장할 수 없습니다.")) {
+      this.progress = previousProgress;
+      return false;
+    }
+
+    this.trinityBoss = null;
+    const world = getWorldDefinition(prepared.mapId);
+    this.switchWorld(world.id, world.spawn.x, world.spawn.y);
+    this.closeQaPanel();
+    if (prepared.openEndingChoice) {
+      this.openSanctuaryEndingChoice();
+      const focusKey = {
+        restore: "endingRestoreButton",
+        seal: "endingSealButton",
+        resonate: "endingResonateButton",
+      }[prepared.focusEndingId];
+      this.ui?.[focusKey]?.focus?.();
+    }
+    this.notify(prepared.label);
+    return true;
   }
 
   qaTravel(mapId) {

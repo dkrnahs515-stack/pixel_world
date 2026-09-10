@@ -106,6 +106,7 @@ const elements = {
   qaCloseButton: document.querySelector("#qaCloseButton"),
   qaDoneButton: document.querySelector("#qaDoneButton"),
   qaWorldButtons: [...document.querySelectorAll("[data-qa-world]")],
+  qaSanctuarySetupButtons: [...document.querySelectorAll("[data-qa-sanctuary-setup]")],
   qaMonsterButtons: [...document.querySelectorAll("[data-qa-monster]")],
   qaWeaponButton: document.querySelector("[data-qa-weapons='prepare']"),
   qaBlacksmithButton: document.querySelector("[data-qa-blacksmith='travel']"),

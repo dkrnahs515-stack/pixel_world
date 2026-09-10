@@ -4,7 +4,7 @@ const { readFileSync } = require("node:fs");
 const path = require("node:path");
 
 const html = readFileSync(path.join(__dirname, "../index.html"), "utf8");
-const main = readFileSync(path.join(__dirname, "../src/main-20260903-volcano-20260905-upgrade.js"), "utf8");
+const main = readFileSync(path.join(__dirname, "../src/main-20260910-sanctuary.js"), "utf8");
 const css = readFileSync(path.join(__dirname, "../styles-20260903-volcano-20260905-upgrade.css"), "utf8");
 const readme = readFileSync(path.join(__dirname, "../README.md"), "utf8");
 const coastSmoke = readFileSync(path.join(__dirname, "coast-browser-smoke.cjs"), "utf8");
@@ -28,7 +28,13 @@ test("QA 도구는 기본 문서에서 숨겨진 버튼과 모달로 제공된�
   ]) {
     assert.match(html, new RegExp(`data-qa-world="${mapId}"`));
   }
-  assert.doesNotMatch(html, /data-qa-world="sanctuary"/);
+  for (const mapId of [
+    "sanctuary", "sanctuary-resonance-hall", "sanctuary-origin-archive",
+    "sanctuary-zero-boundary", "sanctuary-core-heart",
+  ]) {
+    assert.match(html, new RegExp(`data-qa-world="${mapId}"`));
+  }
+  assert.equal((html.match(/data-qa-sanctuary-setup=/g) || []).length, 6);
   assert.match(html, /data-qa-world="forest"/);
   assert.equal((html.match(/data-qa-monster=/g) || []).length, 7);
   assert.equal((html.match(/data-qa-weapons="prepare"/g) || []).length, 1);
@@ -68,6 +74,7 @@ test("main은 qa=1 판정 결과만으로 QA 도구를 활성화한다", () => {
   assert.match(main, /qaWeaponButton:\s*document\.querySelector\("\[data-qa-weapons='prepare'\]"\)/);
   assert.match(main, /qaBlacksmithButton:\s*document\.querySelector\("\[data-qa-blacksmith='travel'\]"\)/);
   assert.match(main, /qaBossButton:\s*document\.querySelector\("\[data-qa-boss='approach'\]"\)/);
+  assert.match(main, /qaSanctuarySetupButtons:\s*\[\.\.\.document\.querySelectorAll\("\[data-qa-sanctuary-setup\]"\)\]/);
 });
 
 test("해안 브라우저 smoke는 두 지역 보스 모두 QA 접근 버튼으로 이동한 뒤 실제 키보드 공격을 반복한다", () => {
