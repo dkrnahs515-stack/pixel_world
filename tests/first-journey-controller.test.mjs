@@ -12,7 +12,9 @@ function fakeElement() {
     disabled: false,
     textContent: "",
     focused: false,
-    focus() { this.focused = true; },
+    blurred: false,
+    focus() { this.focused = true; this.blurred = false; },
+    blur() { this.focused = false; this.blurred = true; },
   };
 }
 
@@ -126,6 +128,31 @@ test("Skip completes immediately and completion callback fires once", () => {
   assert.deepEqual(completions, [{ skipped: true }]);
   assert.equal(controller.skip(), false);
   assert.deepEqual(completions, [{ skipped: true }]);
+});
+
+test("finishing the intro releases focus from controls inside the hidden overlay", () => {
+  const { controller, continueButton, skipButton } = createHarness();
+  controller.start();
+  assert.equal(continueButton.focused, true);
+  skipButton.focus();
+
+  controller.skip();
+
+  assert.equal(continueButton.focused, false);
+  assert.equal(skipButton.focused, false);
+  assert.equal(continueButton.blurred, true);
+  assert.equal(skipButton.blurred, true);
+});
+
+test("closing an active intro also releases hidden control focus", () => {
+  const { controller, continueButton, skipButton } = createHarness();
+  controller.start();
+  skipButton.focus();
+
+  controller.close();
+
+  assert.equal(continueButton.blurred, true);
+  assert.equal(skipButton.blurred, true);
 });
 
 test("reduced motion renders a whole frame without per-character timing", () => {
