@@ -113,10 +113,23 @@ export function prepareWeaponQaProgress(progress, classId = "warrior") {
   };
 }
 
-function sanctuaryQaBase(progress) {
+function sanctuaryQaBase(progress, { preserveCurrentSanctuary = false } = {}) {
   const worldProgress = progress?.worldProgress;
   const currentSanctuary = worldProgress?.chapters?.sanctuary;
   if (currentSanctuary?.endingChoice || currentSanctuary?.chapterCompleted) return null;
+  const sanctuary = preserveCurrentSanctuary && currentSanctuary
+    ? { ...currentSanctuary }
+    : {
+      activatedResonanceNodeIds: [],
+      restoredArchiveIds: [],
+      originRecordIds: [],
+      trinityDefeated: false,
+      originDefeated: false,
+      originDefeatReceiptId: null,
+      endingChoice: null,
+      endingRewardClaimed: false,
+      chapterCompleted: false,
+    };
   return {
     ...progress,
     worldProgress: normalizeWorldProgress({
@@ -128,17 +141,7 @@ function sanctuaryQaBase(progress) {
           coreFragmentObtained: true,
           sanctuaryUnlocked: true,
         },
-        sanctuary: {
-          activatedResonanceNodeIds: [],
-          restoredArchiveIds: [],
-          originRecordIds: [],
-          trinityDefeated: false,
-          originDefeated: false,
-          originDefeatReceiptId: null,
-          endingChoice: null,
-          endingRewardClaimed: false,
-          chapterCompleted: false,
-        },
+        sanctuary,
       },
     }),
   };
@@ -168,7 +171,9 @@ export function prepareSanctuaryQaProgress(progress, setupId) {
     return { ok: false, reason: "unknown_setup", progress };
   }
 
-  let next = sanctuaryQaBase(progress);
+  let next = sanctuaryQaBase(progress, {
+    preserveCurrentSanctuary: setupId === "origin-records-3",
+  });
   if (!next) return { ok: false, reason: "terminal_state", progress };
   next = prepareThroughArchives(next);
 
