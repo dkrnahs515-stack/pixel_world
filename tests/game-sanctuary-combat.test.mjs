@@ -21,6 +21,20 @@ test("local boss controller creates ORIGIN in the core heart without breaking re
   assert.equal(controller.snapshot?.hp, 600);
 });
 
+test("game exposes the active boss through one spectator-safe renderable adapter", () => {
+  const game = Object.create(PixelRPG.prototype);
+  game.mapId = "sanctuary-core-heart";
+  game.progress = createInitialProgress();
+  game.progress.worldProgress = originReadyProgress();
+  const boss = { bossId: "origin-zero", encounterId: "origin-local-1", hp: 1200 };
+  game.coopBossController = { renderableBoss: () => boss };
+
+  assert.equal(game.renderableBoss(), boss);
+
+  game.progress.worldProgress = originDefeatedProgress();
+  assert.equal(game.renderableBoss(), null);
+});
+
 test("local ORIGIN receipt turns the core-heart client into a spectator", () => {
   const game = Object.create(PixelRPG.prototype);
   game.mapId = "sanctuary-core-heart";
