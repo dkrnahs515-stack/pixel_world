@@ -29,12 +29,14 @@ async function leave(page) {
   await page.locator("#entryOverlay").waitFor({ state: "visible" });
 }
 
-async function storedProgress(page, nickname) {
-  return page.evaluate(activeNickname => {
+async function storedProgress(page) {
+  return page.evaluate(() => {
+    const activeNickname = window.__sanctuaryGame?.player?.name;
+    if (!activeNickname) return null;
     const key = `pixel-world.progress.v8:${encodeURIComponent(activeNickname)}`;
     const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : null;
-  }, nickname);
+  });
 }
 
 async function runtimeState(page) {
@@ -123,7 +125,7 @@ async function firstPlayerJourney(page) {
     { hp: 120, mp: 80 },
   );
   assert.match(await page.locator("#chapterObjective").textContent(), /CHAPTER 1 · 아렌에게 대륙의 상황을 듣는다/);
-  assert.equal((await storedProgress(page, nickname)).introSeen, true);
+  assert.equal((await storedProgress(page)).introSeen, true);
 
   const helpBefore = await runtimeState(page);
   await page.locator("#helpButton").click();
@@ -201,7 +203,7 @@ async function primaryResonanceEnding(page) {
   assert.equal(completed.progress.endingTitle, "세계의 공명자");
   assert.equal(completed.progress.worldProgress.chapters.sanctuary.chapterCompleted, true);
   assert.equal(completed.progress.gold, goldBefore + 1000);
-  const persisted = await storedProgress(page, nickname);
+  const persisted = await storedProgress(page);
   assert.equal(persisted.endingTitle, "세계의 공명자");
   assert.equal(persisted.worldProgress.chapters.sanctuary.endingRewardClaimed, true);
   await leave(page);
