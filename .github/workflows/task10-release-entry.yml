@@ -1,0 +1,45 @@
+name: Task 10 release entry
+
+on:
+  push:
+    branches: ["feature/pixel-core-sanctuary"]
+    paths:
+      - ".github/workflows/task10-release-entry.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  release-entry:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/pixel-core-sanctuary
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - name: Switch live physical entries
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace('./styles-20260903-volcano-20260905-upgrade.css','./styles-20260910-sanctuary.css')
+          s=s.replace('./src/main-20260903-volcano-20260905-upgrade.js','./src/main-20260910-sanctuary.js')
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Verify cache release graph
+        run: node --test tests/sanctuary-cache-contract.test.mjs tests/firebase-hosting.test.mjs tests/ci-workflow.test.mjs
+      - name: Verify full Node suite
+        run: node --test tests/*.test.mjs tests/*.static.test.cjs
+      - name: Commit release entry
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "build: activate sanctuary physical release entry"
+          git push origin HEAD:feature/pixel-core-sanctuary
