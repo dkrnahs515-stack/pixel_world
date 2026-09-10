@@ -1,0 +1,51 @@
+name: Apply verified sanctuary fixes
+on:
+  push:
+    branches: ["feature/pixel-core-sanctuary"]
+    paths: [".github/workflows/apply-reviewed-fixes.yml"]
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - name: Apply the exact locally tested patch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "9969c63122edfa069a920dd5c166112d8ea17add"
+          python3 - <<'PY'
+          import base64, hashlib, json, lzma, os, pathlib, urllib.request
+          chunks = []
+          for sha in ["8493f67339cd8052b8f99489f5961907473e4306", "7b722a85b17dce7083718585af416b1b3041734c", "2646b290338c1a11d7075d05d3502853dea94c21"]:
+              url = "https://api.github.com/repos/dkrnahs515-stack/pixel_world/git/blobs/" + sha
+              req = urllib.request.Request(url, headers={"Authorization": "Bearer " + os.environ["GH_TOKEN"], "Accept": "application/vnd.github+json"})
+              with urllib.request.urlopen(req, timeout=30) as response:
+                  data = json.load(response)
+              chunk = base64.b64decode(data["content"])
+              actual = hashlib.sha1(b"blob " + str(len(chunk)).encode() + b"\0" + chunk).hexdigest()
+              assert actual == sha, "blob integrity failure"
+              chunks.append(chunk.decode("ascii"))
+          patch = lzma.decompress(base64.b64decode("".join(chunks), validate=True))
+          assert hashlib.sha256(patch).hexdigest() == "875c45cc4aa6a568fc46148820eb51a12e3933eb008cd6435b8de3627a28f8e0", "patch digest mismatch"
+          pathlib.Path("/tmp/reviewed-fixes.patch").write_bytes(patch)
+          print("Verified exact 84190-byte patch; source baseline 9969c631")
+          PY
+          git apply --check /tmp/reviewed-fixes.patch
+          git apply /tmp/reviewed-fixes.patch
+          node --test tests/*.test.mjs tests/*.static.test.cjs
+          for file in src/*.js tests/*smoke.cjs; do node --check "$file"; done
+          git diff --check
+          git rm .github/workflows/review-source-snapshot.yml .github/workflows/apply-reviewed-fixes.yml
+          git add -A
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -m "fix: connect sanctuary combat and recover durable endings"
+          git push origin HEAD:feature/pixel-core-sanctuary
