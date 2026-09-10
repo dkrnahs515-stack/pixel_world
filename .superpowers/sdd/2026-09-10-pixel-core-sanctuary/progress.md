@@ -39,3 +39,5 @@ Task 1: complete (RED `6688d07` → GREEN `219f2ec`; task report `task-1-report.
 Ruling: the approved Task 2 plan omitted a new portal-transition module, but the existing module statically imports the pre-sanctuary chapter-progress implementation. Added `portal-transition-20260910-sanctuary.js` so interior unlocks use v8 sanctuary progress. Cost if wrong: one extra versioned module; without it, valid sanctuary progress cannot open new portals.
 
 Task 2: complete (RED `e23049d` → GREEN `c24124d`; task report `task-2-report.md`; review clean).
+
+Task 3: complete (RED `ae65256` → GREEN `cafe87a`; task report `task-3-report.md`; review clean).
