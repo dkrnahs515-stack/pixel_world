@@ -2,7 +2,24 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { PixelRPG } from "../src/game-20260910-sanctuary.js";
 import { createInitialProgress } from "../src/quest-state-20260910-sanctuary.js";
+import { LocalBossController } from "../src/local-boss-controller-20260903-volcano-20260905-upgrade.js";
 import { originDefeatedProgress, originReadyProgress, zeroBoundaryUnlockedProgress } from "./helpers/sanctuary-fixtures.mjs";
+
+test("local boss controller creates ORIGIN in the core heart without breaking regional bosses", async () => {
+  const controller = new LocalBossController({
+    now: () => 10_000,
+    wallNow: () => 10_000,
+    sessionId: "sanctuary-local",
+  });
+  assert.equal(await controller.setMap("sanctuary-core-heart"), true);
+  assert.equal(controller.snapshot?.bossId, "origin-zero");
+  assert.equal(controller.snapshot?.hp, 1200);
+  assert.equal(controller.renderableBoss()?.kind, "core-sentinel");
+
+  assert.equal(await controller.setMap("forest"), true);
+  assert.equal(controller.snapshot?.bossId, "forest-core-troll");
+  assert.equal(controller.snapshot?.hp, 600);
+});
 
 test("local ORIGIN receipt turns the core-heart client into a spectator", () => {
   const game = Object.create(PixelRPG.prototype);
