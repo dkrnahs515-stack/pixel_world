@@ -1,0 +1,361 @@
+name: Sanctuary Task 9 Integration
+on:
+  push:
+    branches: ["feature/pixel-core-sanctuary"]
+    paths: [".github/workflows/sanctuary-task9-integration.yml"]
+permissions:
+  contents: write
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/pixel-core-sanctuary
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - name: Patch sanctuary runtime integration
+        shell: python
+        run: |
+          from pathlib import Path
+          root = Path('.')
+          p = root/'src/game-20260910-sanctuary.js'
+          game = p.read_text()
+
+          game = game.replace(
+            'import { sanctuaryEndingScript } from "./sanctuary-ending-script-20260910-sanctuary.js";\nimport { applyTrinityDamage, createTrinityEncounter } from "./trinity-boss-20260910-sanctuary.js";',
+            'import { sanctuaryEndingScript } from "./sanctuary-ending-script-20260910-sanctuary.js";\nimport { SanctuaryEndingController } from "./sanctuary-ending-controller-20260910-sanctuary.js";\nimport { advanceTrinityEncounter, applyTrinityDamage, createTrinityEncounter } from "./trinity-boss-20260910-sanctuary.js";'
+          )
+
+          marker = '    this.progress = createInitialProgress();\n'
+          inject = '''    this.progress = createInitialProgress();
+              this.trinityBoss = null;
+              this.endingController = elements.sanctuaryEndingOverlay ? new SanctuaryEndingController({
+                elements: {
+                  overlay: elements.sanctuaryEndingOverlay,
+                  choicePanel: elements.endingChoicePanel,
+                  confirmPanel: elements.endingConfirmPanel,
+                  restoreButton: elements.endingRestoreButton,
+                  sealButton: elements.endingSealButton,
+                  resonateButton: elements.endingResonateButton,
+                  deferButton: elements.endingDeferButton,
+                  confirmButton: elements.endingConfirmButton,
+                  cancelButton: elements.endingConfirmCancel,
+                  confirmText: elements.endingConfirmText,
+                  lockedReason: elements.endingLockedReason,
+                  subtitle: elements.endingSubtitle,
+                  credits: elements.endingCredits,
+                  creditsText: elements.endingCreditsText,
+                  skipButton: elements.endingCreditsSkip,
+                },
+                onChoose: choice => this.confirmSanctuaryEnding(choice),
+                onDefer: () => {
+                  if (this.running && this.player.respawnTimer <= 0) this.setInputEnabled(true);
+                },
+                onCreditsComplete: () => this.completeSanctuaryCredits(),
+              }) : null;
+          '''
+          if marker not in game: raise SystemExit('progress constructor marker missing')
+          game = game.replace(marker, inject, 1)
+
+          old = '''  receiveBossPlayerDamage(values) {
+              const events = Array.isArray(values) ? values : Object.values(values || {});'''
+          new = '''  receiveBossPlayerDamage(values) {
+              if (this.isOriginSpectator()) return;
+              const events = Array.isArray(values) ? values : Object.values(values || {});'''
+          if old not in game: raise SystemExit('receiveBossPlayerDamage marker missing')
+          game = game.replace(old, new, 1)
+
+          old = '''  handleBossControllerEvents(events) {
+              for (const event of events || []) {
+                if (event?.type === "damage-player") {
+                  this.damagePlayer(event.amount ?? event.damage, this.coopBossController?.renderableBoss() || this.player);
+                } else if (event?.type === "boss-defeated") {
+                  this.processBossReward(event, "local-player");
+                }
+              }
+            }'''
+          new = '''  handleBossControllerEvents(events) {
+              for (const event of events || []) {
+                if (event?.type === "damage-player") {
+                  if (!this.isOriginSpectator()) this.damagePlayer(event.amount ?? event.damage, this.coopBossController?.renderableBoss() || this.player);
+                } else if (event?.type === "boss-defeated") {
+                  if (event.bossId === "origin-zero") {
+                    if (this.recordLocalOriginDefeat(event.encounterId)) this.openSanctuaryEndingChoice();
+                  } else {
+                    this.processBossReward(event, "local-player");
+                  }
+                }
+              }
+            }'''
+          if old not in game: raise SystemExit('boss event marker missing')
+          game = game.replace(old, new, 1)
+
+          old = '''  updateBossController(dt, context = {}, timestamp = performance.now()) {
+              const controller = this.coopBossController;'''
+          new = '''  updateBossController(dt, context = {}, timestamp = performance.now()) {
+              if (this.isOriginSpectator()) return [];
+              const controller = this.coopBossController;'''
+          if old not in game: raise SystemExit('updateBossController marker missing')
+          game = game.replace(old, new, 1)
+
+          claim_marker = '''      const claimedRewardIds = Array.isArray(this.progress.claimedBossRewardIds)
+                ? this.progress.claimedBossRewardIds
+                : [];'''
+          claim_branch = '''      if (claim.bossId === "origin-zero") {
+                const localSaved = this.progress?.worldProgress?.chapters?.sanctuary?.originDefeated === true
+                  || this.recordLocalOriginDefeat(claim.encounterId);
+                if (!localSaved) continue;
+                try {
+                  const claimResult = await this.network.coopBoss.claimReward(claim.encounterId, claim);
+                  if (claimResult?.ok) {
+                    this.processedBossRewardIds.add(rewardId);
+                    this.openSanctuaryEndingChoice();
+                  }
+                } catch {
+                  // 로컬 ORIGIN 영수증이 있으므로 다음 수신에서 원격 claim 정리만 재시도한다.
+                }
+                continue;
+              }
+              const claimedRewardIds = Array.isArray(this.progress.claimedBossRewardIds)
+                ? this.progress.claimedBossRewardIds
+                : [];'''
+          if claim_marker not in game: raise SystemExit('claim marker missing')
+          game = game.replace(claim_marker, claim_branch, 1)
+
+          old = '''  targetableBosses() {
+              return this.coopBossController?.targetableBosses?.() || [this.coopBossController?.targetableBoss?.()].filter(Boolean);
+            }'''
+          new = '''  targetableBosses() {
+              if (this.isOriginSpectator()) return [];
+              const trinity = this.ensureTrinityEncounter();
+              if (trinity) return [{ ...trinity, radius: 38, targetable: true, isTrinity: true, isCoopBoss: false }];
+              return this.coopBossController?.targetableBosses?.() || [this.coopBossController?.targetableBoss?.()].filter(Boolean);
+            }
+
+            updateTrinity(dt) {
+              const boss = this.ensureTrinityEncounter();
+              if (!boss) return [];
+              const tick = advanceTrinityEncounter(boss, dt, {
+                player: { ...this.player, uid: this.network?.uid || "local-player" },
+                rng: Math.random,
+                now: Date.now(),
+              });
+              this.trinityBoss = tick.state;
+              for (const event of tick.events) {
+                if (["damage-player", "trinity-projectile", "trinity-eruption"].includes(event.type)) {
+                  this.damagePlayer(event.amount ?? event.damage, event.source || { x: boss.x, y: boss.y });
+                }
+              }
+              return tick.events;
+            }'''
+          if old not in game: raise SystemExit('targetableBosses marker missing')
+          game = game.replace(old, new, 1)
+
+          fixed_marker = '''      this.updateVolcanoEruption(dt);
+
+              if (this.portalTransition) {'''
+          fixed_new = '''      this.updateVolcanoEruption(dt);
+              this.updateTrinity(dt);
+
+              if (this.portalTransition) {'''
+          if fixed_marker not in game: raise SystemExit('fixed update marker missing')
+          game = game.replace(fixed_marker, fixed_new, 1)
+
+          skill_marker = '''          if (target.isCoopBoss) {
+                    this.coopBossController.requestHit({ targetId: target.id, attackKind: cast.kind, castId: cast.id, hitIndex: pulse.hitIndex, player: { ...cast.player, x: this.player.x, y: this.player.y }, classId: cast.classId, weaponId: cast.weaponId, direction: cast.direction }).catch?.(error => console.warn("스킬 요청 실패", error));
+                  } else {'''
+          skill_new = '''          if (target.isTrinity) {
+                    this.damageTrinity(d.damage);
+                  } else if (target.isCoopBoss) {
+                    this.coopBossController.requestHit({ targetId: target.id, attackKind: cast.kind, castId: cast.id, hitIndex: pulse.hitIndex, player: { ...cast.player, x: this.player.x, y: this.player.y }, classId: cast.classId, weaponId: cast.weaponId, direction: cast.direction }).catch?.(error => console.warn("스킬 요청 실패", error));
+                  } else {'''
+          if skill_marker not in game: raise SystemExit('skill boss marker missing')
+          game = game.replace(skill_marker, skill_new, 1)
+
+          proj_marker = '''      if (event.targetType === "coop-boss") {
+                this.processedProjectileHitIds.add(eventId);
+                this.coopBossController?.requestHit({'''
+          proj_new = '''      if (event.targetType === "coop-boss") {
+                this.processedProjectileHitIds.add(eventId);
+                if (event.enemyId === "trinity") {
+                  this.damageTrinity(event.damage);
+                  continue;
+                }
+                this.coopBossController?.requestHit({'''
+          if proj_marker not in game: raise SystemExit('projectile boss marker missing')
+          game = game.replace(proj_marker, proj_new, 1)
+
+          melee_marker = '''    for (const boss of this.targetableBosses()) {
+                if (!this.attackState?.requestedBossIds?.has(boss.id) && isTargetInAttackArc(this.player, this.player.dir, boss, definition.range, definition.arcDegrees)) {
+                  if (this.attackState) { this.attackState.requestedBossIds ||= new Set(); this.attackState.requestedBossIds.add(boss.id); }
+                  this.coopBossController.requestHit({'''
+          melee_new = '''    for (const boss of this.targetableBosses()) {
+                if (!this.attackState?.requestedBossIds?.has(boss.id) && isTargetInAttackArc(this.player, this.player.dir, boss, definition.range, definition.arcDegrees)) {
+                  if (this.attackState) { this.attackState.requestedBossIds ||= new Set(); this.attackState.requestedBossIds.add(boss.id); }
+                  if (boss.isTrinity) {
+                    this.damageTrinity(definition.damage);
+                    hit = true;
+                    continue;
+                  }
+                  this.coopBossController.requestHit({'''
+          if melee_marker not in game: raise SystemExit('melee boss marker missing')
+          game = game.replace(melee_marker, melee_new, 1)
+
+          interaction_marker = '''  isInteractionOpen() {
+              return this.isSaleConfirmOpen() || this.isBlacksmithOpen()
+                || this.isQaOpen() || this.isDialogueOpen() || this.isShopOpen() || this.isInventoryOpen()
+                || this.isCommunicationLogOpen();
+            }'''
+          interaction_new = '''  isInteractionOpen() {
+              return this.isSaleConfirmOpen() || this.isBlacksmithOpen()
+                || this.isQaOpen() || this.isDialogueOpen() || this.isShopOpen() || this.isInventoryOpen()
+                || this.isCommunicationLogOpen() || Boolean(this.endingController?.active);
+            }'''
+          if interaction_marker not in game: raise SystemExit('interaction marker missing')
+          game = game.replace(interaction_marker, interaction_new, 1)
+
+          open_choice_marker = '''  openSanctuaryEndingChoice() {
+              const s = this.progress?.worldProgress?.chapters?.sanctuary;
+              if (!s?.originDefeated || s.endingChoice || !this.endingController) return false;
+              return this.endingController.openChoice({ choices: availableSanctuaryEndings(this.progress), deferAllowed: true }) !== false;
+            }'''
+          open_choice_new = '''  openSanctuaryEndingChoice() {
+              const s = this.progress?.worldProgress?.chapters?.sanctuary;
+              if (!s?.originDefeated || s.endingChoice || !this.endingController) return false;
+              this.keys?.clear?.();
+              if (this.player) this.player.moving = false;
+              this.attackState = null;
+              this.setInputEnabled?.(false);
+              return this.endingController.openChoice({ choices: availableSanctuaryEndings(this.progress), deferAllowed: true }) !== false;
+            }'''
+          if open_choice_marker not in game: raise SystemExit('open ending marker missing')
+          game = game.replace(open_choice_marker, open_choice_new, 1)
+
+          credits_marker = '''  completeSanctuaryCredits() {
+              this.endingController?.close?.(); this.trinityBoss = null; this.mapId = "village";
+              const spawn = getWorldDefinition("village").spawn;
+              if (this.player) { this.player.x=spawn.x; this.player.y=spawn.y; this.player.prevX=spawn.x; this.player.prevY=spawn.y; }
+              this.notify?.("PIXEL WORLD — 제1부 완료"); return true;
+            }'''
+          credits_new = '''  completeSanctuaryCredits() {
+              this.endingController?.close?.();
+              this.trinityBoss = null;
+              const spawn = getWorldDefinition("village").spawn;
+              if (typeof this.switchWorld === "function") this.switchWorld("village", spawn.x, spawn.y, false);
+              else {
+                this.mapId = "village";
+                if (this.player) { this.player.x=spawn.x; this.player.y=spawn.y; this.player.prevX=spawn.x; this.player.prevY=spawn.y; }
+              }
+              this.resetCombatState?.();
+              this.setInputEnabled?.(true);
+              this.notify?.("PIXEL WORLD — 제1부 완료");
+              return true;
+            }'''
+          if credits_marker not in game: raise SystemExit('credits marker missing')
+          game = game.replace(credits_marker, credits_new, 1)
+
+          # Suppress rendering a later ORIGIN respawn for local spectators and include TRINITY.
+          render_marker = '''    const coopBoss = this.coopBossController?.renderableBoss();
+              const visibleBosses = this.coopBossController?.renderableBosses?.() || (coopBoss ? [coopBoss] : []);
+              for (const boss of visibleBosses) {
+                if (boss.hp > 0) entities.push({ entityType: "coop-boss", enemy: boss, x: boss.x, y: boss.y });
+              }'''
+          render_new = '''    const coopBoss = this.isOriginSpectator() ? null : this.coopBossController?.renderableBoss();
+              const visibleBosses = this.isOriginSpectator() ? [] : (this.coopBossController?.renderableBosses?.() || (coopBoss ? [coopBoss] : []));
+              for (const boss of visibleBosses) {
+                if (boss.hp > 0) entities.push({ entityType: "coop-boss", enemy: boss, x: boss.x, y: boss.y });
+              }
+              const trinity = this.ensureTrinityEncounter();
+              if (trinity?.hp > 0) entities.push({ entityType: "coop-boss", enemy: { ...trinity, radius: 38 }, x: trinity.x, y: trinity.y });'''
+          if render_marker not in game: raise SystemExit('render boss marker missing')
+          game = game.replace(render_marker, render_new, 1)
+
+          # Chapter HUD uses sanctuary objective once Chapter 4 is active.
+          game = game.replace(
+            '  currentChapterObjective() {\n    return getVolcanoChapterObjective(this.progress?.worldProgress);\n  }',
+            '  currentChapterObjective() {\n    const sanctuary = this.progress?.worldProgress?.chapters?.sanctuary;\n    if (this.progress?.worldProgress?.unlockedMapIds?.includes("sanctuary-resonance-hall") || sanctuary?.originDefeated) {\n      const guide = storyGuidance({ interactions: ALL_STORY_INTERACTIONS, worldProgress: this.progress.worldProgress, mapId: this.mapId, player: this.player, camera: { x: this.camera.x, y: this.camera.y, width: globalThis.innerWidth || 1280, height: globalThis.innerHeight || 720 }, world: getWorldDefinition(this.mapId), minimap: { width: this.minimap?.width || 220, height: this.minimap?.height || 140 } });\n      return { label: guide.objective.text };\n    }\n    return getVolcanoChapterObjective(this.progress?.worldProgress);\n  }'
+          )
+          p.write_text(game)
+
+          # World renderer: explicit sanctuary content branch.
+          wp = root/'src/world-20260910-sanctuary.js'
+          world = wp.read_text()
+          world = world.replace(
+            'import { getVolcanoStoryContent } from "./volcano-story-data-20260903-volcano-20260905-upgrade.js";',
+            'import { getVolcanoStoryContent } from "./volcano-story-data-20260903-volcano-20260905-upgrade.js";\nimport { SANCTUARY_STORY_INTERACTIONS } from "./sanctuary-story-data-20260910-sanctuary.js";\nimport { sanctuaryObjective } from "./quest-guidance-20260910-sanctuary.js";'
+          )
+          old = '''export function getStoryRenderablesForMap(mapId, worldProgress = null) {
+              const content = getVolcanoStoryContent(mapId);'''
+          new = '''export function getStoryRenderablesForMap(mapId, worldProgress = null) {
+              if (mapId.startsWith("sanctuary")) {
+                const interactions = SANCTUARY_STORY_INTERACTIONS.filter(value => value.mapId === mapId);
+                const active = interactions.find(value => isStoryInteractionEligible(value, worldProgress));
+                return {
+                  signals: interactions.map(interaction => ({ id: interaction.id, interactionId: interaction.id, chapterId: "sanctuary", signalKind: interaction.type, x: interaction.x, y: interaction.y, active: isStoryInteractionEligible(interaction, worldProgress) })),
+                  objective: active ? { x: active.x, y: active.y, radius: Math.max(96, active.interactionRadius) } : null,
+                  chapterObjective: sanctuaryObjective(worldProgress),
+                };
+              }
+              const content = getVolcanoStoryContent(mapId);'''
+          if old not in world: raise SystemExit('world story marker missing')
+          world = world.replace(old, new, 1)
+          old = '''export function drawStorySignal(context, signal, cameraX = 0, cameraY = 0) {
+              if (signal?.chapterId !== "volcano") {'''
+          new = '''export function drawStorySignal(context, signal, cameraX = 0, cameraY = 0) {
+              if (signal?.chapterId === "sanctuary") {
+                if (!context || !Number.isFinite(signal.x) || !Number.isFinite(signal.y)) return;
+                const x = Math.round(signal.x - cameraX), y = Math.round(signal.y - cameraY);
+                context.save(); context.globalAlpha = signal.active ? 1 : 0.42;
+                context.fillStyle = "#c4b5fd"; context.strokeStyle = "#f5f3ff"; context.lineWidth = 3;
+                context.beginPath(); context.arc(x, y, 14, 0, Math.PI * 2); context.fill(); context.stroke(); context.restore();
+                return;
+              }
+              if (signal?.chapterId !== "volcano") {'''
+          if old not in world: raise SystemExit('draw story marker missing')
+          world = world.replace(old, new, 1)
+          world = world.replace('const sanctuary = world.id === "sanctuary";', 'const sanctuary = world.id.startsWith("sanctuary");')
+          world = world.replace('context.fillStyle = world.id === "sanctuary" ? "#fef3c7" : "#ffb199";', 'context.fillStyle = world.id.startsWith("sanctuary") ? "#fef3c7" : "#ffb199";')
+          wp.write_text(world)
+
+          # Main passes exact Task 8 ending elements.
+          mp = root/'src/main-20260910-sanctuary.js'
+          main = mp.read_text()
+          marker = '  goldText: document.querySelector("#goldText"),\n};'
+          insert = '''  goldText: document.querySelector("#goldText"),
+              sanctuaryEndingOverlay: document.querySelector("#sanctuaryEndingOverlay"),
+              endingChoicePanel: document.querySelector("#endingChoicePanel"),
+              endingConfirmPanel: document.querySelector("#endingConfirmPanel"),
+              endingRestoreButton: document.querySelector("#endingRestoreButton"),
+              endingSealButton: document.querySelector("#endingSealButton"),
+              endingResonateButton: document.querySelector("#endingResonateButton"),
+              endingDeferButton: document.querySelector("#endingDeferButton"),
+              endingConfirmButton: document.querySelector("#endingConfirmButton"),
+              endingConfirmCancel: document.querySelector("#endingConfirmCancel"),
+              endingConfirmText: document.querySelector("#endingConfirmText"),
+              endingLockedReason: document.querySelector("#endingLockedReason"),
+              endingSubtitle: document.querySelector("#endingSubtitle"),
+              endingCredits: document.querySelector("#endingCredits"),
+              endingCreditsText: document.querySelector("#endingCreditsText"),
+              endingCreditsSkip: document.querySelector("#endingCreditsSkip"),
+            };'''
+          if marker not in main: raise SystemExit('main element marker missing')
+          main = main.replace(marker, insert, 1)
+          mp.write_text(main)
+      - name: Run Task 9 integration tests
+        run: |
+          node --test tests/game-sanctuary-story.test.mjs tests/game-sanctuary-combat.test.mjs tests/game-sanctuary-ending.test.mjs tests/sanctuary-ending-controller.test.mjs tests/sanctuary-runtime-wiring.static.test.cjs
+          node --check src/game-20260910-sanctuary.js
+          node --check src/world-20260910-sanctuary.js
+          node --check src/main-20260910-sanctuary.js
+      - name: Run full Node suite
+        run: node --test tests/*.test.mjs tests/*.static.test.cjs
+      - name: Commit integration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/game-20260910-sanctuary.js src/world-20260910-sanctuary.js src/main-20260910-sanctuary.js
+          git commit -m "feat: wire sanctuary combat endings and spectator flow"
+          git push origin HEAD:feature/pixel-core-sanctuary
