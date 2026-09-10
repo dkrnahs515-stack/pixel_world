@@ -183,7 +183,7 @@ async function primaryResonanceEnding(page) {
   assert.equal(record3, true);
 
   await qaTravel(page, "sanctuary-core-heart");
-  await page.waitForTimeout(100);
+  await page.waitForFunction(() => window.__sanctuaryGame.renderableBoss?.()?.bossId === "origin-zero", null, { timeout: 3000 });
   const bossBefore = await runtimeState(page);
   assert.equal(bossBefore.hasRenderableBoss, true, "ORIGIN should be present before local defeat receipt");
   const receipt = await page.evaluate(() => {
