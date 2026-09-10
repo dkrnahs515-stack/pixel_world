@@ -56,7 +56,7 @@ test("Firebase 규칙은 emulator allow/deny 검사를 PR에서 실행한다", a
   assert.match(workflow, /tests\/firebase-rules-emulator\.cjs/);
 });
 
-test("브라우저 smoke는 기존 여정 뒤에 첫 플레이·성역 최종장까지 실행한다", async () => {
+test("브라우저 smoke는 기존 여정 뒤에 첫 플레이·성역·2브라우저 ORIGIN까지 실행한다", async () => {
   const workflow = await readFile(
     new URL("../.github/workflows/browser-smoke.yml", import.meta.url),
     "utf8",
@@ -69,10 +69,15 @@ test("브라우저 smoke는 기존 여정 뒤에 첫 플레이·성역 최종장
     "tests/coast-browser-smoke.cjs",
     "tests/volcano-browser-smoke.cjs",
     "tests/sanctuary-browser-smoke.cjs",
+    "tests/sanctuary-online-browser-smoke.cjs",
   ];
   for (const journey of requiredJourneys) assert.match(workflow, new RegExp(journey.replace(".", "\\.")));
   assert.ok(
     workflow.indexOf("tests/volcano-browser-smoke.cjs") < workflow.indexOf("tests/sanctuary-browser-smoke.cjs"),
     "sanctuary journey must run after the existing volcano regression gate",
+  );
+  assert.ok(
+    workflow.indexOf("tests/sanctuary-browser-smoke.cjs") < workflow.indexOf("tests/sanctuary-online-browser-smoke.cjs"),
+    "two-browser ORIGIN journey must run after the solo finale journey",
   );
 });
