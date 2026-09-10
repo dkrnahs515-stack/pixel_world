@@ -81,7 +81,7 @@ test("defer closes choice without choosing an ending", () => {
   assert.deepEqual(events, ["defer"]);
 });
 
-test("choice callback fires only for unlocked ending", () => {
+test("ending choice requires explicit second confirmation", () => {
   const choices = [];
   const controller = new SanctuaryEndingController({ onChoose: id => choices.push(id) });
   controller.openChoice({
@@ -91,7 +91,13 @@ test("choice callback fires only for unlocked ending", () => {
     ],
     deferAllowed: true,
   });
-  assert.equal(controller.choose("resonate"), false);
-  assert.equal(controller.choose("restore"), true);
+  assert.equal(controller.requestChoice("resonate"), false);
+  assert.equal(controller.requestChoice("restore"), true);
+  assert.equal(controller.pendingChoice, "restore");
+  assert.deepEqual(choices, []);
+  assert.equal(controller.cancelChoice(), true);
+  assert.equal(controller.pendingChoice, null);
+  assert.equal(controller.requestChoice("restore"), true);
+  assert.equal(controller.confirmChoice(), true);
   assert.deepEqual(choices, ["restore"]);
 });
