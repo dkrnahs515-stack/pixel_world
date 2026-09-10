@@ -120,6 +120,21 @@ const elements = {
   expText: document.querySelector("#expText"),
   expBar: document.querySelector("#expBar"),
   goldText: document.querySelector("#goldText"),
+  sanctuaryEndingOverlay: document.querySelector("#sanctuaryEndingOverlay"),
+  endingChoicePanel: document.querySelector("#endingChoicePanel"),
+  endingConfirmPanel: document.querySelector("#endingConfirmPanel"),
+  endingRestoreButton: document.querySelector("#endingRestoreButton"),
+  endingSealButton: document.querySelector("#endingSealButton"),
+  endingResonateButton: document.querySelector("#endingResonateButton"),
+  endingDeferButton: document.querySelector("#endingDeferButton"),
+  endingConfirmButton: document.querySelector("#endingConfirmButton"),
+  endingConfirmCancel: document.querySelector("#endingConfirmCancel"),
+  endingConfirmText: document.querySelector("#endingConfirmText"),
+  endingLockedReason: document.querySelector("#endingLockedReason"),
+  endingSubtitle: document.querySelector("#endingSubtitle"),
+  endingCredits: document.querySelector("#endingCredits"),
+  endingCreditsText: document.querySelector("#endingCreditsText"),
+  endingCreditsSkip: document.querySelector("#endingCreditsSkip"),
 };
 
 elements.qaButton.hidden = !qaEnabled;

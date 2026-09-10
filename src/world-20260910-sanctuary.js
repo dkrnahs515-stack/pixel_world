@@ -8,6 +8,8 @@ import {
 import { getCoastChapterObjective } from "./coast-story-data-20260829-coast-20260905-upgrade.js";
 import { isStoryInteractionEligible } from "./story-interactions-20260910-sanctuary.js";
 import { getVolcanoStoryContent } from "./volcano-story-data-20260903-volcano-20260905-upgrade.js";
+import { SANCTUARY_STORY_INTERACTIONS } from "./sanctuary-story-data-20260910-sanctuary.js";
+import { sanctuaryObjective } from "./quest-guidance-20260910-sanctuary.js";
 import { WORLD_IDS, getWorldDefinition, normalizeWorldId } from "./world-data-20260910-sanctuary.js";
 
 const WORLD_LAYER_SCALE = 0.5;
@@ -88,7 +90,7 @@ function obstacleColor(type) {
 }
 
 function drawGround(context, world) {
-  const sanctuary = world.id === "sanctuary";
+  const sanctuary = world.id.startsWith("sanctuary");
   context.fillStyle = sanctuary ? "#182541" : "#2a2024";
   context.fillRect(0, 0, world.width, world.height);
   context.fillStyle = sanctuary ? "#23375d" : "#3a292c";
@@ -132,7 +134,7 @@ function drawPortals(context, portals) {
 function drawWorldTitle(context, world) {
   context.fillStyle = "rgba(12, 15, 24, .78)";
   context.fillRect(world.width / 2 - 190, 38, 380, 70);
-  context.fillStyle = world.id === "sanctuary" ? "#fef3c7" : "#ffb199";
+  context.fillStyle = world.id.startsWith("sanctuary") ? "#fef3c7" : "#ffb199";
   context.font = "bold 28px sans-serif";
   context.textAlign = "center";
   context.fillText(world.name, world.width / 2, 84);
@@ -196,6 +198,23 @@ export function drawWorldLayerViewport(context, layer, mapId, viewport) {
 }
 
 export function getStoryRenderablesForMap(mapId, worldProgress = null) {
+  if (mapId.startsWith("sanctuary")) {
+    const interactions = SANCTUARY_STORY_INTERACTIONS.filter(value => value.mapId === mapId);
+    const active = interactions.find(value => isStoryInteractionEligible(value, worldProgress));
+    return {
+      signals: interactions.map(interaction => ({
+        id: interaction.id,
+        interactionId: interaction.id,
+        chapterId: "sanctuary",
+        signalKind: interaction.type,
+        x: interaction.x,
+        y: interaction.y,
+        active: isStoryInteractionEligible(interaction, worldProgress),
+      })),
+      objective: active ? { x: active.x, y: active.y, radius: Math.max(96, active.interactionRadius) } : null,
+      chapterObjective: sanctuaryObjective(worldProgress),
+    };
+  }
   const content = getVolcanoStoryContent(mapId);
   if (!content) return getCoastStoryRenderablesForMap(mapId, worldProgress);
   const activeObjective = getVolcanoChapterObjective(worldProgress);
@@ -218,6 +237,22 @@ export function getStoryRenderablesForMap(mapId, worldProgress = null) {
 }
 
 export function drawStorySignal(context, signal, cameraX = 0, cameraY = 0) {
+  if (signal?.chapterId === "sanctuary") {
+    if (!context || !Number.isFinite(signal.x) || !Number.isFinite(signal.y)) return;
+    const x = Math.round(signal.x - cameraX);
+    const y = Math.round(signal.y - cameraY);
+    context.save();
+    context.globalAlpha = signal.active ? 1 : 0.42;
+    context.fillStyle = "#c4b5fd";
+    context.strokeStyle = "#f5f3ff";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.arc(x, y, 14, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.restore();
+    return;
+  }
   if (signal?.chapterId !== "volcano") {
     drawCoastStorySignal(context, signal, cameraX, cameraY);
     return;

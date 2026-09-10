@@ -129,7 +129,8 @@ import {
 import { recordOriginDefeat, recordTrinityDefeat } from "./chapter-progress-20260910-sanctuary.js";
 import { availableSanctuaryEndings, chooseSanctuaryEnding, grantSanctuaryEndingReward } from "./sanctuary-ending-state-20260910-sanctuary.js";
 import { sanctuaryEndingScript } from "./sanctuary-ending-script-20260910-sanctuary.js";
-import { applyTrinityDamage, createTrinityEncounter } from "./trinity-boss-20260910-sanctuary.js";
+import { SanctuaryEndingController } from "./sanctuary-ending-controller-20260910-sanctuary.js";
+import { advanceTrinityEncounter, applyTrinityDamage, createTrinityEncounter } from "./trinity-boss-20260910-sanctuary.js";
 
 const PLAYER_RADIUS = 14;
 const PROJECTILE_SPAWN_OFFSET = PLAYER_RADIUS + 18;
@@ -376,6 +377,31 @@ export class PixelRPG {
     this.chatInputActive = false;
     this.qaEnabled = Boolean(elements.qaEnabled);
     this.progress = createInitialProgress();
+    this.trinityBoss = null;
+    this.endingController = elements.sanctuaryEndingOverlay ? new SanctuaryEndingController({
+      elements: {
+        overlay: elements.sanctuaryEndingOverlay,
+        choicePanel: elements.endingChoicePanel,
+        confirmPanel: elements.endingConfirmPanel,
+        restoreButton: elements.endingRestoreButton,
+        sealButton: elements.endingSealButton,
+        resonateButton: elements.endingResonateButton,
+        deferButton: elements.endingDeferButton,
+        confirmButton: elements.endingConfirmButton,
+        cancelButton: elements.endingConfirmCancel,
+        confirmText: elements.endingConfirmText,
+        lockedReason: elements.endingLockedReason,
+        subtitle: elements.endingSubtitle,
+        credits: elements.endingCredits,
+        creditsText: elements.endingCreditsText,
+        skipButton: elements.endingCreditsSkip,
+      },
+      onChoose: choice => this.confirmSanctuaryEnding(choice),
+      onDefer: () => {
+        if (this.running && this.player.respawnTimer <= 0) this.setInputEnabled(true);
+      },
+      onCreditsComplete: () => this.completeSanctuaryCredits(),
+    }) : null;
     this.npcs = getNpcsForWorld(this.mapId, this.progress?.worldProgress);
     this.nearbyNpc = null;
     this.nearbyStoryInteraction = null;
@@ -926,6 +952,7 @@ export class PixelRPG {
     tickPlayerStatus(this.player, dt);
     if (wasRespawning && this.player.respawnTimer === 0) this.finishRespawn();
     this.updateVolcanoEruption(dt);
+    this.updateTrinity(dt);
 
     if (this.portalTransition) {
       this.updatePortalTransition(dt);
@@ -1045,6 +1072,7 @@ export class PixelRPG {
   }
 
   receiveBossPlayerDamage(values) {
+    if (this.isOriginSpectator()) return;
     const events = Array.isArray(values) ? values : Object.values(values || {});
     this.processedBossPlayerDamageIds ||= new Set();
     for (const event of events) {
@@ -1066,14 +1094,21 @@ export class PixelRPG {
   handleBossControllerEvents(events) {
     for (const event of events || []) {
       if (event?.type === "damage-player") {
-        this.damagePlayer(event.amount ?? event.damage, this.coopBossController?.renderableBoss() || this.player);
+        if (!this.isOriginSpectator()) {
+          this.damagePlayer(event.amount ?? event.damage, this.coopBossController?.renderableBoss() || this.player);
+        }
       } else if (event?.type === "boss-defeated") {
-        this.processBossReward(event, "local-player");
+        if (event.bossId === "origin-zero") {
+          if (this.recordLocalOriginDefeat(event.encounterId)) this.openSanctuaryEndingChoice();
+        } else {
+          this.processBossReward(event, "local-player");
+        }
       }
     }
   }
 
   updateBossController(dt, context = {}, timestamp = performance.now()) {
+    if (this.isOriginSpectator()) return [];
     const controller = this.coopBossController;
     if (!controller) return [];
     const returnedEvents = controller.update?.(dt, context, timestamp);
@@ -1152,6 +1187,21 @@ export class PixelRPG {
         await this.network?.coopBoss?.expireRewardClaim?.(claim.encounterId);
         continue;
       }
+      if (claim.bossId === "origin-zero") {
+        const localSaved = this.progress?.worldProgress?.chapters?.sanctuary?.originDefeated === true
+          || this.recordLocalOriginDefeat(claim.encounterId);
+        if (!localSaved) continue;
+        try {
+          const claimResult = await this.network.coopBoss.claimReward(claim.encounterId, claim);
+          if (claimResult?.ok) {
+            this.processedBossRewardIds.add(rewardId);
+            this.openSanctuaryEndingChoice();
+          }
+        } catch {
+          // Local receipt is already durable; remote claim cleanup will retry on the next snapshot.
+        }
+        continue;
+      }
       const claimedRewardIds = Array.isArray(this.progress.claimedBossRewardIds)
         ? this.progress.claimedBossRewardIds
         : [];
@@ -1211,7 +1261,7 @@ export class PixelRPG {
   isInteractionOpen() {
     return this.isSaleConfirmOpen() || this.isBlacksmithOpen()
       || this.isQaOpen() || this.isDialogueOpen() || this.isShopOpen() || this.isInventoryOpen()
-      || this.isCommunicationLogOpen();
+      || this.isCommunicationLogOpen() || Boolean(this.endingController?.active);
   }
 
   openCommunicationLog() {
@@ -2159,7 +2209,30 @@ export class PixelRPG {
   }
 
   targetableBosses() {
-    return this.coopBossController?.targetableBosses?.() || [this.coopBossController?.targetableBoss?.()].filter(Boolean);
+    if (this.isOriginSpectator()) return [];
+    const trinity = this.ensureTrinityEncounter();
+    if (trinity) {
+      return [{ ...trinity, radius: 38, targetable: true, isTrinity: true, isCoopBoss: false }];
+    }
+    return this.coopBossController?.targetableBosses?.()
+      || [this.coopBossController?.targetableBoss?.()].filter(Boolean);
+  }
+
+  updateTrinity(dt) {
+    const boss = this.ensureTrinityEncounter();
+    if (!boss) return [];
+    const tick = advanceTrinityEncounter(boss, dt, {
+      player: { ...this.player, uid: this.network?.uid || "local-player" },
+      rng: Math.random,
+      now: Date.now(),
+    });
+    this.trinityBoss = tick.state;
+    for (const event of tick.events) {
+      if (["damage-player", "trinity-projectile", "trinity-eruption"].includes(event.type)) {
+        this.damagePlayer(event.amount ?? event.damage, event.source || { x: boss.x, y: boss.y });
+      }
+    }
+    return tick.events;
   }
 
   trySkill(kind, definition) {
@@ -2206,7 +2279,9 @@ export class PixelRPG {
         const hits = targets.filter(t => t.hp > 0 && t.targetable !== false && (d.radius ? Math.hypot(t.x - cast.x, t.y - cast.y) <= d.radius + (t.radius || 0) : isTargetInAttackArc(cast, cast.direction, t, d.range, d.arcDegrees)));
         const rewards = [];
         for (const target of hits) {
-          if (target.isCoopBoss) {
+          if (target.isTrinity) {
+            this.damageTrinity(d.damage);
+          } else if (target.isCoopBoss) {
             this.coopBossController.requestHit({ targetId: target.id, attackKind: cast.kind, castId: cast.id, hitIndex: pulse.hitIndex, player: { ...cast.player, x: this.player.x, y: this.player.y }, classId: cast.classId, weaponId: cast.weaponId, direction: cast.direction }).catch?.(error => console.warn("스킬 요청 실패", error));
           } else {
             const result = damageEnemy(target, d.damage, vector, d.knockback);
@@ -2285,6 +2360,10 @@ export class PixelRPG {
       if (this.processedProjectileHitIds.has(eventId)) continue;
       if (event.targetType === "coop-boss") {
         this.processedProjectileHitIds.add(eventId);
+        if (event.enemyId === "trinity") {
+          this.damageTrinity(event.damage);
+          continue;
+        }
         this.coopBossController?.requestHit({
           targetId: event.enemyId, castId: event.castId, hitIndex: event.hitIndex,
           attackKind: event.attackKind || (event.kind === "piercing-arrow" || event.kind === "explosive-bolt" ? "strong" : "basic"),
@@ -2359,6 +2438,11 @@ export class PixelRPG {
     for (const boss of this.targetableBosses()) {
     if (!this.attackState?.requestedBossIds?.has(boss.id) && isTargetInAttackArc(this.player, this.player.dir, boss, definition.range, definition.arcDegrees)) {
       if (this.attackState) { this.attackState.requestedBossIds ||= new Set(); this.attackState.requestedBossIds.add(boss.id); }
+      if (boss.isTrinity) {
+        this.damageTrinity(definition.damage);
+        hit = true;
+        continue;
+      }
       this.coopBossController.requestHit({
         targetId: boss.id,
         attackKind: kind,
@@ -2608,10 +2692,16 @@ export class PixelRPG {
       ctx.save(); ctx.strokeStyle = cast.definition.delivery === "meteor" ? "#ff8a42" : "#7dd3fc"; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(cast.x - cameraX, cast.y - cameraY, cast.definition.radius, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
     }
-    const coopBoss = this.coopBossController?.renderableBoss();
-    const visibleBosses = this.coopBossController?.renderableBosses?.() || (coopBoss ? [coopBoss] : []);
+    const coopBoss = this.isOriginSpectator() ? null : this.coopBossController?.renderableBoss();
+    const visibleBosses = this.isOriginSpectator()
+      ? []
+      : (this.coopBossController?.renderableBosses?.() || (coopBoss ? [coopBoss] : []));
     for (const boss of visibleBosses) {
       if (boss.hp > 0) entities.push({ entityType: "coop-boss", enemy: boss, x: boss.x, y: boss.y });
+    }
+    const trinity = this.ensureTrinityEncounter();
+    if (trinity?.hp > 0) {
+      entities.push({ entityType: "coop-boss", enemy: { ...trinity, radius: 38 }, x: trinity.x, y: trinity.y });
     }
     this.npcs.forEach(npc => entities.push({ entityType: "npc", npc, x: npc.x, y: npc.y }));
     appendStorySignalEntities(entities, storyRenderables);
@@ -2914,7 +3004,15 @@ export class PixelRPG {
   openSanctuaryEndingChoice() {
     const s = this.progress?.worldProgress?.chapters?.sanctuary;
     if (!s?.originDefeated || s.endingChoice || !this.endingController) return false;
-    return this.endingController.openChoice({ choices: availableSanctuaryEndings(this.progress), deferAllowed: true }) !== false;
+    this.keys?.clear?.();
+    if (this.player) this.player.moving = false;
+    this.attackState = null;
+    if (this.keys instanceof Set) this.setInputEnabled(false);
+    else this.inputEnabled = false;
+    return this.endingController.openChoice({
+      choices: availableSanctuaryEndings(this.progress),
+      deferAllowed: true,
+    }) !== false;
   }
   confirmSanctuaryEnding(choice) {
     const chosen = chooseSanctuaryEnding(this.progress, choice); if (!chosen.changed) return false;
@@ -2937,10 +3035,23 @@ export class PixelRPG {
     this.updateProgressHud?.(); this.updateChapterUi?.(); return true;
   }
   completeSanctuaryCredits() {
-    this.endingController?.close?.(); this.trinityBoss = null; this.mapId = "village";
+    this.endingController?.close?.();
+    this.trinityBoss = null;
     const spawn = getWorldDefinition("village").spawn;
-    if (this.player) { this.player.x=spawn.x; this.player.y=spawn.y; this.player.prevX=spawn.x; this.player.prevY=spawn.y; }
-    this.notify?.("PIXEL WORLD — 제1부 완료"); return true;
+    if (typeof this.switchWorld === "function") this.switchWorld("village", spawn.x, spawn.y, false);
+    else {
+      this.mapId = "village";
+      if (this.player) {
+        this.player.x = spawn.x;
+        this.player.y = spawn.y;
+        this.player.prevX = spawn.x;
+        this.player.prevY = spawn.y;
+      }
+    }
+    this.resetCombatState?.();
+    this.setInputEnabled?.(true);
+    this.notify?.("PIXEL WORLD — 제1부 완료");
+    return true;
   }
 }
 
