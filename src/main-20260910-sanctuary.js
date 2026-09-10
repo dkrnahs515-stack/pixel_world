@@ -13,11 +13,19 @@ import {
 } from "./class-selection-20260905-upgrade.js";
 import { readStoredPlayMode, storePlayMode } from "./play-mode-20260905-upgrade.js";
 import { isQaMode } from "./qa-mode-20260910-sanctuary.js";
+import { FirstJourneyController } from "./first-journey-controller-20260910-sanctuary.js";
 
 const qaEnabled = isQaMode(location.search);
 
 const elements = {
   qaEnabled,
+  firstJourneyOverlay: document.querySelector("#firstJourneyOverlay"),
+  firstJourneyText: document.querySelector("#firstJourneyText"),
+  firstJourneyContinue: document.querySelector("#firstJourneyContinue"),
+  firstJourneySkip: document.querySelector("#firstJourneySkip"),
+  helpButton: document.querySelector("#helpButton"),
+  beginnerGuideOverlay: document.querySelector("#beginnerGuideOverlay"),
+  beginnerGuideClose: document.querySelector("#beginnerGuideClose"),
   canvas: document.querySelector("#game"),
   minimap: document.querySelector("#minimap"),
   hpBar: document.querySelector("#hpBar"),
@@ -141,6 +149,32 @@ const elements = {
 elements.qaButton.hidden = !qaEnabled;
 
 const game = new PixelRPG(elements);
+const firstJourneyController = new FirstJourneyController({
+  overlay: elements.firstJourneyOverlay,
+  text: elements.firstJourneyText,
+  continueButton: elements.firstJourneyContinue,
+  skipButton: elements.firstJourneySkip,
+  reducedMotion: matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true,
+  onComplete: result => game.finishFirstJourneyIntro(result),
+});
+elements.firstJourneyContinue?.addEventListener("click", () => firstJourneyController.advanceFrame());
+elements.firstJourneySkip?.addEventListener("click", () => firstJourneyController.skip());
+elements.firstJourneyOverlay?.addEventListener("keydown", event => {
+  if (event.code === "Enter" || event.code === "Space") {
+    event.preventDefault();
+    event.stopPropagation();
+    firstJourneyController.handleKey(event.code);
+  } else if (event.code === "Tab") {
+    event.preventDefault();
+    event.stopPropagation();
+    const controls = [elements.firstJourneyContinue, elements.firstJourneySkip].filter(Boolean);
+    const index = controls.indexOf(document.activeElement);
+    const offset = event.shiftKey ? -1 : 1;
+    controls[(index + offset + controls.length) % controls.length]?.focus();
+  } else {
+    event.stopPropagation();
+  }
+});
 const hud = document.querySelector("#hud");
 const entryOverlay = document.querySelector("#entryOverlay");
 const exitOverlay = document.querySelector("#exitOverlay");
@@ -292,6 +326,10 @@ nicknameForm.addEventListener("submit", async event => {
     await game.enter(selection.nickname, selection.classId, selection.playMode);
     entryOverlay.hidden = true;
     hud.hidden = false;
+    if (game.shouldPlayFirstJourneyIntro()) {
+      game.beginFirstJourneyIntro();
+      firstJourneyController.start();
+    }
   } catch (error) {
     console.error(error);
     nicknameError.textContent = "게임 접속에 실패했습니다. 잠시 후 다시 시도해 주세요.";

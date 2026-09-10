@@ -103,3 +103,28 @@
     min-height: 66px;
   }
 }
+
+
+.first-journey-overlay {
+  position: fixed; inset: 0; z-index: 140; display: grid; place-items: center;
+  padding: clamp(18px, 4vw, 48px); background: #02050a; color: #e8f4ff;
+}
+.first-journey-overlay[hidden], .beginner-guide-overlay[hidden] { display: none !important; }
+.first-journey-card { width: min(760px, 100%); display: grid; gap: 22px; }
+.first-journey-card h2 { margin: 0; font-size: clamp(26px, 4vw, 44px); letter-spacing: .05em; }
+.first-journey-text { min-height: 11rem; margin: 0; white-space: pre-wrap; font-size: clamp(16px, 2.2vw, 22px); line-height: 1.8; text-wrap: pretty; }
+.first-journey-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.first-journey-actions button { min-width: 150px; }
+.beginner-guide-overlay { z-index: 135; }
+.beginner-guide-card { width: min(820px, calc(100vw - 28px)); max-height: min(86vh, 760px); overflow: auto; }
+.beginner-guide-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; text-align: left; }
+.beginner-guide-grid section { padding: 14px; border: 1px solid rgba(255,255,255,.12); border-radius: 12px; background: rgba(5,14,25,.45); }
+.beginner-guide-grid h3 { margin: 0 0 8px; }
+.beginner-guide-grid p { margin: 0; line-height: 1.7; }
+.beginner-guide-controls { grid-column: 1 / -1; }
+.beginner-guide-controls kbd { margin-inline: 2px; }
+/* arrival-glitch is canvas-only; this hook keeps reduced-motion semantics explicit. */
+@media (max-width: 680px) { .beginner-guide-grid { grid-template-columns: 1fr; } .beginner-guide-controls { grid-column: auto; } }
+@media (prefers-reduced-motion: reduce) {
+  .first-journey-overlay *, .beginner-guide-overlay * { animation: none !important; transition: none !important; }
+}

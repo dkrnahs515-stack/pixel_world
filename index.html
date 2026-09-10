@@ -10,6 +10,32 @@
 <body>
   <canvas id="game" tabindex="0" aria-label="2D 픽셀 온라인 RPG 게임 화면"></canvas>
 
+  <section id="firstJourneyOverlay" class="first-journey-overlay" hidden aria-label="픽셀 월드 시작 이야기">
+    <div class="first-journey-card" role="dialog" aria-modal="true" aria-labelledby="firstJourneyTitle" aria-describedby="firstJourneyText">
+      <p class="eyebrow">PIXEL WORLD // BOOT SEQUENCE</p>
+      <h2 id="firstJourneyTitle">세계 연결 복구 중</h2>
+      <p id="firstJourneyText" class="first-journey-text" aria-live="polite"></p>
+      <div class="first-journey-actions">
+        <button id="firstJourneyContinue" class="primary-button" type="button">계속</button>
+        <button id="firstJourneySkip" class="secondary-button" type="button">인트로 건너뛰기</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="beginnerGuideOverlay" class="screen-overlay beginner-guide-overlay" hidden>
+    <div class="modal-card beginner-guide-card" role="dialog" aria-modal="true" aria-labelledby="beginnerGuideTitle">
+      <button id="beginnerGuideClose" class="dialogue-close" type="button" aria-label="초심자 가이드 닫기">×</button>
+      <p class="eyebrow">BEGINNER GUIDE</p>
+      <h2 id="beginnerGuideTitle">픽셀 월드 초심자 가이드</h2>
+      <p class="modal-description">조각난 데이터의 대륙을 탐험하고 세 지역의 코어 반응을 추적하세요.</p>
+      <div class="beginner-guide-grid">
+        <section><h3>직업과 장비</h3><p><b>검사</b> 근접 검격 · <b>궁수</b> 원거리 화살 · <b>마법사</b> 범위 마법. 대장장이 브란의 대장간에서 레벨에 맞는 일반 장비 21종을 구매·판매·장착할 수 있습니다.</p></section>
+        <section><h3>플레이 모드</h3><p><b>솔로</b>는 스토리에 집중하는 오프라인 플레이, <b>온라인</b>은 최대 10명이 채팅과 협동 보스를 함께 즐기는 모드입니다.</p></section>
+        <section class="beginner-guide-controls"><h3>기본 조작</h3><p><kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd> 이동 · <kbd>Ctrl</kbd> 기본 공격 · <kbd>Q</kbd> 직업 스킬 · <kbd>E</kbd> Lv.5 해금 · <kbd>R</kbd> Lv.10 해금 · <kbd>F</kbd> 대화/조사 · <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> 퀵슬롯 · <kbd>I</kbd> 인벤토리 · <kbd>Enter</kbd> 온라인 채팅 · <kbd>Esc</kbd> 닫기/나가기</p></section>
+      </div>
+    </div>
+  </section>
+
   <div id="entryOverlay" class="screen-overlay">
     <form id="nicknameForm" class="modal-card entry-card" novalidate>
       <div class="modal-emblem" aria-hidden="true">⚔</div>
@@ -110,6 +136,7 @@
         </div>
         <div class="player-actions">
           <span id="networkBadge" class="status offline">오프라인</span>
+          <button id="helpButton" class="qa-button" type="button" aria-label="초심자 가이드 열기">?</button>
           <button id="qaButton" class="qa-button" type="button" aria-label="QA 도구 열기" hidden>QA</button>
           <button id="inventoryButton" class="inventory-button" type="button" aria-label="인벤토리 열기">
             <span aria-hidden="true">🎒</span><kbd>I</kbd>

@@ -104,6 +104,7 @@ import {
   acceptAdventureQuest,
   completeAdventureQuest,
   createInitialProgress,
+  markIntroSeen,
   recordAdventureKill,
 } from "./quest-state-20260910-sanctuary.js";
 import { arenDialogueModel } from "./aren-dialogue-20260829-coast-20260905-upgrade.js";
@@ -136,6 +137,7 @@ import { advanceTrinityEncounter, applyTrinityDamage, createTrinityEncounter } f
 const PLAYER_RADIUS = 14;
 const PROJECTILE_SPAWN_OFFSET = PLAYER_RADIUS + 18;
 const MINIMAP_FRAME_MS = 100;
+export const FIRST_JOURNEY_ARRIVAL_GLITCH_MS = 1100;
 
 function createEnemies(mapId) {
   return getWorldDefinition(mapId).enemySpawns
@@ -377,6 +379,8 @@ export class PixelRPG {
     this.chatMessages = [];
     this.chatInputActive = false;
     this.qaEnabled = Boolean(elements.qaEnabled);
+    this.firstJourneyActive = false;
+    this.arrivalGlitchUntil = 0;
     this.progress = createInitialProgress();
     this.trinityBoss = null;
     this.endingController = elements.sanctuaryEndingOverlay ? new SanctuaryEndingController({
@@ -483,6 +487,21 @@ export class PixelRPG {
       const controls = this.activeInventoryFocusControls();
       event.preventDefault();
       nextDialogueFocus(controls, document.activeElement, event.shiftKey)?.focus();
+    });
+    elements.helpButton?.addEventListener("click", () => this.openBeginnerGuide());
+    elements.beginnerGuideClose?.addEventListener("click", () => this.closeBeginnerGuide());
+    elements.beginnerGuideOverlay?.addEventListener("keydown", event => {
+      if (event.code === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        this.closeBeginnerGuide();
+      } else if (event.code === "Tab") {
+        event.preventDefault();
+        event.stopPropagation();
+        elements.beginnerGuideClose?.focus();
+      } else {
+        event.stopPropagation();
+      }
     });
     elements.qaButton?.addEventListener("click", () => this.openQaPanel());
     elements.qaCloseButton?.addEventListener("click", () => this.closeQaPanel());
@@ -637,6 +656,9 @@ export class PixelRPG {
     this.closeInventory();
     this.closeQaPanel();
     this.closeCommunicationLog();
+    this.firstJourneyActive = false;
+    this.arrivalGlitchUntil = 0;
+    if (this.ui.beginnerGuideOverlay) this.ui.beginnerGuideOverlay.hidden = true;
     this.nearbyNpc = null;
     this.updateNpcPrompt();
 
@@ -653,6 +675,74 @@ export class PixelRPG {
 
   isRunning() {
     return this.running;
+  }
+
+  shouldPlayFirstJourneyIntro() {
+    return this.running && this.progress?.introSeen !== true;
+  }
+
+  isFirstJourneyActive() {
+    return this.firstJourneyActive === true;
+  }
+
+  beginFirstJourneyIntro() {
+    if (!this.shouldPlayFirstJourneyIntro() || this.isInteractionOpen()) return false;
+    this.firstJourneyActive = true;
+    this.setInputEnabled(false);
+    return true;
+  }
+
+  finishFirstJourneyIntro({ skipped = false } = {}) {
+    if (!this.firstJourneyActive) return false;
+    this.firstJourneyActive = false;
+    this.progress = markIntroSeen(this.progress);
+    const saved = this.persistProgress("인트로 확인 상태를 저장하지 못했습니다. 다음 접속 때 다시 표시될 수 있습니다.");
+    this.playArrivalGlitch();
+    if (this.running && this.player.respawnTimer <= 0) this.setInputEnabled(true);
+    this.questBanner?.enqueue([{
+      kind: "main",
+      title: "모험의 시작",
+      body: "현자 아렌과 대화하세요.",
+      location: "중앙 초원",
+      reward: "EXP 15 · Gold 30",
+      next: "태고의 숲의 코어 반응을 추적한다",
+      controls: "방향키 이동 · F 대화 · Ctrl 공격",
+    }]);
+    if (!saved) this.notify("인트로 확인 상태를 저장하지 못했습니다. 다음 접속 때 다시 표시될 수 있습니다.");
+    return { ok: true, saved, skipped: Boolean(skipped) };
+  }
+
+  playArrivalGlitch(duration = FIRST_JOURNEY_ARRIVAL_GLITCH_MS) {
+    const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : FIRST_JOURNEY_ARRIVAL_GLITCH_MS;
+    this.arrivalGlitchUntil = performance.now() + safeDuration;
+    return this.arrivalGlitchUntil;
+  }
+
+  isArrivalGlitchActive(timestamp = performance.now()) {
+    return Number.isFinite(this.arrivalGlitchUntil) && timestamp < this.arrivalGlitchUntil;
+  }
+
+  isBeginnerGuideOpen() {
+    return Boolean(this.ui.beginnerGuideOverlay && !this.ui.beginnerGuideOverlay.hidden);
+  }
+
+  openBeginnerGuide() {
+    if (!this.ui.beginnerGuideOverlay || !this.running || !this.inputEnabled || this.chatInputActive
+      || this.portalTransition || this.player.respawnTimer > 0 || this.isInteractionOpen()) return false;
+    this.setInputEnabled(false);
+    this.ui.beginnerGuideOverlay.hidden = false;
+    this.ui.beginnerGuideClose?.focus();
+    return true;
+  }
+
+  closeBeginnerGuide() {
+    if (!this.ui.beginnerGuideOverlay || !this.isBeginnerGuideOpen()) return false;
+    this.ui.beginnerGuideOverlay.hidden = true;
+    this.keys.clear();
+    this.player.moving = false;
+    if (this.running && this.player.respawnTimer <= 0 && !this.isFirstJourneyActive()) this.setInputEnabled(true);
+    this.canvas?.focus?.();
+    return true;
   }
 
   setSessionMode(mode, reason = "selected") {
@@ -1266,7 +1356,8 @@ export class PixelRPG {
   isInteractionOpen() {
     return this.isSaleConfirmOpen() || this.isBlacksmithOpen()
       || this.isQaOpen() || this.isDialogueOpen() || this.isShopOpen() || this.isInventoryOpen()
-      || this.isCommunicationLogOpen() || Boolean(this.endingController?.active);
+      || this.isCommunicationLogOpen() || this.isBeginnerGuideOpen() || this.isFirstJourneyActive()
+      || Boolean(this.endingController?.active);
   }
 
   openCommunicationLog() {
@@ -2781,7 +2872,26 @@ export class PixelRPG {
       const message = bubbles.get(entity.uid);
       if (message) drawChatBubble(ctx, entity, message, cameraX, cameraY, viewW, viewH);
     }
+    this.drawArrivalGlitch(ctx, timestamp, viewW, viewH);
     this.renderMinimap(timestamp);
+  }
+
+  drawArrivalGlitch(ctx, timestamp, width, height) {
+    if (!this.isArrivalGlitchActive(timestamp)) return false;
+    const remaining = Math.max(0, this.arrivalGlitchUntil - timestamp);
+    const strength = Math.min(1, remaining / FIRST_JOURNEY_ARRIVAL_GLITCH_MS);
+    ctx.save();
+    ctx.globalAlpha = 0.12 + strength * 0.18;
+    for (let index = 0; index < 8; index += 1) {
+      const seed = Math.floor(timestamp / 45) + index * 17;
+      const y = Math.abs(seed * 47) % Math.max(1, height);
+      const h = 2 + Math.abs(seed * 13) % 10;
+      const shift = ((seed % 3) - 1) * (5 + Math.round(strength * 12));
+      ctx.fillStyle = index % 2 ? "#67e8f9" : "#f472b6";
+      ctx.fillRect(shift, y, width, h);
+    }
+    ctx.restore();
+    return true;
   }
 
   drawDamageNumbers(ctx, cameraX, cameraY) {
