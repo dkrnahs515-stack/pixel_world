@@ -46,3 +46,13 @@ jobs:
           node tests/reward-browser-smoke.cjs
           PIXEL_WORLD_URL=http://127.0.0.1:4173 node tests/sanctuary-browser-smoke.cjs
           PIXEL_WORLD_URL=http://127.0.0.1:4173 node tests/sanctuary-online-browser-smoke.cjs
+          PIXEL_WORLD_URL=http://127.0.0.1:4173 node tests/sanctuary-real-input-smoke.cjs
+
+      - name: Save real-input browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sanctuary-real-input-evidence
+          path: tests/.artifacts/
+          include-hidden-files: true
+          retention-days: 7
