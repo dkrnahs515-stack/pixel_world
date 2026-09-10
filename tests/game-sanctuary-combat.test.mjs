@@ -26,10 +26,17 @@ test("game exposes the active boss through one spectator-safe renderable adapter
   game.mapId = "sanctuary-core-heart";
   game.progress = createInitialProgress();
   game.progress.worldProgress = originReadyProgress();
-  const boss = { bossId: "origin-zero", encounterId: "origin-local-1", hp: 1200 };
-  game.coopBossController = { renderableBoss: () => boss };
+  const view = { id: "origin-zero", hp: 1200, kind: "core-sentinel" };
+  game.coopBossController = {
+    renderableBoss: () => view,
+    snapshot: { bossId: "origin-zero", encounterId: "origin-local-1" },
+  };
 
-  assert.equal(game.renderableBoss(), boss);
+  assert.deepEqual(game.renderableBoss(), {
+    ...view,
+    bossId: "origin-zero",
+    encounterId: "origin-local-1",
+  });
 
   game.progress.worldProgress = originDefeatedProgress();
   assert.equal(game.renderableBoss(), null);
