@@ -1,5 +1,6 @@
 import { isStoryInteractionEligible } from "./story-interactions-20260910-sanctuary.js";
 import { SANCTUARY_STORY_INTERACTIONS } from "./sanctuary-story-data-20260910-sanctuary.js";
+import { ADVENTURE_QUEST } from "./quest-state-20260910-sanctuary.js";
 import {
   SANCTUARY_ARCHIVE_IDS,
   SANCTUARY_ORIGIN_RECORD_IDS,
@@ -64,6 +65,50 @@ export function sanctuaryObjective(worldProgress) {
   }
 
   return { text: "PIXEL WORLD — 제1부 완료", targetMapId: "village" };
+}
+
+export function campaignObjective(progress, mapId = "village") {
+  const quest = progress?.quests?.[ADVENTURE_QUEST.id];
+  const worldProgress = progress?.worldProgress || {};
+  const completedRegions = new Set(worldProgress.completedRegionIds || []);
+  const sanctuary = worldProgress.chapters?.sanctuary || {};
+
+  if (sanctuary.chapterCompleted === true) {
+    return { eyebrow: "EPILOGUE", text: "PIXEL WORLD 제1부 완료", targetMapId: "village" };
+  }
+
+  if (quest?.status === "available") {
+    return { eyebrow: "CHAPTER 1", text: "아렌에게 대륙의 상황을 듣는다.", targetMapId: "village" };
+  }
+  if (quest?.status === "active") {
+    return { eyebrow: "CHAPTER 1", text: "외부 지역의 슬라임 3마리를 처치한다.", targetMapId: "forest" };
+  }
+  if (quest?.status === "ready_to_report") {
+    return { eyebrow: "CHAPTER 1", text: "아렌에게 임무를 보고한다.", targetMapId: "village" };
+  }
+
+  if (!completedRegions.has("forest")) {
+    return { eyebrow: "CHAPTER 1", text: "태고의 숲의 코어 반응을 추적한다.", targetMapId: "forest" };
+  }
+  if (!completedRegions.has("coast")) {
+    return { eyebrow: "CHAPTER 2", text: "푸른 해안의 세라 신호를 추적한다.", targetMapId: "coast-beach" };
+  }
+  if (!completedRegions.has("volcano")) {
+    return { eyebrow: "CHAPTER 3", text: "활화산의 선발대를 추적한다.", targetMapId: "volcano-ash-gate" };
+  }
+
+  const inSanctuary = typeof mapId === "string" && mapId.startsWith("sanctuary");
+  const sanctuaryStarted = inSanctuary
+    || (sanctuary.activatedResonanceNodeIds?.length ?? 0) > 0
+    || (sanctuary.restoredArchiveIds?.length ?? 0) > 0
+    || (sanctuary.originRecordIds?.length ?? 0) > 0
+    || sanctuary.trinityDefeated === true
+    || sanctuary.originDefeated === true
+    || sanctuary.endingChoice !== null && sanctuary.endingChoice !== undefined;
+  if (sanctuaryStarted) {
+    return { eyebrow: "CHAPTER 4", ...sanctuaryObjective(worldProgress) };
+  }
+  return { eyebrow: "CHAPTER 4", text: "픽셀 코어 성역으로 향한다.", targetMapId: "sanctuary" };
 }
 
 function completedStoryIds(chapters) {
