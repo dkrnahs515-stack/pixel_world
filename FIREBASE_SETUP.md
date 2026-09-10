@@ -27,8 +27,6 @@ Firebase Console:
 
 Database URL은 `src/firebase-config.js`의 `databaseURL`에 설정합니다.
 
-예시:
-
 ```js
 databaseURL: "https://pixel-world-8cb9b-default-rtdb.REGION.firebasedatabase.app"
 ```
@@ -47,23 +45,23 @@ firebase deploy --only database
 
 현재 정확히 15개 물리 맵을 사용합니다.
 
-- `village` — 2880×1800
-- `forest` — 4320×3600
-- `coast-beach` — 2160×1800
-- `coast-wreck-bay` — 2160×1800
-- `coast-flooded-station` — 2160×1800
-- `coast-tide-core-cave` — 2160×1800
-- `volcano` — 2160×1800
-- `volcano-magma-route` — 2160×1800
-- `volcano-observatory` — 2160×1800
-- `volcano-core-caldera` — 2160×1800
-- `sanctuary` — 2160×1800
-- `sanctuary-resonance-hall` — 2160×1800
-- `sanctuary-origin-archive` — 2160×1800
-- `sanctuary-zero-boundary` — 2160×1800
-- `sanctuary-core-heart` — 2160×1800
+- `village` — 2,880 × 1,800
+- `forest` — 4,320 × 3,600
+- `coast-beach` — 2,160 × 1,800
+- `coast-wreck-bay` — 2,160 × 1,800
+- `coast-flooded-station` — 2,160 × 1,800
+- `coast-tide-core-cave` — 2,160 × 1,800
+- `volcano` — 2,160 × 1,800
+- `volcano-magma-route` — 2,160 × 1,800
+- `volcano-observatory` — 2,160 × 1,800
+- `volcano-core-caldera` — 2,160 × 1,800
+- `sanctuary` — 2,160 × 1,800
+- `sanctuary-resonance-hall` — 2,160 × 1,800
+- `sanctuary-origin-archive` — 2,160 × 1,800
+- `sanctuary-zero-boundary` — 2,160 × 1,800
+- `sanctuary-core-heart` — 2,160 × 1,800
 
-레거시 `coast`, 누락값, 미등록 mapId, 음수 좌표, 맵 경계를 넘는 좌표는 거부합니다.
+누락된 `mapId`와 레거시 `coast`, 빈 값, 미등록 mapId는 모두 거부합니다. 좌표가 음수이거나 각 맵의 최대 경계를 넘는 쓰기도 거부합니다.
 
 ## 4. 데이터 구조
 
@@ -73,7 +71,7 @@ firebase deploy --only database
 
 현재 위치·방향·물리 `mapId`·직업·장착 무기·온라인 생존 판정에 필요한 제한된 HP 상태를 저장합니다. 이동 중 위치 쓰기는 최대 2Hz이며 정지 중에는 30초 heartbeat를 사용합니다. 최초 `joinedAt`은 같은 UID가 임의로 교체할 수 없습니다.
 
-직업별 장착 무기는 허용된 해당 직업 무기만 전송할 수 있습니다. 히든 무기는 명시적인 일치 `classId`가 있어야 합니다.
+직업별 장착 무기는 허용된 해당 직업 무기만 전송할 수 있습니다. 히든 무기는 명시적인 일치 `classId`가 있어야 합니다. `classId`가 없거나 누락된 레거시 presence에는 기존 일곱(7종) 검 장비만 허용하고 히든 무기는 허용하지 않습니다.
 
 다음 값은 presence에 넣지 않습니다.
 
@@ -107,23 +105,25 @@ UID별 최근 메시지는 최대 5개를 유지하고 전체 채팅 구독은 �
 - `state` — 현재 encounter/HP/위치/authority lease
 - `attacks/{uid}/{sequence}` — 플레이어 공격 요청
 - `playerDamage/{uid}/{eventId}` — authority가 생성한 피해 이벤트
-- `rewardClaims/{uid}/{encounterId}` — 개인 수령/완료 claim
+- `rewardClaims/{encounterId}/{uid}` — 개인 수령/완료 claim
 
-공격 damage는 클라이언트 요청값을 신뢰하지 않고 서버 역할을 하는 authority가 직업·레벨·무기·스킬 자원·위치·방향·시간·sequence로 다시 계산합니다.
+공격 damage는 클라이언트 요청값을 신뢰하지 않고 authority가 직업·레벨·무기·스킬 자원·위치·방향·시간·sequence로 다시 계산합니다. 경로의 `sequence`와 payload `sequence`가 일치하지 않으면 요청을 거부합니다.
+
+보상 claim은 현재 `defeated` 상태의 encounter와 ID가 일치할 때만 생성할 수 있으며, 이전 encounter replay는 거부합니다.
 
 ## 5. ORIGIN-0 온라인 계약
 
 `ORIGIN-0 — 최초의 수호자`는 `sanctuary-core-heart`에서만 공유되는 최종 보스입니다.
 
-- 솔로 base HP: 1200
+- 솔로 base HP: 1,200
 - 온라인 HP는 기존 party multiplier 계약을 사용
 - 최대 공개방 10명
 - HP·위치·phase·3개 core anchor·rewrite 진행을 공유
 - authority lease가 만료되거나 현재 authority가 나가면 다음 참가자가 마지막 확정 상태를 이어받음
 - Phase 4의 anchor가 활성 상태이면 보스를 1 HP 아래로 끝낼 수 없음
-- 처치 후 기존 지역 보스와 같은 3분 lifecycle을 사용할 수 있지만, 개인적으로 처치 영수증을 가진 플레이어는 재등장 ORIGIN 전투에 다시 참여하지 않음
+- 개인적으로 처치 영수증을 가진 플레이어는 이후 공유 ORIGIN 재등장 전투에 다시 참여하지 않음
 
-ORIGIN `rewardClaims`는 일반 EXP/Gold 보상이 아니라 **개인 로컬 처치 영수증 전달용 0/0 claim**입니다. 게임은 해당 claim을 받으면 먼저 닉네임의 v8 로컬 저장에 `originDefeated`와 encounter receipt를 기록합니다. 로컬 저장 성공 후에만 원격 claim을 acknowledge합니다.
+ORIGIN `rewardClaims`는 일반 EXP/Gold 보상이 아니라 개인 로컬 처치 영수증 전달용 0/0 claim입니다. 게임은 해당 claim을 받으면 먼저 닉네임의 v8 로컬 저장에 `originDefeated`와 encounter receipt를 기록합니다. 로컬 저장 성공 후에만 원격 claim을 acknowledge합니다.
 
 저장 성공 후 그 클라이언트는 `sanctuary-core-heart`에서 ORIGIN spectator가 됩니다.
 
@@ -137,7 +137,7 @@ ORIGIN `rewardClaims`는 일반 EXP/Gold 보상이 아니라 **개인 로컬 처
 
 ## 6. TRINITY와 보상 코드 경계
 
-`TRINITY`는 솔로와 온라인 모두 **개인 로컬 중간 보스**이며 Firebase boss 경로를 사용하지 않습니다.
+`TRINITY`는 솔로와 온라인 모두 개인 로컬 중간 보스이며 Firebase boss 경로를 사용하지 않습니다.
 
 - base HP 800
 - 온라인에서도 다른 플레이어와 HP/phase를 공유하지 않음
@@ -152,21 +152,17 @@ ORIGIN `rewardClaims`는 일반 EXP/Gold 보상이 아니라 **개인 로컬 처
 - JS: `src/main-20260910-sanctuary.js`
 - CSS: `styles-20260910-sanctuary.css`
 
-성역 릴리스에서 변경된 ES 모듈과 그 import 상위 그래프는 `20260910-sanctuary` 물리 파일 체인을 사용합니다. 쿼리 문자열 버전에 의존하지 않습니다. `tests/sanctuary-cache-contract.test.mjs`가 변경된 parent가 이전 physical copy의 변경 child를 참조하지 않는지 검사합니다.
+성역 릴리스에서 변경된 ES 모듈과 그 import 상위 그래프는 `20260910-sanctuary` 물리 파일 체인을 사용합니다. `tests/sanctuary-cache-contract.test.mjs`가 변경된 parent가 이전 physical copy의 변경 child를 참조하지 않는지 검사합니다.
+
+이전 활화산 릴리스의 기준 엔트리 `main-20260903-volcano.js`와 `tests/volcano-cache-contract.test.mjs`는 회귀 호환성 검증 대상으로 유지하되 현재 live entry는 성역 버전입니다.
 
 ## 8. Firebase Hosting
 
-자동 배포 워크플로:
+자동 배포 워크플로: `.github/workflows/firebase-hosting-merge.yml`
 
-`.github/workflows/firebase-hosting-merge.yml`
-
-필요한 GitHub Actions Secret:
-
-`FIREBASE_SERVICE_ACCOUNT_PIXEL_WORLD_8CB9B`
+필요한 GitHub Actions Secret: `FIREBASE_SERVICE_ACCOUNT_PIXEL_WORLD_8CB9B`
 
 배포 브랜치는 `main`입니다.
-
-수동 배포:
 
 ```bash
 npm install -g firebase-tools
@@ -182,26 +178,21 @@ Hosting 주소:
 
 ## 9. 테스트
 
-PR과 `main`에서는 다음 검증을 유지합니다.
-
 ```bash
 node --test tests/*.test.mjs tests/*.static.test.cjs
 for file in src/*.js; do node --check "$file"; done
 ```
 
-Realtime Database:
+Realtime Database는 Firebase Emulator에서 allow/deny 규칙을 검증합니다. 브라우저 smoke는 기존 솔로·기본·채팅·해안·활화산 회귀 뒤에 `tests/sanctuary-browser-smoke.cjs`를 실행합니다.
 
-```bash
-firebase emulators:exec --only database -- <rules test command>
-```
-
-브라우저 smoke는 기존 솔로·기본·채팅·해안·활화산 회귀 뒤에 `tests/sanctuary-browser-smoke.cjs`를 실행해 첫 플레이 인트로와 성역 최종장을 검증합니다.
-
-## 10. 보안
+## 10. App Check와 보안
 
 - Firebase 웹 API 키는 브라우저 공개 식별자 전제입니다.
 - Firebase Admin SDK 개인 키/서비스 계정 JSON은 저장소에 커밋하지 않습니다.
 - GitHub Actions에는 Secret 참조만 저장합니다.
 - Realtime Database는 인증 사용자와 경로별 본인 쓰기/authority 쓰기 조건을 규칙으로 제한합니다.
-- App Check는 metric을 먼저 관찰한 뒤 강제합니다.
-- 공식 GitHub Pages 주소와 `?qa=1` QA 주소를 모두 관찰한 후 enforcement를 적용합니다.
+- App Check 웹 provider는 `reCAPTCHA Enterprise`를 사용합니다.
+- 먼저 공식 GitHub Pages 주소와 `?qa=1` 주소에서 App Check metric(메트릭)을 관찰합니다.
+- 정상 요청 비율을 확인한 뒤 Realtime Database enforcement(강제 적용)를 활성화합니다.
+- 강제 적용 전 로컬·CI 검증은 Firebase Emulator 또는 App Check debug token(디버그 토큰)을 사용합니다.
+- 사이트 키가 실제 프로젝트에 등록되기 전에는 임의 키를 저장소에 넣거나 enforcement를 먼저 켜지 않습니다.
