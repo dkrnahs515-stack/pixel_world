@@ -147,6 +147,42 @@ export function normalizeOriginEncounter(value) {
   };
 }
 
+export function acquireOriginAuthority(value, { uid, now = Date.now() } = {}) {
+  const encounter = normalizeOriginEncounter(value);
+  if (!encounter || typeof uid !== "string" || !uid) {
+    return { ok: false, reason: "invalid_authority" };
+  }
+  if (encounter.authorityUid !== uid && encounter.leaseUntil > now) {
+    return { ok: false, reason: "lease_active" };
+  }
+  const changedOwner = encounter.authorityUid !== uid;
+  return {
+    ok: true,
+    encounter: {
+      ...encounter,
+      authorityUid: uid,
+      authorityEpoch: changedOwner ? encounter.authorityEpoch + 1 : encounter.authorityEpoch,
+      leaseUntil: now + AUTHORITY_LEASE_MS,
+      updatedAt: now,
+    },
+  };
+}
+
+export function renewOriginAuthority(value, { uid, authorityEpoch, now = Date.now() } = {}) {
+  const encounter = normalizeOriginEncounter(value);
+  if (!encounter || encounter.authorityUid !== uid || encounter.authorityEpoch !== authorityEpoch) {
+    return { ok: false, reason: "authority_mismatch" };
+  }
+  return {
+    ok: true,
+    encounter: {
+      ...encounter,
+      leaseUntil: now + AUTHORITY_LEASE_MS,
+      updatedAt: now,
+    },
+  };
+}
+
 export function hasActiveOriginAnchors(value) {
   const encounter = normalizeOriginEncounter(value);
   return Boolean(encounter && Object.values(encounter.anchors).some(anchor => anchor.active && anchor.hp > 0));
