@@ -5,13 +5,14 @@ const { chromium } = require("playwright");
  try {
  const page=await browser.newPage({viewport:{width:1440,height:900}});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.route('**/main-20260903-volcano-20260905-upgrade.js',async route=>{const response=await route.fetch();await route.fulfill({response,body:(await response.text())+'\nwindow.__combatGame = game;\n'});});
+ await page.route('**/main-20260910-sanctuary.js',async route=>{const response=await route.fetch();await route.fulfill({response,body:(await response.text())+'\nwindow.__combatGame = game;\n'});});
  await page.goto(process.env.PIXEL_WORLD_URL||'http://127.0.0.1:4175/?qa=1');
  await page.locator('#nicknameInput').fill('skill-runtime-proof');
  await page.locator('[data-class-id="warrior"]').click();
  await page.locator('[data-play-mode="solo"]').click();
  await page.locator('#enterButton').click();
  await page.locator('#hud').waitFor({state:'visible'});
+ const introSkip=page.locator('#firstJourneySkip');if(await introSkip.isVisible()){await introSkip.click();await page.locator('#firstJourneyOverlay').waitFor({state:'hidden'});}
  const result=await page.evaluate(async()=>{
   const g=window.__combatGame;g.running=false;
   const {createEnemyInstance}=await import('./src/enemies-20260829-coast-20260905-upgrade.js');
