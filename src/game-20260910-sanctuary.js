@@ -2338,6 +2338,11 @@ export class PixelRPG {
     return true;
   }
 
+  renderableBoss() {
+    if (this.isOriginSpectator()) return null;
+    return this.coopBossController?.renderableBoss?.() || null;
+  }
+
   targetableBosses() {
     if (this.isOriginSpectator()) return [];
     const trinity = this.ensureTrinityEncounter();
