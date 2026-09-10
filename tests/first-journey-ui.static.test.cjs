@@ -23,8 +23,8 @@ test("first journey and beginner guide expose accessible UI surfaces", () => {
   }
   assert.match(html, /aria-modal=["']true["']/);
   assert.match(html, /초심자 가이드/);
-  assert.match(html, /E[^<]*Lv\.5|Lv\.5[^<]*E/);
-  assert.match(html, /R[^<]*Lv\.10|Lv\.10[^<]*R/);
+  assert.match(html, /<kbd>E<\/kbd>\s*Lv\.5/);
+  assert.match(html, /<kbd>R<\/kbd>\s*Lv\.10/);
 });
 
 test("main wires the cinematic controller only after successful game entry", () => {
