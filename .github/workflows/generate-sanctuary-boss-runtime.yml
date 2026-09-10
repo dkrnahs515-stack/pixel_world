@@ -1,0 +1,36 @@
+name: Generate sanctuary boss runtime
+
+on:
+  push:
+    branches:
+      - feature/pixel-core-sanctuary
+    paths:
+      - scripts/generate-sanctuary-boss-runtime.cjs
+      - .github/workflows/generate-sanctuary-boss-runtime.yml
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/pixel-core-sanctuary
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node scripts/generate-sanctuary-boss-runtime.cjs
+      - name: Commit generated runtime
+        run: |
+          if git diff --quiet -- src/enemies-20260910-sanctuary.js src/coop-boss-controller-20260910-sanctuary.js; then
+            echo "Runtime already generated"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/enemies-20260910-sanctuary.js src/coop-boss-controller-20260910-sanctuary.js
+          git commit -m "fix: wire origin into sanctuary boss runtime"
+          git push origin HEAD:feature/pixel-core-sanctuary
