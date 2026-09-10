@@ -31,3 +31,5 @@
 | Task 11 | PR / merge / deployed smoke | Clean. |
 
 Ruling: this ChatGPT session does not expose an actual subagent-dispatch runtime. I will preserve the same isolation/review gates with one feature branch, task-scoped commits, CI-backed RED/GREEN evidence where local network prevents cloning, and explicit diff review between tasks. Cost if wrong: less context isolation than true fresh subagents, but no change to repository safety gates.
+
+Ruling: Task 1 must persist `sanctuary-resonance-hall` before Task 2 formally adds that map to the region/world registry. Task 1 will temporarily include that single future map ID in the chapter-progress save allow-list and unlock effect; Task 2 will replace the temporary allowance by the canonical registry entry. Cost if wrong: the temporary constant could drift from Task 2's ID, so Task 2 must assert the exact same string and remove the transitional special case.
