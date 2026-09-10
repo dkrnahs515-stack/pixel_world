@@ -99,6 +99,11 @@ export class FirstJourneyController {
     this.timerId = null;
   }
 
+  releaseFocus() {
+    this.continueButton?.blur?.();
+    this.skipButton?.blur?.();
+  }
+
   completeCurrentFrame() {
     if (!this.active || !this.currentFrame) return false;
     this.clearTimer();
@@ -139,6 +144,7 @@ export class FirstJourneyController {
     this.typing = false;
     this.active = false;
     if (this.overlay) this.overlay.hidden = true;
+    this.releaseFocus();
     if (!this.completionSent) {
       this.completionSent = true;
       this.onComplete({ skipped });
@@ -152,6 +158,7 @@ export class FirstJourneyController {
     this.typing = false;
     this.active = false;
     if (this.overlay) this.overlay.hidden = true;
+    this.releaseFocus();
     return true;
   }
 }
