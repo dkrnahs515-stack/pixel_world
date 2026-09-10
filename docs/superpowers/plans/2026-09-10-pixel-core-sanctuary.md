@@ -41,11 +41,8 @@
 Use these exact plain-object contracts across tasks:
 
 ```js
-// Every immutable chapter transition returns this shape.
-// effects is always an array, even when empty.
 const TransitionResult = { progress: {}, effects: [] };
 
-// Sanctuary chapter stored under worldProgress.chapters.sanctuary.
 const SanctuaryChapter = {
   activatedResonanceNodeIds: [],
   restoredArchiveIds: [],
@@ -58,7 +55,6 @@ const SanctuaryChapter = {
   chapterCompleted: false,
 };
 
-// Ending choice model rendered by the DOM controller.
 const EndingChoiceModel = {
   choices: [
     { id: "restore", unlocked: true, reason: null },
@@ -85,7 +81,7 @@ export function rewriteOriginEncounter(overrides = {}) { /* ORIGIN at 20% HP wit
 export function fixedOriginContext(overrides = {}) { /* deterministic players, clock and RNG for controller tests */ }
 ```
 
-Each helper must construct data through exported normalizers/initializers rather than copying production logic. Where a helper needs an unlocked terminal state, it may compose the public transition functions in sequence.
+Each helper constructs data through exported normalizers/initializers rather than copying production logic. Where a helper needs an unlocked terminal state, it composes public transition functions in sequence.
 
 ## File Structure
 
@@ -268,9 +264,9 @@ Use the existing `transition()`/`unlockMap()` pattern. Normalization removes unk
 
 - [ ] **Step 5: Write failing v8 migration and corruption-repair tests**
 
-Create a literal valid v7 payload inside `tests/progress-storage.test.mjs` containing: completed volcano, `captainOutcome: "rescued"`, volcanic hidden weapons, `redeemedCodeIds: ["JAEHOON"]`, inventory, quests, class equipment, and claimed boss receipts. Store it under `v7ProgressStorageKey()` and assert the v8 load preserves each field while adding an empty sanctuary chapter and `endingTitle: null`.
+Create a literal valid v7 payload inside `tests/progress-storage.test.mjs` containing completed volcano, `captainOutcome: "rescued"`, volcanic hidden weapons, `redeemedCodeIds: ["JAEHOON"]`, inventory, quests, class equipment, and claimed boss receipts. Store it under `v7ProgressStorageKey()` and assert the v8 load preserves each field while adding an empty sanctuary chapter and `endingTitle: null`.
 
-Also create a corrupt v8 payload with duplicate/unknown sanctuary IDs and `endingChoice: "unknown"`; assert normalization removes invalid values without erasing valid coast/volcano state.
+Create a corrupt v8 payload with duplicate/unknown sanctuary IDs and `endingChoice: "unknown"`; assert normalization removes invalid values without erasing valid coast/volcano state.
 
 - [ ] **Step 6: Implement v8 read/write and v7→v8 migration**
 
@@ -305,7 +301,7 @@ git commit -m "feat: add sanctuary progress and v8 persistence"
 - Produces `SANCTUARY_MAP_IDS` and `SANCTUARY_WORLD_DEFINITIONS` for the five exact sanctuary IDs.
 - `REGION_DEFINITIONS.sanctuary.mapIds` contains those five IDs in traversal order.
 - `WORLD_IDS.length === 15`.
-- Safe flags are: entrance `true`, origin archive `true`, resonance hall `false`, zero boundary `false`, core heart `false`.
+- Safe flags are entrance `true`, origin archive `true`, resonance hall `false`, zero boundary `false`, core heart `false`.
 
 - [ ] **Step 1: Write failing map-size, world-count and portal tests**
 
@@ -374,11 +370,11 @@ git commit -m "feat: add pixel core sanctuary maps"
 **Interfaces:**
 - Consumes Task 1 transitions and Task 2 map IDs.
 - Produces `SANCTUARY_STORY_INTERACTIONS`, `SANCTUARY_STORY_ACTORS`, `getOriginRecords(progress)`, sanctuary-aware `ALL_STORY_INTERACTIONS`, `storyDialogueModel()` and `storyGuidance()`.
-- Required resonance IDs: `life-resonance`, `memory-resonance`, `energy-resonance`.
-- Required archive IDs: `archive-aren-split`, `archive-vanguard-entry`, `archive-defense-protocol`.
-- Optional origin record placement: `origin-record-single-authority` in resonance hall, `origin-record-sealed-recovery` in origin archive, `origin-record-mutual-validation` in zero boundary.
+- Required resonance IDs are `life-resonance`, `memory-resonance`, `energy-resonance`.
+- Required archive IDs are `archive-aren-split`, `archive-vanguard-entry`, `archive-defense-protocol`.
+- Optional origin record placement is `origin-record-single-authority` in resonance hall, `origin-record-sealed-recovery` in origin archive, `origin-record-mutual-validation` in zero boundary.
 
-- [ ] **Step 1: Write failing story eligibility tests using the shared fixtures**
+- [ ] **Step 1: Write failing story eligibility test using shared fixtures**
 
 ```js
 test("archive interactions are unavailable before all three resonance nodes", () => {
@@ -390,7 +386,7 @@ test("archive interactions are unavailable before all three resonance nodes", ()
 
 - [ ] **Step 2: Write failing previous-choice presentation tests**
 
-Build two valid world-progress literals from `zeroBoundaryUnlockedProgress()` and change only `chapters.volcano.captainOutcome` between `rescued` and `lost`; assert the rescued model includes a live captain transmission while the lost model includes the captain's final recording. Repeat with `chapters.coast.supportChoice` set to `sera`, `echo`, and `mari`; assert only the perspective line changes and all three models expose identical progression actions.
+Build two valid world-progress values from `zeroBoundaryUnlockedProgress()` and change only `chapters.volcano.captainOutcome` between `rescued` and `lost`; assert the rescued model includes a live captain transmission while the lost model includes the captain's final recording. Repeat with `chapters.coast.supportChoice` set to `sera`, `echo`, and `mari`; assert only the perspective line changes and all three models expose identical progression actions.
 
 - [ ] **Step 3: Run story tests and verify failure**
 
@@ -408,9 +404,9 @@ export const ALL_STORY_INTERACTIONS = Object.freeze([
 
 Add a sanctuary branch in eligibility, nearby lookup and resolution. When delegated coast/volcano logic returns, preserve sanctuary state; when sanctuary logic returns, preserve coast and volcano exactly.
 
-- [ ] **Step 5: Implement the approved truth sequence and optional records**
+- [ ] **Step 5: Implement approved truth sequence and optional records**
 
-The three required archive interactions reveal in order: A렌 split life/memory/energy authority; the vanguard re-entered the sanctuary; the captain's emergency access triggered the defense protocol. The three optional origin records use the approved principles from the spec and affect only `resonate` eligibility.
+The three required archive interactions reveal in order: 아렌 split life/memory/energy authority; the vanguard re-entered the sanctuary; the captain's emergency access triggered the defense protocol. The three optional origin records use the approved principles from the spec and affect only `resonate` eligibility.
 
 - [ ] **Step 6: Add sanctuary objective guidance**
 
@@ -444,7 +440,7 @@ git commit -m "feat: add sanctuary truth and story guidance"
 **Interfaces:**
 - Produces enemy kinds `defect-pixel`, `core-sentinel`, `rewrite-echo`.
 - Produces `createTrinityEncounter({ now = Date.now() })`, `trinityPhaseForHp(hp,maxHp)`, `advanceTrinityEncounter(state,dt,context)`, `applyTrinityDamage(state,damage)`, `trinityEncounterCount(rewardEffects)`.
-- `createTrinityEncounter()` returns `{ id: "trinity", hp: 800, maxHp: 800, phase: "life", ...transientState }`.
+- `createTrinityEncounter()` returns `{ id:"trinity", hp:800, maxHp:800, phase:"life", ...transientState }`.
 - TRINITY is never serialized to Firebase; `trinityEncounterCount()` always returns `1`.
 
 - [ ] **Step 1: Write failing enemy and phase-boundary tests**
@@ -460,17 +456,17 @@ test("TRINITY uses 800 HP and approved phase thresholds", () => {
 });
 ```
 
-Threshold implementation is `>70% life`, `>40% memory`, `>20% energy`, otherwise mixed; exact boundary tests must cover 70%, 40% and 20% to prevent off-by-one changes.
+Threshold implementation is `>70% life`, `>40% memory`, `>20% energy`, otherwise mixed; exact boundary tests cover 70%, 40% and 20%.
 
 - [ ] **Step 2: Write failing deterministic attack-cycle tests**
 
-Construct a literal context `{ player:{x:1080,y:900}, arena:{width:2160,height:1800}, rng:()=>0.25, now:0 }`. Assert life emits charge/root, memory emits projectile/decoy, energy emits teleport/eruption, and mixed emits only attacks from the union. Every damaging event must be preceded by a non-damaging telegraph event.
+Construct literal context `{ player:{x:1080,y:900}, arena:{width:2160,height:1800}, rng:()=>0.25, now:0 }`. Assert life emits charge/root, memory emits projectile/decoy, energy emits teleport/eruption, and mixed emits only attacks from the union. Every damaging event is preceded by a non-damaging telegraph event.
 
 - [ ] **Step 3: Run tests and verify failure**
 
 Run: `node --test tests/trinity-boss.test.mjs tests/enemy-definitions.test.mjs tests/enemy-behaviors.test.mjs tests/enemies.test.mjs`
 
-- [ ] **Step 4: Implement enemy behavior and TRINITY pure state machine**
+- [ ] **Step 4: Implement enemy behavior and TRINITY state machine**
 
 All valid player attack kinds can damage TRINITY; Q/E/R improve efficiency but are not required. Clamp HP at zero and emit exactly one `trinity-defeated` event when HP crosses from positive to zero.
 
@@ -509,13 +505,13 @@ git commit -m "feat: add sanctuary enemies and trinity boss"
 **Interfaces:**
 - `getCoopBossForMap(mapId)` returns all shared bosses including ORIGIN.
 - Every shared boss definition gains `bossClass: "regional" | "final"` and `tripleEligible: boolean`.
-- Existing forest/coast/volcano bosses are `bossClass: "regional", tripleEligible: true`.
+- Existing forest/coast/volcano bosses are `bossClass:"regional", tripleEligible:true`.
 - ORIGIN definition is exactly `{ id:"origin-zero", mapId:"sanctuary-core-heart", name:"ORIGIN-0 — 최초의 수호자", baseHp:1200, rewardExp:0, rewardGold:0, bossClass:"final", tripleEligible:false }` plus spawn coordinates.
-- Produces `validatePlayerBossAttack(request,validation)`; existing `validateBossAttack()` remains exported as a delegate for compatibility.
+- Produces `validatePlayerBossAttack(request,validation)`; existing `validateBossAttack()` remains exported as a delegate.
 - Produces `createOriginEncounter(options)`, `normalizeOriginEncounter(value)`, `originPhaseForHp(hp,maxHp)`, `applyOriginAttack(value,validated,now)`.
 - ORIGIN state extends base shared state with `originPhase`, `anchors`, `rewriteCycle`, `completionClaimWritten`.
 
-- [ ] **Step 1: Complete the shared boss fixtures**
+- [ ] **Step 1: Complete shared boss fixtures**
 
 In `tests/helpers/sanctuary-fixtures.mjs`, implement `validWarriorBossAttack`, `regionalBossValidation`, and `rewriteOriginEncounter` with literal timestamps/coordinates and existing starter weapon/class IDs. Keep the regional fixture on the forest boss so extraction is tested against a pre-Chapter-4 encounter.
 
@@ -529,13 +525,13 @@ test("regional validation is unchanged after shared-validator extraction", () =>
 });
 ```
 
-- [ ] **Step 3: Run and verify the missing helper fails**
+- [ ] **Step 3: Run and verify missing helper failure**
 
 Run: `node --test tests/coop-boss-state.test.mjs`
 
 - [ ] **Step 4: Extract current validation logic without changing behavior**
 
-Move current UID, map, player position, sequence, class, weapon, level, MP resource, cast ID/hit index, cooldown, timestamp, geometry and range checks into `validatePlayerBossAttack`. Leave `coop-boss-state.validateBossAttack()` as a one-line delegate.
+Move current UID, map, player position, sequence, class, weapon, level, MP resource, cast ID/hit index, cooldown, timestamp, geometry and range checks into `validatePlayerBossAttack`. Leave `coop-boss-state.validateBossAttack()` as a delegate.
 
 - [ ] **Step 5: Write failing ORIGIN definition/phase/anchor tests**
 
@@ -556,11 +552,11 @@ test("ORIGIN uses four quarter-health phases", () => {
 });
 ```
 
-Phase implementation is `>75% life`, `>50% memory`, `>25% energy`, otherwise rewrite; test exact 75/50/25 boundaries.
+Phase implementation is `>75% life`, `>50% memory`, `>25% energy`, otherwise rewrite; exact 75/50/25 boundaries are separate assertions.
 
 - [ ] **Step 6: Implement ORIGIN wrapper and anchor normalization**
 
-Anchor IDs are exactly `origin-anchor-life`, `origin-anchor-memory`, `origin-anchor-energy`. In rewrite phase `anchors` is a keyed object whose values are `{ active:boolean, hp:number, maxHp:number, x:number, y:number }`. Unknown IDs are discarded. While any rewrite anchor is active, damage that would finish ORIGIN is blocked and returns `blockedByAnchors: true`; after all anchors are inactive, HP may reach zero exactly once.
+Anchor IDs are exactly `origin-anchor-life`, `origin-anchor-memory`, `origin-anchor-energy`. In rewrite phase `anchors` is a keyed object whose values are `{ active:boolean, hp:number, maxHp:number, x:number, y:number }`. Unknown IDs are discarded. While any rewrite anchor is active, damage that would finish ORIGIN is blocked and returns `blockedByAnchors:true`; after all anchors are inactive, HP may reach zero exactly once.
 
 - [ ] **Step 7: Run state and regression tests**
 
@@ -617,7 +613,7 @@ test("rewrite phase warns before impact and creates exactly three anchors", () =
 
 - [ ] **Step 3: Write authority-handoff preservation test**
 
-Create an ORIGIN encounter with expired `leaseUntil`, active memory phase and one damaged anchor. Acquire with a second UID using the existing authority transition. Assert HP, `originPhase`, anchor HP and rewrite timer stay identical while `authorityUid` changes and `authorityEpoch` increments exactly once.
+Create ORIGIN with expired `leaseUntil`, active memory phase and one damaged anchor. Acquire with a second UID through the existing authority transition. Assert HP, `originPhase`, anchor HP and rewrite timer stay identical while `authorityUid` changes and `authorityEpoch` increments exactly once.
 
 - [ ] **Step 4: Run controller/network tests and verify failure**
 
@@ -625,19 +621,19 @@ Run: `node --test tests/origin-boss-controller.test.mjs tests/coop-boss-controll
 
 - [ ] **Step 5: Implement four ORIGIN attack families**
 
-Life emits charge/root/close shock. Memory emits projectile/wave/decoy. Energy emits teleport/eruption/explosion. Rewrite mixes those families plus deletion-zone warning→impact and the three anchors. All targeted damage events use the existing authority epoch and monotonically increasing sequence contract.
+Life emits charge/root/close shock. Memory emits projectile/wave/decoy. Energy emits teleport/eruption/explosion. Rewrite mixes those families plus deletion-zone warning→impact and the three anchors. All targeted damage events use existing authority epoch and monotonically increasing sequence contracts.
 
 - [ ] **Step 6: Extend shared network encounter creation**
 
-`setMap()` accepts ORIGIN through shared boss data. `ensureEncounter()` dispatches to `createOriginEncounter()` when `definition.bossClass === "final"`, otherwise to existing `createBossEncounter()`. Keep the same Firebase path hierarchy and 2Hz state publication.
+`setMap()` accepts ORIGIN through shared boss data. `ensureEncounter()` dispatches to `createOriginEncounter()` when `definition.bossClass === "final"`, otherwise to existing `createBossEncounter()`. Keep the existing Firebase path hierarchy and 2Hz state publication.
 
 - [ ] **Step 7: Write Firebase allow/deny tests before editing rules**
 
-Add static/emulator cases that allow valid player presence on the four new map IDs, allow authority-owned ORIGIN state/attack/damage/zero-value claim writes, and deny unknown map IDs, unknown anchor IDs, invalid `originPhase`, wrong boss ID, out-of-bounds positions, authority-epoch forgery, and attacks from a player whose presence map is not `sanctuary-core-heart`.
+Add static/emulator cases that allow valid player presence on four new map IDs, allow authority-owned ORIGIN state/attack/damage/zero-value claim writes, and deny unknown map IDs, unknown anchor IDs, invalid `originPhase`, wrong boss ID, out-of-bounds positions, authority-epoch forgery, and attacks from a player whose presence map is not `sanctuary-core-heart`.
 
 - [ ] **Step 8: Implement Firebase rules**
 
-Add the four new map IDs to the 2160×1800 presence whitelist. Add `sanctuary-core-heart` to shared boss rules with boss ID `origin-zero`, party size `1..10`, known phase values, known anchor IDs and finite anchor fields. Keep existing forest/coast/volcano allow/deny behavior unchanged.
+Add four new map IDs to the 2160×1800 presence whitelist. Add `sanctuary-core-heart` to shared boss rules with boss ID `origin-zero`, party size `1..10`, known phase values, known anchor IDs and finite anchor fields. Keep existing forest/coast/volcano allow/deny behavior unchanged.
 
 - [ ] **Step 9: Run rules and network verification**
 
@@ -708,7 +704,7 @@ Use the current progression reward helper for EXP so a 500-point grant can cross
 
 - [ ] **Step 5: Add two-write storage recovery tests**
 
-Use an in-memory storage stub whose `setItem()` can fail on a specified call index. Call 1 persists `endingChoice`; call 2 persists reward/title. Assert: failure on call 1 leaves pre-choice state and no cutscene eligibility; failure on call 2 leaves a reloadable chosen ending with `endingRewardClaimed=false`; retry grants exactly once and sets the marker.
+Use an in-memory storage stub whose `setItem()` can fail on a specified call index. Call 1 persists `endingChoice`; call 2 persists reward/title. Assert failure on call 1 leaves pre-choice state and no cutscene eligibility; failure on call 2 leaves a reloadable chosen ending with `endingRewardClaimed=false`; retry grants exactly once and sets the marker.
 
 - [ ] **Step 6: Run focused ending/persistence tests**
 
@@ -742,15 +738,15 @@ git commit -m "feat: add permanent sanctuary endings and rewards"
 
 - [ ] **Step 1: Write failing script-integrity tests**
 
-Read the approved spec text as a test fixture and assert the generated scripts contain the exact ending headings `원래의 세계`, `지켜낸 현재`, `새로운 세계`; exact titles; A렌/captain/support cameo branches; the final narrator paragraphs; and post-credit strings. Assert `resonate` includes all three optional-record principles.
+Read the approved spec text as a fixture and assert generated scripts contain exact ending headings `원래의 세계`, `지켜낸 현재`, `새로운 세계`; exact titles; 아렌/captain/support cameo branches; final narrator paragraphs; and post-credit strings. Assert `resonate` contains all three optional-record principles.
 
-- [ ] **Step 2: Write failing controller timing test with an injected fake clock**
+- [ ] **Step 2: Write failing controller timing test with injected fake clock**
 
-Construct the controller with `{ now:()=>clock.now, setTimer:clock.setTimer, clearTimer:clock.clearTimer }`. Start credits, advance to 4,999ms and assert `skipCredits() === false`; advance to 5,000ms and assert `skipCredits() === true`; assert skip still transitions through the post-credit frame before `onCreditsComplete`.
+Construct controller with `{ now:()=>clock.now, setTimer:clock.setTimer, clearTimer:clock.clearTimer }`. Start credits, advance to 4,999ms and assert `skipCredits() === false`; advance to 5,000ms and assert `skipCredits() === true`; assert skip still transitions through post-credit before `onCreditsComplete`.
 
 - [ ] **Step 3: Write failing static markup/accessibility test**
 
-Assert `index.html` contains a labelled final-choice dialog, restore/seal/resonate buttons, locked-reason live region, `결정 보류`, ending subtitle live region, credits container and skip button. All player-controlled strings are rendered via text nodes in the controller.
+Assert `index.html` contains a labelled final-choice dialog, restore/seal/resonate buttons, locked-reason live region, `결정 보류`, ending subtitle live region, credits container and skip button. Player-controlled strings are rendered via text nodes in the controller.
 
 - [ ] **Step 4: Run and verify failure**
 
@@ -758,11 +754,11 @@ Run: `node --test tests/sanctuary-ending-script.test.mjs tests/sanctuary-ending-
 
 - [ ] **Step 5: Implement exact approved copy and data structure**
 
-Copy the dialogue from spec sections `엔딩 공통 진입 컷신`, `복원`, `봉인`, `공명`, `크레딧`, `POST CREDIT` verbatim into structured arrays. Share identical common lines once; keep captain/support branches keyed by their existing saved IDs.
+Copy dialogue from spec sections `엔딩 공통 진입 컷신`, `복원`, `봉인`, `공명`, `크레딧`, `POST CREDIT` verbatim into structured arrays. Share identical common lines once; keep captain/support branches keyed by existing saved IDs.
 
 - [ ] **Step 6: Implement DOM controller and CSS**
 
-The controller exposes input-lock state while common intro, choice confirmation, ending, credits or post-credit is active. Final-choice confirmation is two-step. Resonance stays visible but disabled with `원점 기록 3/3 필요` until eligible. Escape player name by assigning `textContent` only.
+Controller exposes input-lock state while common intro, choice confirmation, ending, credits or post-credit is active. Final-choice confirmation is two-step. Resonance stays visible but disabled with `원점 기록 3/3 필요` until eligible. Escape player name by assigning `textContent` only.
 
 - [ ] **Step 7: Run focused UI/script tests**
 
@@ -802,19 +798,19 @@ git commit -m "feat: add sanctuary endings credits and cutscenes"
 
 - [ ] **Step 1: Write failing full sanctuary story adapter test**
 
-Use a game harness with deterministic storage and call the same story interaction APIs used by F-key gameplay. Progress entrance → three resonance nodes → three required archives → zero boundary → TRINITY defeat → core heart. Assert each successful immutable transition writes once and a forced storage failure restores the previous progress object.
+Use a game harness with deterministic storage and call the same story interaction APIs used by F-key gameplay. Progress entrance → three resonance nodes → three required archives → zero boundary → TRINITY defeat → core heart. Assert each successful immutable transition writes once and forced storage failure restores previous progress.
 
 - [ ] **Step 2: Write failing three-class combat tests**
 
-For warrior, archer and mage, build a valid level-10 fixture so basic/Q/E/R are all unlocked. Assert each attack kind can reduce TRINITY and solo ORIGIN HP when geometry is valid. Assert death/respawn clears transient skill/boss state. With `TEACHER` redeemed in solo, ORIGIN player damage is ignored; with online mode the same code produces no immortality.
+For warrior, archer and mage, build valid level-10 fixtures so basic/Q/E/R are unlocked. Assert each attack kind can reduce TRINITY and solo ORIGIN HP when geometry is valid. Assert death/respawn clears transient skill/boss state. With `TEACHER` redeemed in solo, ORIGIN player damage is ignored; with online mode the same code produces no immortality.
 
 - [ ] **Step 3: Write failing BOSSKILLBOSS isolation test**
 
-Instantiate a solo game with redeemed code `BOSSKILLBOSS`. Travel to zero boundary and assert one TRINITY state. Travel to core heart and assert one ORIGIN state. Also keep an existing forest regression asserting the regional triple-boss effect remains three.
+Instantiate a solo game with redeemed code `BOSSKILLBOSS`. Travel to zero boundary and assert one TRINITY state. Travel to core heart and assert one ORIGIN state. Keep an existing forest regression asserting regional triple-boss effect remains three.
 
 - [ ] **Step 4: Write failing ORIGIN receipt/spectator/reconnect tests**
 
-Online claim arrives → local receipt save succeeds → claim is acknowledged → `isOriginSpectator()` becomes true → later shared ORIGIN state is ignored. Reload same nickname → no refight → core interaction opens choice. For a forced local receipt-save failure, do not acknowledge/remove the remote claim so a reconnect can retry.
+Online claim arrives → local receipt save succeeds → claim is acknowledged → `isOriginSpectator()` becomes true → later shared ORIGIN state is ignored. Reload same nickname → no refight → core interaction opens choice. For forced local receipt-save failure, do not acknowledge/remove the remote claim so reconnect can retry.
 
 - [ ] **Step 5: Write failing defer/backtrack test**
 
@@ -822,19 +818,19 @@ Start from local ORIGIN defeat with two origin records. Assert resonate locked. 
 
 - [ ] **Step 6: Implement sanctuary rendering and orchestration**
 
-Render four distinct interiors, story signals, origin-record markers, TRINITY, ORIGIN telegraphs/anchors and core interaction. Keep phase math in boss modules and ending text/timing in ending modules; `game` only coordinates input, state, save, rendering and network callbacks.
+Render four distinct interiors, story signals, origin-record markers, TRINITY, ORIGIN telegraphs/anchors and core interaction. Keep phase math in boss modules and ending text/timing in ending modules; `game` coordinates input, state, save, rendering and network callbacks.
 
 - [ ] **Step 7: Implement two-phase final-choice persistence**
 
-On final confirmation: call `chooseSanctuaryEnding`, save choice, and begin the chosen ending only after save success. Then call `grantSanctuaryEndingReward` and save reward/title. A reward-save failure leaves the already-saved choice intact with `endingRewardClaimed=false`; retry after the ending and on next load until one save succeeds. Never grant again when marker is true.
+On final confirmation call `chooseSanctuaryEnding`, save choice, and begin chosen ending only after save success. Then call `grantSanctuaryEndingReward` and save reward/title. Reward-save failure leaves saved choice intact with `endingRewardClaimed=false`; retry after ending and on next load until one save succeeds. Never grant again when marker is true.
 
 - [ ] **Step 8: Return to village after post-credit**
 
-On `onCreditsComplete`, set map to `village`, reset transient combat/skill/boss states, restore controls, show `PIXEL WORLD — 제1부 완료`, and render the saved title on the local player HUD. Preserve the entire sanctuary chapter state.
+On `onCreditsComplete`, set map to `village`, reset transient combat/skill/boss states, restore controls, show `PIXEL WORLD — 제1부 완료`, and render saved title on local player HUD. Preserve entire sanctuary chapter state.
 
 - [ ] **Step 9: Extend QA tools**
 
-Add travel buttons for all five sanctuary maps plus explicit setup actions for `원점 기록 3/3`, TRINITY-ready, ORIGIN-ready and each ending-ready state. QA mutations execute only when current QA mode is enabled.
+Add travel buttons for all five sanctuary maps plus setup actions for `원점 기록 3/3`, TRINITY-ready, ORIGIN-ready and each ending-ready state. QA mutations execute only when current QA mode is enabled.
 
 - [ ] **Step 10: Run focused game integration tests**
 
@@ -866,7 +862,7 @@ git commit -m "feat: integrate pixel core sanctuary finale"
 **Interfaces:**
 - Browser entry is exactly `./src/main-20260910-sanctuary.js`.
 - CSS entry is exactly `./styles-20260910-sanctuary.css`.
-- Cache contract traverses the entry graph and rejects any changed parent that still imports an older copy of a changed child.
+- Cache contract traverses entry graph and rejects any changed parent that still imports an older copy of a changed child.
 - Browser smoke uses production interaction APIs except explicit QA setup actions.
 
 - [ ] **Step 1: Write failing cache and HTML-entry tests**
@@ -879,29 +875,29 @@ test("sanctuary release uses the new physical entries", () => {
 });
 ```
 
-- [ ] **Step 2: Run and verify the current old entry fails the new contract**
+- [ ] **Step 2: Run and verify current old entry fails new contract**
 
 Run: `node --test tests/sanctuary-cache-contract.test.mjs tests/firebase-hosting.test.mjs tests/ci-workflow.test.mjs`
 
-- [ ] **Step 3: Complete the transitive physical import graph**
+- [ ] **Step 3: Complete transitive physical import graph**
 
-Starting from `main-20260910-sanctuary.js`, traverse imports recursively. Every module changed by Tasks 1-9 must be referenced by its `20260910-sanctuary` physical filename. Unchanged stable modules may keep their current `20260905-upgrade` physical URL. The cache test records the changed-module set explicitly and fails on a stale edge.
+Starting from `main-20260910-sanctuary.js`, traverse imports recursively. Every module changed by Tasks 1-9 is referenced by its `20260910-sanctuary` physical filename. Unchanged stable modules may keep current `20260905-upgrade` URLs. Cache test records changed-module set explicitly and fails on a stale edge.
 
-- [ ] **Step 4: Implement the primary solo browser journey**
+- [ ] **Step 4: Implement primary solo browser journey**
 
-Create/load a completed-volcano QA save, enter sanctuary, activate three resonance nodes, restore three required archives, collect all three optional origin records, defeat TRINITY, defeat ORIGIN, select `resonate`, verify choice and reward persist once, verify credit skip disabled before 5 seconds, complete post-credit, and land in village with `세계의 공명자`.
+Create/load completed-volcano QA save, enter sanctuary, activate three resonance nodes, restore three required archives, collect all three optional origin records, defeat TRINITY, defeat ORIGIN, select `resonate`, verify choice/reward persist once, verify credit skip disabled before 5 seconds, complete post-credit, and land in village with `세계의 공명자`.
 
 - [ ] **Step 5: Implement alternate-ending recovery journey**
 
-Defeat ORIGIN with two origin records, verify resonate locked, select `결정 보류`, backtrack for record 3, return without ORIGIN refight, choose `restore`, reload, and assert title persists and EXP 500/Gold 1000 are not paid again. Repeat the pure ending-state test for `seal`; browser coverage needs one non-resonance branch because exact seal copy is already covered by Task 8 script tests.
+Defeat ORIGIN with two origin records, verify resonate locked, select `결정 보류`, backtrack for record 3, return without ORIGIN refight, choose `restore`, reload, and assert title persists and EXP 500/Gold 1000 are not paid again. Pure ending-state tests cover `seal` behavior and exact Task 8 script tests cover its copy.
 
 - [ ] **Step 6: Implement two-browser online ORIGIN journey**
 
-Two authenticated contexts enter core heart, share one ORIGIN encounter/HP, verify authority transfer when current authority exits, finish the fight, receive separate local defeat receipts, enter spectator state, and choose different endings. Assert one nickname's ending never changes the other nickname's save. Assert TEACHER and BOSSKILLBOSS neither appear in shared presence nor alter ORIGIN count/immortality.
+Two authenticated contexts enter core heart, share one ORIGIN encounter/HP, verify authority transfer when current authority exits, finish fight, receive separate local defeat receipts, enter spectator state, and choose different endings. Assert one nickname's ending never changes the other nickname's save. Assert TEACHER and BOSSKILLBOSS neither appear in shared presence nor alter ORIGIN count/immortality.
 
 - [ ] **Step 7: Wire browser CI**
 
-Add `tests/sanctuary-browser-smoke.cjs` after the existing volcano smoke in `.github/workflows/browser-smoke.yml` so village/forest/coast/volcano journeys remain gates before the finale journey.
+Add `tests/sanctuary-browser-smoke.cjs` after existing volcano smoke in `.github/workflows/browser-smoke.yml` so village/forest/coast/volcano journeys remain gates before finale journey.
 
 - [ ] **Step 8: Update docs**
 
@@ -926,7 +922,7 @@ npx firebase emulators:exec --only database --project demo-pixel-world-rules "no
 
 Expected: exit `0`.
 
-- [ ] **Step 11: Run local browser smoke on the exact branch head**
+- [ ] **Step 11: Run local browser smoke on exact branch head**
 
 Start `python3 -m http.server 4173` in one terminal, then run:
 
@@ -949,13 +945,13 @@ git commit -m "test: verify pixel core sanctuary release"
 ### Task 11: PR gate and deployed-service verification
 
 **Files:**
-- No planned new implementation file. A defect found here must be fixed in its owning module together with a regression test before the PR is merged.
+- No planned new implementation file. A defect found here is fixed in its owning module together with a regression test before merge.
 
 **Interfaces:**
-- Consumes the verified Task 1-10 implementation branch.
+- Consumes verified Task 1-10 implementation branch.
 - Produces one PR into `main`; merge occurs only after all required CI checks succeed.
 
-- [ ] **Step 1: Rebase/merge latest main before final verification**
+- [ ] **Step 1: Bring branch onto latest main before final verification**
 
 ```bash
 git fetch origin
@@ -966,9 +962,9 @@ git diff --check origin/main...HEAD
 
 Expected: latest `origin/main` is an ancestor, diff is clean and changes are limited to Chapter 4, its release dependencies, tests and docs.
 
-- [ ] **Step 2: Re-run Task 10 verification on the exact PR head**
+- [ ] **Step 2: Re-run Task 10 verification on exact PR head**
 
-Record the fresh Node test total, JS syntax count, Firebase emulator result and all four browser smoke results. Older branch or PR results are not evidence for the final head.
+Record fresh Node test total, JS syntax count, Firebase emulator result and all four browser smoke results. Older branch or PR results are not evidence for final head.
 
 - [ ] **Step 3: Open one PR**
 
@@ -980,9 +976,9 @@ Body summarizes four sanctuary interiors, v8 migration, TRINITY, shared ORIGIN-0
 
 Required successful results: `Verify game`, Firebase Realtime Database emulator/rules test, solo/online browser smoke, and configured Pages/deployment checks. Do not merge with a required check failed, cancelled, unexpectedly skipped or still pending.
 
-- [ ] **Step 5: After merge verify deployment records against the merge SHA**
+- [ ] **Step 5: After merge verify deployment records against merge SHA**
 
-Confirm successful GitHub Pages deployment, Firebase Hosting deployment and Firebase Database Rules deployment all reference the actual merge SHA.
+Confirm successful GitHub Pages deployment, Firebase Hosting deployment and Firebase Database Rules deployment all reference actual merge SHA.
 
 - [ ] **Step 6: Perform deployed smoke with a fresh QA nickname**
 
@@ -990,4 +986,4 @@ Verify entry, solo sanctuary load, one sanctuary story interaction, online room 
 
 - [ ] **Step 7: Report final evidence**
 
-Report merge SHA, exact CI conclusions, deployment conclusions, fresh test counts, browser journey outcomes and any known non-blocking limitation. Make no completion claim without the corresponding fresh result.
+Report merge SHA, exact CI conclusions, deployment conclusions, fresh test counts, browser journey outcomes and known non-blocking limitations. Make no completion claim without corresponding fresh result.
