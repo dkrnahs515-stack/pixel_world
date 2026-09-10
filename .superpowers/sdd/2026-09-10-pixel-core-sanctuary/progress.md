@@ -35,3 +35,7 @@ Ruling: this ChatGPT session does not expose an actual subagent-dispatch runtime
 Ruling: Task 1 must persist `sanctuary-resonance-hall` before Task 2 formally adds that map to the region/world registry. Task 1 will temporarily include that single future map ID in the chapter-progress save allow-list and unlock effect; Task 2 will replace the temporary allowance by the canonical registry entry. Cost if wrong: the temporary constant could drift from Task 2's ID, so Task 2 must assert the exact same string and remove the transitional special case.
 
 Task 1: complete (RED `6688d07` → GREEN `219f2ec`; task report `task-1-report.md`; review clean).
+
+Ruling: the approved Task 2 plan omitted a new portal-transition module, but the existing module statically imports the pre-sanctuary chapter-progress implementation. Added `portal-transition-20260910-sanctuary.js` so interior unlocks use v8 sanctuary progress. Cost if wrong: one extra versioned module; without it, valid sanctuary progress cannot open new portals.
+
+Task 2: complete (RED `e23049d` → GREEN `c24124d`; task report `task-2-report.md`; review clean).
