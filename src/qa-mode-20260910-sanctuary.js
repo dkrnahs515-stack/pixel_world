@@ -5,6 +5,17 @@ import {
   getStarterWeaponId,
   getWeaponDefinition,
 } from "./weapon-data-20260903-volcano-20260905-upgrade.js";
+import {
+  SANCTUARY_ARCHIVE_IDS,
+  SANCTUARY_ORIGIN_RECORD_IDS,
+  SANCTUARY_RESONANCE_NODE_IDS,
+  activateSanctuaryResonanceNode,
+  collectOriginRecord,
+  normalizeWorldProgress,
+  recordOriginDefeat,
+  recordTrinityDefeat,
+  restoreSanctuaryArchive,
+} from "./chapter-progress-20260910-sanctuary.js";
 
 const QA_MONSTERS = Object.freeze({
   "fang-shark": Object.freeze({ kind: "fang-shark", name: "송곳니 상어", mapId: "coast" }),
@@ -21,6 +32,38 @@ const DIRECTION_VECTORS = Object.freeze({
   right: Object.freeze({ x: 1, y: 0 }),
   down: Object.freeze({ x: 0, y: 1 }),
   left: Object.freeze({ x: -1, y: 0 }),
+});
+
+export const SANCTUARY_QA_MAP_IDS = Object.freeze([
+  "sanctuary",
+  "sanctuary-resonance-hall",
+  "sanctuary-origin-archive",
+  "sanctuary-zero-boundary",
+  "sanctuary-core-heart",
+]);
+
+export const SANCTUARY_QA_SETUP_IDS = Object.freeze([
+  "origin-records-3",
+  "trinity-ready",
+  "origin-ready",
+  "ending-restore-ready",
+  "ending-seal-ready",
+  "ending-resonate-ready",
+]);
+
+const ENDING_SETUP = Object.freeze({
+  "ending-restore-ready": "restore",
+  "ending-seal-ready": "seal",
+  "ending-resonate-ready": "resonate",
+});
+
+const QA_SETUP_LABELS = Object.freeze({
+  "origin-records-3": "원점 기록 3/3 QA 상태를 준비했습니다.",
+  "trinity-ready": "TRINITY 전투 직전 QA 상태를 준비했습니다.",
+  "origin-ready": "ORIGIN-0 전투 직전 QA 상태를 준비했습니다.",
+  "ending-restore-ready": "복원 엔딩 선택 QA 상태를 준비했습니다.",
+  "ending-seal-ready": "봉인 엔딩 선택 QA 상태를 준비했습니다.",
+  "ending-resonate-ready": "공명 엔딩 선택 QA 상태를 준비했습니다.",
 });
 
 export function isQaMode(search = "") {
@@ -67,6 +110,120 @@ export function prepareWeaponQaProgress(progress, classId = "warrior") {
     exp: 0,
     nextLevelExp: nextLevelExp(30),
     gold: Math.max(progress.gold, 5000),
+  };
+}
+
+function sanctuaryQaBase(progress) {
+  const worldProgress = progress?.worldProgress;
+  const currentSanctuary = worldProgress?.chapters?.sanctuary;
+  if (currentSanctuary?.endingChoice || currentSanctuary?.chapterCompleted) return null;
+  return {
+    ...progress,
+    worldProgress: normalizeWorldProgress({
+      ...(worldProgress || {}),
+      chapters: {
+        ...(worldProgress?.chapters || {}),
+        volcano: {
+          ...(worldProgress?.chapters?.volcano || {}),
+          coreFragmentObtained: true,
+          sanctuaryUnlocked: true,
+        },
+        sanctuary: {
+          activatedResonanceNodeIds: [],
+          restoredArchiveIds: [],
+          originRecordIds: [],
+          trinityDefeated: false,
+          originDefeated: false,
+          originDefeatReceiptId: null,
+          endingChoice: null,
+          endingRewardClaimed: false,
+          chapterCompleted: false,
+        },
+      },
+    }),
+  };
+}
+
+function prepareThroughArchives(progress) {
+  let world = progress.worldProgress;
+  for (const nodeId of SANCTUARY_RESONANCE_NODE_IDS) {
+    world = activateSanctuaryResonanceNode(world, nodeId).progress;
+  }
+  for (const archiveId of SANCTUARY_ARCHIVE_IDS) {
+    world = restoreSanctuaryArchive(world, archiveId).progress;
+  }
+  return { ...progress, worldProgress: world };
+}
+
+function addOriginRecords(progress) {
+  let world = progress.worldProgress;
+  for (const recordId of SANCTUARY_ORIGIN_RECORD_IDS) {
+    world = collectOriginRecord(world, recordId).progress;
+  }
+  return { ...progress, worldProgress: world };
+}
+
+export function prepareSanctuaryQaProgress(progress, setupId) {
+  if (!SANCTUARY_QA_SETUP_IDS.includes(setupId)) {
+    return { ok: false, reason: "unknown_setup", progress };
+  }
+
+  let next = sanctuaryQaBase(progress);
+  if (!next) return { ok: false, reason: "terminal_state", progress };
+  next = prepareThroughArchives(next);
+
+  if (setupId === "origin-records-3") {
+    next = addOriginRecords(next);
+    return {
+      ok: true,
+      progress: next,
+      mapId: "sanctuary-zero-boundary",
+      openEndingChoice: false,
+      focusEndingId: null,
+      label: QA_SETUP_LABELS[setupId],
+    };
+  }
+
+  if (setupId === "trinity-ready") {
+    return {
+      ok: true,
+      progress: next,
+      mapId: "sanctuary-zero-boundary",
+      openEndingChoice: false,
+      focusEndingId: null,
+      label: QA_SETUP_LABELS[setupId],
+    };
+  }
+
+  next = {
+    ...next,
+    worldProgress: recordTrinityDefeat(next.worldProgress).progress,
+  };
+
+  if (setupId === "origin-ready") {
+    return {
+      ok: true,
+      progress: next,
+      mapId: "sanctuary-core-heart",
+      openEndingChoice: false,
+      focusEndingId: null,
+      label: QA_SETUP_LABELS[setupId],
+    };
+  }
+
+  const endingId = ENDING_SETUP[setupId];
+  if (endingId === "resonate") next = addOriginRecords(next);
+  next = {
+    ...next,
+    worldProgress: recordOriginDefeat(next.worldProgress, `qa-origin-${endingId}`).progress,
+  };
+  return {
+    ok: true,
+    progress: next,
+    mapId: "sanctuary-core-heart",
+    openEndingChoice: true,
+    focusEndingId: endingId,
+    label: QA_SETUP_LABELS[setupId],
   };
 }
 
@@ -120,5 +277,6 @@ export function findQaBossApproachPosition({ boss, radius, isBlocked, portals = 
   return null;
 }
 
-export const SANCTUARY_QA_MAP_IDS = Object.freeze(["sanctuary","sanctuary-resonance-hall","sanctuary-origin-archive","sanctuary-zero-boundary","sanctuary-core-heart"]);
-export function isSanctuaryQaMap(mapId) { return SANCTUARY_QA_MAP_IDS.includes(mapId); }
+export function isSanctuaryQaMap(mapId) {
+  return SANCTUARY_QA_MAP_IDS.includes(mapId);
+}
