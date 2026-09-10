@@ -1,0 +1,36 @@
+name: Sanctuary ending UI patch
+
+on:
+  push:
+    branches:
+      - feature/pixel-core-sanctuary
+    paths:
+      - scripts/patch-sanctuary-ending-ui.cjs
+      - .github/workflows/sanctuary-ending-ui-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/pixel-core-sanctuary
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node scripts/patch-sanctuary-ending-ui.cjs
+      - name: Commit generated ending markup
+        run: |
+          if git diff --quiet -- index.html; then
+            echo "Ending markup already present"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "feat: add sanctuary ending overlay markup"
+          git push origin HEAD:feature/pixel-core-sanctuary
