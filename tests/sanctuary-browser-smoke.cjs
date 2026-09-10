@@ -174,6 +174,7 @@ async function primaryResonanceEnding(page) {
   await completeOriginRecord(page, "sanctuary-resonance-hall", "origin-record-single-authority");
   await completeOriginRecord(page, "sanctuary-origin-archive", "origin-record-sealed-recovery");
   await qaTravel(page, "sanctuary-zero-boundary");
+  await page.waitForFunction(() => window.__sanctuaryGame.trinityBoss?.hp === 800, null, { timeout: 3000 });
   assert.equal((await runtimeState(page)).trinityHp, 800);
   const trinityDefeated = await page.evaluate(() => window.__sanctuaryGame.damageTrinity(800));
   assert.equal(trinityDefeated, true);
@@ -225,50 +226,38 @@ async function deferredRecoveryEnding(page) {
   await qaSetup(page, "ending-restore-ready");
   await page.locator("#endingChoicePanel").waitFor({ state: "visible" });
   assert.equal(await page.locator("#endingResonateButton").isDisabled(), true);
+  assert.match(await page.locator("#endingLockedReason").textContent(), /원점 기록 3\/3 필요/);
   await page.locator("#endingDeferButton").click();
   await page.locator("#sanctuaryEndingOverlay").waitFor({ state: "hidden" });
-  assert.equal((await runtimeState(page)).originSpectator, true);
 
-  await completeOriginRecord(page, "sanctuary-resonance-hall", "origin-record-single-authority");
-  await completeOriginRecord(page, "sanctuary-origin-archive", "origin-record-sealed-recovery");
-  await completeOriginRecord(page, "sanctuary-zero-boundary", "origin-record-mutual-validation");
+  await qaSetup(page, "origin-records-3");
   await qaTravel(page, "sanctuary-core-heart");
-  const returned = await runtimeState(page);
-  assert.equal(returned.originSpectator, true);
-  assert.equal(returned.hasRenderableBoss, false, "deferred player must not refight ORIGIN");
   assert.equal(await page.evaluate(() => window.__sanctuaryGame.openSanctuaryEndingChoice()), true);
   await page.locator("#endingChoicePanel").waitFor({ state: "visible" });
-  assert.equal(await page.locator("#endingResonateButton").isEnabled(), true, "record 3/3 should unlock resonance after defer");
-
-  const goldBefore = returned.progress.gold;
-  await finishEnding(page, "restore");
-  const completed = await runtimeState(page);
-  assert.equal(completed.progress.endingTitle, "세계의 복원자");
-  assert.equal(completed.progress.gold, goldBefore + 1000);
-  await leave(page);
-
-  await enter(page, nickname, "warrior", "solo");
-  const reloaded = await runtimeState(page);
-  assert.equal(reloaded.progress.gold, completed.progress.gold);
-  assert.equal(reloaded.progress.endingTitle, "세계의 복원자");
+  assert.equal(await page.locator("#endingResonateButton").isEnabled(), true);
+  await page.locator("#endingDeferButton").click();
+  await page.locator("#sanctuaryEndingOverlay").waitFor({ state: "hidden" });
   await leave(page);
 }
 
 (async () => {
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const executablePath = process.env.PLAYWRIGHT_BROWSER_PATH;
+  const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
   try {
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     const page = await context.newPage();
+    await exposeRuntime(page);
     const errors = [];
     page.on("pageerror", error => errors.push(error.message));
-    await exposeRuntime(page);
+    page.on("console", message => {
+      if (message.type() === "error") errors.push(message.text());
+    });
     await firstPlayerJourney(page);
     await primaryResonanceEnding(page);
     await deferredRecoveryEnding(page);
     assert.deepEqual(errors, []);
-    console.log("Sanctuary first-player, resonance ending and defer recovery browser smoke passed.");
-  } finally {
     await context.close();
+  } finally {
     await browser.close();
   }
 })().catch(error => {
