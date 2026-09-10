@@ -29,6 +29,8 @@ function fakeClock() {
   return { get now() { return now; }, setTimer, clearTimer, advance };
 }
 
+function textElement() { return { textContent: "", hidden: true, disabled: false }; }
+
 test("credits last 30s and skip unlocks only at 5s", () => {
   const clock = fakeClock();
   let postCreditPlayed = false;
@@ -100,4 +102,32 @@ test("ending choice requires explicit second confirmation", () => {
   assert.equal(controller.requestChoice("restore"), true);
   assert.equal(controller.confirmChoice(), true);
   assert.deepEqual(choices, ["restore"]);
+});
+
+test("playEnding shows common intro and ending scenes in order before starting credits", () => {
+  const clock = fakeClock();
+  const subtitle = textElement();
+  const overlay = textElement();
+  const credits = textElement();
+  const controller = new SanctuaryEndingController({
+    elements: { subtitle, overlay, credits, creditsText: textElement(), skipButton: textElement() },
+    now: () => clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+    sceneDurationMs: 100,
+  });
+  controller.playEnding({
+    commonIntro: [{ speaker: "ORIGIN", text: "전투 종료." }],
+    scenes: [{ speaker: "아렌", text: "첫 장면" }, { speaker: "ENDING", text: "새로운 세계" }],
+    credits: { lines: ["PIXEL WORLD"], durationMs: 30_000, skipAfterMs: 5_000 },
+    postCredit: { lines: ["UNKNOWN"], durationMs: 2_000 },
+  });
+  assert.equal(subtitle.textContent, "ORIGIN\n전투 종료.");
+  clock.advance(100);
+  assert.equal(subtitle.textContent, "아렌\n첫 장면");
+  clock.advance(100);
+  assert.equal(subtitle.textContent, "ENDING\n새로운 세계");
+  clock.advance(100);
+  assert.equal(controller.mode, "credits");
+  assert.equal(credits.hidden, false);
 });
