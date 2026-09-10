@@ -847,100 +847,144 @@ git add src/world-20260910-sanctuary.js src/qa-mode-20260910-sanctuary.js src/ga
 git commit -m "feat: integrate pixel core sanctuary finale"
 ```
 
-### Task 10: Cache-safe release graph, browser journeys and documentation
+### Task 10: First-player onboarding, cache-safe release graph, browser journeys and documentation
 
 **Files:**
+- Create: `src/first-journey-script-20260910-sanctuary.js`
+- Create: `src/first-journey-controller-20260910-sanctuary.js`
+- Create: `src/aren-dialogue-20260910-sanctuary.js`
+- Create: `tests/first-journey-state.test.mjs`
+- Create: `tests/first-journey-controller.test.mjs`
+- Create: `tests/first-journey-ui.static.test.cjs`
+- Create: `tests/campaign-objective.test.mjs`
 - Create: `tests/sanctuary-cache-contract.test.mjs`
 - Create: `tests/sanctuary-browser-smoke.cjs`
+- Modify: `src/quest-state-20260910-sanctuary.js`
+- Modify: `src/progress-storage-20260910-sanctuary.js`
+- Modify: `src/quest-guidance-20260910-sanctuary.js`
+- Modify: `src/game-20260910-sanctuary.js`
+- Modify: `src/main-20260910-sanctuary.js`
+- Modify: `styles-20260910-sanctuary.css`
+- Modify: `index.html`
 - Modify: `.github/workflows/browser-smoke.yml`
 - Modify: `tests/ci-workflow.test.mjs`
 - Modify: `tests/firebase-hosting.test.mjs`
-- Modify: `index.html`
 - Modify: `README.md`
 - Modify: `FIREBASE_SETUP.md`
 
 **Interfaces:**
-- Browser entry is exactly `./src/main-20260910-sanctuary.js`.
-- CSS entry is exactly `./styles-20260910-sanctuary.css`.
-- Cache contract traverses entry graph and rejects any changed parent that still imports an older copy of a changed child.
+- `createInitialProgress()` adds top-level `introSeen: false`.
+- `markIntroSeen(progress)` returns a cloned progress object with `introSeen:true` and preserves all other progress.
+- v1-v7 migrations set `introSeen:true`; v8 without the field normalizes to `false`.
+- `FIRST_JOURNEY_SCRIPT` contains approved spoiler-safe system, narration and title frames.
+- `FirstJourneyController` owns `18ms` typing, `800ms` auto-advance, Enter/Space fast-forward, Skip and reduced-motion behavior with injected timers.
+- `campaignObjective(progress)` returns `{ eyebrow, text, targetMapId }` for Chapter 1-4 or epilogue.
+- `arenDialogueModel(progress)` uses the approved long first-meeting copy only while `adventureStart.status === "available"`.
+- Browser entry is exactly `./src/main-20260910-sanctuary.js`; CSS entry is exactly `./styles-20260910-sanctuary.css`.
+- Cache contract recursively rejects stale physical import edges for modules changed by Tasks 1-10.
 - Browser smoke uses production interaction APIs except explicit QA setup actions.
 
-- [ ] **Step 1: Write failing cache and HTML-entry tests**
+#### Task 10A: First-player journey and beginner guide
 
-```js
-test("sanctuary release uses the new physical entries", () => {
-  assert.match(indexHtml, /styles-20260910-sanctuary\.css/);
-  assert.match(indexHtml, /src\/main-20260910-sanctuary\.js/);
-  assert.doesNotMatch(indexHtml, /main-20260903-volcano-20260905-upgrade\.js/);
-});
-```
+- [ ] **Step 1: Write RED state/persistence tests**
+Create `tests/first-journey-state.test.mjs`. Assert new progress has `introSeen:false`; `markIntroSeen()` is immutable/idempotent; valid v8 without the field loads as `false`; each v1-v7 migration loads with `introSeen:true`; save/reload keeps true without changing level, Gold, quests, equipment, codes, boss receipts, world progress or ending title.
 
-- [ ] **Step 2: Run and verify current old entry fails new contract**
+Run: `node --test tests/first-journey-state.test.mjs tests/progress-storage.test.mjs`
+Expected: RED because the new state contract does not exist.
+
+- [ ] **Step 2: Implement minimal first-journey state and re-run Step 1**
+Add `introSeen:false` to `createInitialProgress()`, preserve it in clones, export `markIntroSeen(progress)`, normalize missing v8 to false, and explicitly set migrated v1-v7 values to true. Require zero failures before continuing.
+
+- [ ] **Step 3: Write RED intro script/controller tests**
+Create `tests/first-journey-controller.test.mjs`. Assert the three exact system headings, spoiler-safe narration, final tagline, `18ms` typing interval, `800ms` automatic progression, Enter/Space fast-forward, Skip, reduced-motion and one-shot completion callback.
+
+Run: `node --test tests/first-journey-controller.test.mjs`
+Expected: RED because the new modules do not exist.
+
+- [ ] **Step 4: Implement intro script/controller and re-run Step 3**
+`first-journey-script` exports immutable frames. `FirstJourneyController` writes via `textContent`, handles focus safely, supports injected timers and emits `onComplete({ skipped })` once.
+
+- [ ] **Step 5: Write RED first-play UI/runtime tests**
+Create `tests/first-journey-ui.static.test.cjs`. Assert `#firstJourneyOverlay`, text/continue/skip controls, `#helpButton`, `#beginnerGuideOverlay`, runtime input lock, save-on-finish, `1100ms` render-only arrival glitch, MAIN QUEST handoff, save-failure warning and no progression rollback.
+
+Run: `node --test tests/first-journey-ui.static.test.cjs tests/game-qa.test.mjs tests/ui.static.test.cjs`
+Expected: RED before runtime wiring.
+
+- [ ] **Step 6: Wire intro, arrival glitch and beginner guide and re-run Step 5**
+Add accessible overlays and HUD `?` button; add reduced-motion CSS. `main` opens intro only when `game.shouldPlayFirstJourneyIntro()` is true. `game` adds `finishFirstJourneyIntro`, `playArrivalGlitch`, `openBeginnerGuide`, `closeBeginnerGuide` and includes intro/help in input priority. Help copy covers the three classes, 21 standard Bran weapons, modes and exact controls without hidden weapon/ending spoilers.
+
+#### Task 10B: Aren first meeting and dynamic campaign objective
+
+- [ ] **Step 7: Write RED Aren and campaign objective tests**
+Create `tests/campaign-objective.test.mjs` and extend Aren tests. Available-state copy must mention central-meadow rescue, unknown core cause, three regional reactions, Mia usage guidance, Bran equipment inspection, slime-3 first mission, forest-before-coast order, Sera as later signal, and `[모험의 시작] 임무 수락`. It must not promise free potion purchase or make Blue Coast the first destination.
+
+Assert exact runtime HUD outputs:
+`CHAPTER 1 · 아렌에게 대륙의 상황을 듣는다.`
+`CHAPTER 1 · 외부 지역의 슬라임 3마리를 처치한다.`
+`CHAPTER 1 · 아렌에게 임무를 보고한다.`
+`CHAPTER 1 · 태고의 숲의 코어 반응을 추적한다.`
+`CHAPTER 2 · 푸른 해안의 세라 신호를 추적한다.`
+`CHAPTER 3 · 활화산의 선발대를 추적한다.`
+`CHAPTER 4 · 픽셀 코어 성역으로 향한다.`
+`EPILOGUE · PIXEL WORLD 제1부 완료`.
+Active sanctuary progress uses existing sanctuary objectives under `CHAPTER 4`.
+
+Run: `node --test tests/campaign-objective.test.mjs tests/aren-dialogue.test.mjs`
+Expected: RED before implementation.
+
+- [ ] **Step 8: Implement Aren dialogue and dynamic HUD and re-run Step 7**
+Create `src/aren-dialogue-20260910-sanctuary.js`, changing only the available-state body/label while retaining active/report/completed and coast-return behavior. Export `campaignObjective(progress)` from quest guidance; update game HUD to render returned eyebrow/text. Replace the initial HTML placeholder with Chapter 1 first-contact copy.
+
+#### Task 10C: Cache-safe physical release and browser journeys
+
+- [ ] **Step 9: Write RED cache and HTML-entry tests**
+Create `tests/sanctuary-cache-contract.test.mjs` asserting `styles-20260910-sanctuary.css` and `src/main-20260910-sanctuary.js` are the only live entries and recursively rejecting stale changed-module edges.
 
 Run: `node --test tests/sanctuary-cache-contract.test.mjs tests/firebase-hosting.test.mjs tests/ci-workflow.test.mjs`
+Expected: RED until live entry and changed transitive imports use the sanctuary graph.
 
-- [ ] **Step 3: Complete transitive physical import graph**
+- [ ] **Step 10: Complete physical release graph and re-run Step 9**
+Switch `index.html` to the sanctuary CSS/main entries and route the new first-journey/Aren modules through the same physical graph. Do not rename public map, class, weapon, reward-code or boss IDs.
 
-Starting from `main-20260910-sanctuary.js`, traverse imports recursively. Every module changed by Tasks 1-9 is referenced by its `20260910-sanctuary` physical filename. Unchanged stable modules may keep current `20260905-upgrade` URLs. Cache test records changed-module set explicitly and fails on a stale edge.
+- [ ] **Step 11: Implement first-player browser journey**
+With a fresh nickname assert first entry opens intro; movement/attack are blocked; Enter/Space fast-forward and Skip/full completion work; real village spawn and class-derived HP/MP remain correct; `introSeen` persists; MAIN QUEST points to Aren; first Aren dialogue is forest-first; help opens/closes without moving player; reconnect with another class and then another mode does not replay intro.
 
-- [ ] **Step 4: Implement primary solo browser journey**
+- [ ] **Step 12: Implement primary solo sanctuary journey**
+Completed-volcano QA save → three resonance nodes → three required archives → all three optional origin records → TRINITY → ORIGIN → `resonate` → reward once → credits skip locked before 5s → post-credit → village with `세계의 공명자`.
 
-Create/load completed-volcano QA save, enter sanctuary, activate three resonance nodes, restore three required archives, collect all three optional origin records, defeat TRINITY, defeat ORIGIN, select `resonate`, verify choice/reward persist once, verify credit skip disabled before 5 seconds, complete post-credit, and land in village with `세계의 공명자`.
+- [ ] **Step 13: Implement alternate-ending recovery journey**
+ORIGIN with two origin records → resonate locked → `결정 보류` → backtrack for record 3 → return without ORIGIN refight → choose `restore` → reload → title persists and EXP 500/Gold 1000 are not duplicated.
 
-- [ ] **Step 5: Implement alternate-ending recovery journey**
+- [ ] **Step 14: Implement two-browser online ORIGIN journey**
+Two authenticated contexts share ORIGIN HP/phase, authority transfers after owner exit, both receive independent local defeat receipts/spectator state and choose different endings. One nickname never mutates the other. TEACHER/BOSSKILLBOSS never leak into shared presence or alter ORIGIN online behavior.
 
-Defeat ORIGIN with two origin records, verify resonate locked, select `결정 보류`, backtrack for record 3, return without ORIGIN refight, choose `restore`, reload, and assert title persists and EXP 500/Gold 1000 are not paid again. Pure ending-state tests cover `seal` behavior and exact Task 8 script tests cover its copy.
+- [ ] **Step 15: Wire browser CI**
+Add `PIXEL_WORLD_URL=http://127.0.0.1:4173 node tests/sanctuary-browser-smoke.cjs` after existing volcano smoke. Existing earlier journeys remain gates.
 
-- [ ] **Step 6: Implement two-browser online ORIGIN journey**
+#### Task 10D: Documentation and full release verification
 
-Two authenticated contexts enter core heart, share one ORIGIN encounter/HP, verify authority transfer when current authority exits, finish fight, receive separate local defeat receipts, enter spectator state, and choose different endings. Assert one nickname's ending never changes the other nickname's save. Assert TEACHER and BOSSKILLBOSS neither appear in shared presence nor alter ORIGIN count/immortality.
+- [ ] **Step 16: Update README and Firebase docs**
+README adds spoiler-free beginner guide/tagline, three classes, 21 standard Bran weapons, controls, modes, first-journey behavior, corrected Chapter 1→4 order, 15 maps, TRINITY, ORIGIN, v8 key, endings, 3/3 resonance condition, defer/spectator recovery, credits/post-credit and titles. FIREBASE_SETUP documents the ORIGIN shared path/rules and states `introSeen`, ending choices and titles remain nickname-local browser progress.
 
-- [ ] **Step 7: Wire browser CI**
-
-Add `tests/sanctuary-browser-smoke.cjs` after existing volcano smoke in `.github/workflows/browser-smoke.yml` so village/forest/coast/volcano journeys remain gates before finale journey.
-
-- [ ] **Step 8: Update docs**
-
-README documents 15 maps, sanctuary progression, TRINITY local behavior, ORIGIN shared behavior, v8 save key, three permanent endings, 3/3 resonance requirement, `결정 보류`, spectator recovery, credits/post-credit and titles. FIREBASE_SETUP documents `rooms/public/bosses/sanctuary-core-heart`, ORIGIN rule fields and confirms endings/titles are never stored in Firebase.
-
-- [ ] **Step 9: Run complete Node, syntax and diff verification**
-
+- [ ] **Step 17: Run complete Node and syntax verification**
+Run:
 ```bash
 node --test tests/*.test.mjs tests/*.static.test.cjs
 for file in src/*.js; do node --check "$file"; done
 node --check tests/sanctuary-browser-smoke.cjs
 git diff --check
 ```
+Expected: all commands exit 0 with zero Node failures.
 
-Expected: every command exits `0` and Node reports zero failures.
+- [ ] **Step 18: Run Firebase emulator verification**
+Run: `npx firebase emulators:exec --only database --project demo-pixel-world-rules "node tests/firebase-rules-emulator.cjs"`
+Expected: exit 0.
 
-- [ ] **Step 10: Run Firebase emulator verification**
+- [ ] **Step 19: Run local browser smoke on exact branch head**
+Start `python3 -m http.server 4173`, then run existing base/coast/volcano smoke followed by `tests/sanctuary-browser-smoke.cjs`. Expected: all commands exit 0.
 
-```bash
-npx firebase emulators:exec --only database --project demo-pixel-world-rules "node tests/firebase-rules-emulator.cjs"
-```
-
-Expected: exit `0`.
-
-- [ ] **Step 11: Run local browser smoke on exact branch head**
-
-Start `python3 -m http.server 4173` in one terminal, then run:
-
-```bash
-PIXEL_WORLD_URL=http://127.0.0.1:4173 node tests/browser-smoke.cjs
-PIXEL_WORLD_URL=http://127.0.0.1:4173 node tests/coast-browser-smoke.cjs
-PIXEL_WORLD_URL=http://127.0.0.1:4173 node tests/volcano-browser-smoke.cjs
-PIXEL_WORLD_URL=http://127.0.0.1:4173 node tests/sanctuary-browser-smoke.cjs
-```
-
-Expected: all four commands exit `0`.
-
-- [ ] **Step 12: Commit release verification assets**
-
-```bash
-git add .github/workflows/browser-smoke.yml index.html README.md FIREBASE_SETUP.md tests/sanctuary-cache-contract.test.mjs tests/sanctuary-browser-smoke.cjs tests/ci-workflow.test.mjs tests/firebase-hosting.test.mjs
-git commit -m "test: verify pixel core sanctuary release"
-```
+- [ ] **Step 20: Commit Task 10 release assets**
+Commit the Task 10 source, HTML/CSS, CI, tests and docs as `feat: ship sanctuary release and first-player journey` after all Step 17-19 evidence is green.
 
 ### Task 11: PR gate and deployed-service verification
 
