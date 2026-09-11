@@ -14,6 +14,8 @@ import {
   reducePersonalChorusState,
   validateChorusAction,
 } from "./sanctuary-chorus-state-20260911-sanctuary.js";
+import { chorusBranchPresentation } from "./sanctuary-story-data-20260911-sanctuary.js";
+import { VOLCANO_HIDDEN_WEAPON_IDS } from "./weapon-data-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 
 const ATTACK_KINDS = Object.freeze(["basic", "strong", "skill-e", "skill-r"]);
 const INTERACTION_RADIUS = 105;
@@ -21,6 +23,21 @@ const PATTERN_IMPACT_DELAY_MS = 900;
 const PATTERN_RECOVERY_MS = 350;
 const PATTERN_DAMAGE = 14;
 const CHORUS_CENTER = Object.freeze({ x: 1080, y: 820 });
+const CLASS_IDS = Object.freeze(["warrior", "archer", "mage"]);
+const BOND_CUT_PRESENTATIONS = Object.freeze({
+  warrior: Object.freeze({
+    presentationId: "warrior-sever",
+    label: "검의 궤적으로 결속선을 베어 기억을 분리한다.",
+  }),
+  archer: Object.freeze({
+    presentationId: "archer-pin",
+    label: "기록 표식을 꿰뚫어 결속선을 고정하고 분리한다.",
+  }),
+  mage: Object.freeze({
+    presentationId: "mage-dispel",
+    label: "공명 주파수를 해제해 결속선을 분리한다.",
+  }),
+});
 
 const ANCHORS = Object.freeze([
   { id: "forest", name: "숲 기록 닻", x: 700, y: 1120, color: "#4ade80" },
@@ -135,12 +152,35 @@ function clonePattern(definition, startedAt, impactAt) {
   return { ...definition, startedAt, impactAt, endsAt: impactAt + PATTERN_RECOVERY_MS };
 }
 
+function normalizeClassId(classId) {
+  return CLASS_IDS.includes(classId) ? classId : "warrior";
+}
+
+export function chorusAttackPresentation(classId, actionType = "bond-cut") {
+  if (actionType !== "bond-cut") return null;
+  const normalizedClassId = normalizeClassId(classId);
+  return Object.freeze({
+    classId: normalizedClassId,
+    actionType: "bond-cut",
+    cohesionDelta: -10,
+    ...BOND_CUT_PRESENTATIONS[normalizedClassId],
+  });
+}
+
 class SanctuaryChorusController {
   constructor(options = {}) {
     this.uid = typeof options.uid === "string" && options.uid ? options.uid : "local-player";
     this.mode = options.mode === "online" ? "online" : "solo";
     this.network = options.network || null;
-    this.captainOutcome = options.captainOutcome;
+    this.captainOutcome = options.captainOutcome === "rescued" ? "rescued" : "lost";
+    this.classId = normalizeClassId(options.classId);
+    const equipmentOwnedIds = options.equipmentByClass?.[this.classId]?.ownedWeaponIds;
+    this.ownedWeaponIds = new Set([
+      ...(Array.isArray(options.ownedWeaponIds) ? options.ownedWeaponIds : []),
+      ...(Array.isArray(equipmentOwnedIds) ? equipmentOwnedIds : []),
+    ]);
+    this.hiddenWeaponOwned = options.hiddenWeaponOwned === true
+      || this.ownedWeaponIds.has(VOLCANO_HIDDEN_WEAPON_IDS[this.classId]);
     this.now = typeof options.now === "function" ? options.now : () => Date.now();
     this.seedSnapshot = normalizeChorusEncounter(options.seedSnapshot);
     this.savedSnapshot = this.seedSnapshot;
@@ -155,6 +195,8 @@ class SanctuaryChorusController {
     this.pendingEvents = [];
     this.completionClaims = {};
     this.lastPlayer = null;
+    this.falseOrderInterruptEncounterId = null;
+    this.lastAttackPresentation = null;
   }
 
   setMap(mapId, options = {}) {
@@ -164,6 +206,7 @@ class SanctuaryChorusController {
       if (this.snapshot) this.savedSnapshot = this.snapshot;
       this.snapshot = null;
       this.activePattern = null;
+      this.lastAttackPresentation = null;
       return null;
     }
     if (!this.savedSnapshot) {
@@ -201,13 +244,13 @@ class SanctuaryChorusController {
     };
   }
 
-  applyRequest(request, timestamp, authenticatedUid = this.uid) {
+  applyRequest(request, timestamp, authenticatedUid = this.uid, context = {}) {
     if (!this.snapshot) return { ok: false, reason: "inactive", events: [] };
     const validation = validateChorusAction(request, {
       encounter: this.snapshot,
       authenticatedUid,
       now: timestamp,
-      lumenAssistEligible: false,
+      lumenAssistEligible: context.lumenAssistEligible === true,
     });
     if (!validation.ok) {
       if (validation.personalEvent && request.uid === this.uid && authenticatedUid === this.uid) {
@@ -252,7 +295,17 @@ class SanctuaryChorusController {
     if (this.snapshot.phase === "onslaught") {
       const target = this.targetableBosses().find(value => value.id === input.targetId);
       if (!target) return { ok: false, reason: "bond_not_vulnerable", events: [] };
-      return this.applyRequest(this.nextAction("bond-cut", { bondId: target.bondId }, timestamp), timestamp);
+      const result = this.applyRequest(this.nextAction("bond-cut", { bondId: target.bondId }, timestamp), timestamp);
+      if (!result.ok) return result;
+      const presentation = chorusAttackPresentation(input.classId || this.classId, "bond-cut");
+      this.lastAttackPresentation = {
+        ...presentation,
+        bondId: target.bondId,
+        x: target.x,
+        y: target.y,
+        createdAt: timestamp,
+      };
+      return { ...result, presentation };
     }
     return { ok: false, reason: "phase_not_attackable", events: [] };
   }
@@ -261,6 +314,19 @@ class SanctuaryChorusController {
     const fragmentId = this.personalSnapshot.carriedFragmentId;
     this.personalSnapshot.carriedFragmentId = null;
     return fragmentId;
+  }
+
+  async requestLumenAssist(anchorId, timestamp = this.now()) {
+    if (!this.snapshot) return { ok: false, reason: "inactive", events: [] };
+    if (this.captainOutcome !== "rescued" || !this.hiddenWeaponOwned) {
+      return { ok: false, reason: "assist_ineligible", events: [] };
+    }
+    return this.applyRequest(
+      this.nextAction("lumen-assist", { anchorId }, timestamp),
+      timestamp,
+      this.uid,
+      { lumenAssistEligible: true },
+    );
   }
 
   expireRecordWindow(timestamp = this.now()) {
@@ -368,6 +434,18 @@ class SanctuaryChorusController {
     if (context.player) this.lastPlayer = { ...context.player };
     const events = this.pendingEvents.splice(0);
     this.expireRecordWindow(timestamp);
+    const branch = chorusBranchPresentation(this.captainOutcome);
+    if (this.snapshot?.status === "active" && this.snapshot.phase === "testimonies"
+      && branch.lumen.interruptionId
+      && this.falseOrderInterruptEncounterId !== this.snapshot.encounterId) {
+      this.falseOrderInterruptEncounterId = this.snapshot.encounterId;
+      events.push({
+        type: "chorus-branch-interruption",
+        presentationId: branch.lumen.interruptionId,
+        speaker: "lumen",
+        pages: [...branch.lumen.pages],
+      });
+    }
     if (!this.snapshot || this.snapshot.phase !== "onslaught" || this.snapshot.status !== "active") {
       return { events, shared: this.snapshot, personal: this.personalSnapshot };
     }
@@ -407,10 +485,24 @@ class SanctuaryChorusController {
       y: finite(this.lastPlayer?.y, CHORUS_CENTER.y - 72),
     }] : [];
     const separated = this.snapshot.status === "separated";
+    const branch = chorusBranchPresentation(this.captainOutcome);
+    const lumenAssist = branch.captainOutcome === "rescued"
+      && this.hiddenWeaponOwned
+      && this.snapshot.phase === "anchors"
+      && this.snapshot.lumenAssistUsed !== true
+      ? {
+          actionId: "chorus-lumen-assist",
+          prompt: "루멘의 기록 닻 안정화",
+          availableAnchorIds: ANCHOR_IDS.filter(id => !this.snapshot.stabilizedAnchorIds.includes(id)),
+        }
+      : null;
     return {
       active: true,
       shared: this.snapshot,
       personal: this.personalSnapshot,
+      branch,
+      lumenAssist,
+      attackPresentation: this.lastAttackPresentation ? { ...this.lastAttackPresentation } : null,
       body: separated ? null : { ...CHORUS_CENTER, radius: 92 },
       anchors: ANCHORS.map(value => ({ ...value, stabilized: this.snapshot.stabilizedAnchorIds.includes(value.id) })),
       testimony: this.snapshot.phase === "testimonies"
@@ -470,6 +562,8 @@ class SanctuaryChorusController {
     this.completionClaims = {};
     this.processedPatternEventIds.clear();
     this.personalSnapshot = createPersonalChorusState();
+    this.falseOrderInterruptEncounterId = null;
+    this.lastAttackPresentation = null;
   }
 }
 
@@ -480,6 +574,10 @@ export function createSanctuaryChorusController(options = {}) {
     network: options.network || null,
     seedSnapshot: options.seedSnapshot || null,
     captainOutcome: options.captainOutcome,
+    classId: options.classId,
+    ownedWeaponIds: options.ownedWeaponIds,
+    equipmentByClass: options.equipmentByClass,
+    hiddenWeaponOwned: options.hiddenWeaponOwned,
     now: options.now || (() => Date.now()),
   });
 }

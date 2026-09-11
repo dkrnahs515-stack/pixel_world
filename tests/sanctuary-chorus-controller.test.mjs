@@ -6,7 +6,9 @@ import {
   createChorusEncounter,
   validateChorusAction,
 } from "../src/sanctuary-chorus-state-20260911-sanctuary.js";
-import { createSanctuaryChorusController } from "../src/sanctuary-chorus-controller-20260911-sanctuary.js";
+import * as chorusController from "../src/sanctuary-chorus-controller-20260911-sanctuary.js";
+
+const { createSanctuaryChorusController } = chorusController;
 
 function sharedAction(encounter, uid, type, createdAt, fields = {}) {
   return {
@@ -54,6 +56,7 @@ function encounterAt(phase) {
 
 function controllerFor(phase = "anchors", options = {}) {
   const controller = createSanctuaryChorusController({
+    ...options,
     uid: "local-player",
     mode: "solo",
     seedSnapshot: options.seedSnapshot || encounterAt(phase),
@@ -61,6 +64,59 @@ function controllerFor(phase = "anchors", options = {}) {
   });
   controller.setMap("sanctuary-return-record", { correctionLinked: true });
   return controller;
+}
+
+async function solveEncounter(captainOutcome, classId) {
+  let now = 2000;
+  const controller = controllerFor("anchors", {
+    captainOutcome,
+    classId,
+    now: () => now,
+  });
+  const anchorPositions = {
+    forest: { x: 700, y: 1120 },
+    coast: { x: 1080, y: 1120 },
+    volcano: { x: 1460, y: 1120 },
+  };
+  for (const anchorId of ANCHOR_IDS) {
+    await controller.requestAttack({
+      targetId: "unnamed-chorus",
+      attackKind: "basic",
+      fragmentId: anchorId,
+      classId,
+    }, now += 10);
+    await controller.interact(anchorPositions[anchorId], now += 10);
+  }
+  const verdictPositions = {
+    fact: { x: 700, y: 1120 },
+    partial: { x: 1080, y: 1120 },
+    unsupported: { x: 1340, y: 1120 },
+  };
+  for (const testimony of CHORUS_TESTIMONIES) {
+    await controller.interact(verdictPositions[testimony.verdict], now += 10);
+  }
+  const recordPositions = {
+    roan: { x: 700, y: 620 },
+    sera: { x: 1080, y: 560 },
+    garen: { x: 1460, y: 620 },
+    lumen: { x: 1080, y: 1320 },
+  };
+  for (const bondId of BOND_IDS) {
+    await controller.interact(recordPositions[bondId], now += 10);
+    await controller.requestAttack({
+      targetId: `chorus-bond-${bondId}`,
+      attackKind: "basic",
+      classId,
+    }, now += 10);
+  }
+  return {
+    phase: controller.snapshot.phase,
+    status: controller.snapshot.status,
+    hp: controller.snapshot.hp,
+    stabilizedAnchorIds: controller.snapshot.stabilizedAnchorIds,
+    resolvedTestimonyIds: controller.snapshot.resolvedTestimonyIds,
+    severedBondIds: controller.snapshot.severedBondIds,
+  };
 }
 
 test("the encounter exists only in the corrected return-record room", () => {
@@ -274,4 +330,52 @@ test("an expired record window releases F interaction so the same record can be 
   assert.equal((await controller.interact(player, now)).ok, true);
   assert.equal(controller.snapshot.activeRecordId, "roan");
   assert.ok(controller.snapshot.vulnerableUntil > firstVulnerableUntil);
+});
+
+test("captain branches differ in presentation but not encounter solvability", async () => {
+  assert.equal(typeof chorusController.chorusAttackPresentation, "function");
+  assert.deepEqual(
+    await solveEncounter("rescued", "warrior"),
+    await solveEncounter("lost", "mage"),
+  );
+});
+
+test("all classes apply the same narrative bond cut with distinct presentation", async () => {
+  assert.equal(typeof chorusController.chorusAttackPresentation, "function");
+  const results = [];
+  for (const classId of ["warrior", "archer", "mage"]) {
+    let now = 3000;
+    const controller = controllerFor("onslaught", { classId, now: () => now });
+    assert.equal((await controller.interact({ x: 700, y: 620 }, now)).ok, true);
+    const before = controller.snapshot.hp;
+    const cut = await controller.requestAttack({
+      targetId: "chorus-bond-roan",
+      attackKind: "basic",
+      classId,
+    }, now += 10);
+    results.push({
+      cohesionDelta: controller.snapshot.hp - before,
+      actionType: cut.presentation?.actionType,
+      presentationId: cut.presentation?.presentationId,
+    });
+  }
+  assert.deepEqual(results.map(value => value.cohesionDelta), [-10, -10, -10]);
+  assert.deepEqual(results.map(value => value.actionType), ["bond-cut", "bond-cut", "bond-cut"]);
+  assert.deepEqual(results.map(value => value.presentationId), [
+    "warrior-sever",
+    "archer-pin",
+    "mage-dispel",
+  ]);
+});
+
+test("rescued Lumen interrupts the false order once while lost never revives an actor", () => {
+  const rescued = controllerFor("testimonies", { captainOutcome: "rescued", now: () => 3000 });
+  const first = rescued.update(1 / 60, {}, 3000);
+  const second = rescued.update(1 / 60, {}, 3001);
+  assert.deepEqual(first.events.filter(event => event.presentationId === "false-order-interrupt").map(event => event.speaker), ["lumen"]);
+  assert.deepEqual(second.events.filter(event => event.presentationId === "false-order-interrupt"), []);
+
+  const lost = controllerFor("testimonies", { captainOutcome: "lost", now: () => 3000 });
+  assert.deepEqual(lost.update(1 / 60, {}, 3000).events.filter(event => event.speaker === "lumen"), []);
+  assert.equal(lost.renderModel().branch.lumen.presentActor, false);
 });

@@ -193,6 +193,71 @@ function drawRecordStations(ctx, model, camera) {
   }
 }
 
+function drawLumenBranch(ctx, model, camera) {
+  const lumen = model.branch?.lumen;
+  if (!lumen || model.shared?.status !== "active") return;
+  const offset = cameraPosition(camera);
+  const x = 1080 - offset.x;
+  const y = 1460 - offset.y;
+  ctx.save();
+  ctx.textAlign = "center";
+  if (lumen.mode === "live-voice") {
+    ctx.fillStyle = "rgba(103,232,249,.18)";
+    ctx.strokeStyle = COLORS.cyan;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, y, 38, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = COLORS.white;
+    ctx.font = "800 13px sans-serif";
+    ctx.fillText("루멘 · 생존 통신", x, y + 58);
+    if (model.lumenAssist) ctx.fillText(model.lumenAssist.prompt, x, y + 78);
+  } else {
+    ctx.fillStyle = "rgba(248,250,252,.1)";
+    ctx.strokeStyle = "#94a3b8";
+    ctx.lineWidth = 2;
+    ctx.fillRect(x - 76, y - 26, 64, 52);
+    ctx.strokeRect?.(x - 76, y - 26, 64, 52);
+    ctx.fillStyle = "rgba(103,232,249,.16)";
+    ctx.beginPath();
+    ctx.arc(x + 42, y, 28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#cbd5e1";
+    ctx.font = "800 13px sans-serif";
+    ctx.fillText("미전송 명령서 · 잔류 기억", x, y + 58);
+  }
+  ctx.restore();
+}
+
+function drawAttackPresentation(ctx, presentation, camera, now) {
+  if (!presentation || !Number.isFinite(presentation.createdAt) || now - presentation.createdAt > 420) return;
+  const offset = cameraPosition(camera);
+  const x = presentation.x - offset.x;
+  const y = presentation.y - offset.y;
+  ctx.save();
+  ctx.strokeStyle = COLORS.white;
+  ctx.fillStyle = COLORS.cyan;
+  ctx.lineWidth = 4;
+  if (presentation.presentationId === "warrior-sever") {
+    ctx.beginPath();
+    ctx.moveTo(x - 30, y + 24);
+    ctx.lineTo(x + 30, y - 24);
+    ctx.stroke();
+  } else if (presentation.presentationId === "archer-pin") {
+    ctx.beginPath();
+    ctx.arc(x, y, 16, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillRect(x - 3, y - 30, 6, 60);
+  } else if (presentation.presentationId === "mage-dispel") {
+    ctx.setLineDash?.([6, 5]);
+    ctx.beginPath();
+    ctx.arc(x, y, 30, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function drawSeparatedMessage(ctx, model, options) {
   if (!model.separated || !model.message) return;
   const width = Number.isFinite(options.viewWidth) ? options.viewWidth : finiteDimension(ctx.canvas?.width, 800);
@@ -231,8 +296,10 @@ export function drawSanctuaryOverlays(ctx, model, camera = {}, options = {}) {
   drawAnchors(ctx, model.anchors, camera);
   drawTestimonyStations(ctx, model.testimony, model.verdictStations, camera);
   drawRecordStations(ctx, model, camera);
+  drawLumenBranch(ctx, model, camera);
   drawBody(ctx, model.body, camera);
   drawBonds(ctx, model.bonds, camera);
+  drawAttackPresentation(ctx, model.attackPresentation, camera, Number.isFinite(options.now) ? options.now : Date.now());
   drawFragments(ctx, [...(model.fragments || []), ...(model.separatedFragments || [])], camera);
   drawSeparatedMessage(ctx, model, options);
   return true;

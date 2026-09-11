@@ -23,6 +23,7 @@ import {
 import {
   storyDialogueModel,
 } from "../src/story-dialogue-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import * as sanctuaryDialogue from "../src/story-dialogue-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 import { PixelRPG } from "../src/game-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 import { collectRecordArchiveEntries } from "../src/record-archive-20260911-sanctuary.js";
 
@@ -355,4 +356,44 @@ test("game record answer actions validate a field and keep an incomplete answer 
   game.handleDialogueAction(`story-record-answer-${answerForRecordField("delay-lumen", "lost").id}`);
   assert.equal(closed, 1);
   assert.deepEqual(game.progress.worldProgress.chapters.sanctuary.completedRecordFieldIds, ["delay-lumen"]);
+});
+
+test("rescued and lost Chorus branches preserve access while presenting Lumen differently", () => {
+  assert.equal(typeof sanctuaryStory.chorusBranchPresentation, "function");
+  const rescued = sanctuaryStory.chorusBranchPresentation("rescued");
+  const lost = sanctuaryStory.chorusBranchPresentation("lost");
+
+  assert.equal(rescued.lumen.mode, "live-voice");
+  assert.equal(rescued.lumen.presentActor, false);
+  assert.equal(rescued.lumen.interruptionId, "false-order-interrupt");
+  assert.equal(lost.lumen.mode, "unsent-order");
+  assert.equal(lost.lumen.presentActor, false);
+  assert.deepEqual(lost.lumen.sourceRecordIds, ["lumen-unsent-retreat-order", "lumen-residual-memory"]);
+  assert.deepEqual(rescued.completionAccess, lost.completionAccess);
+  assert.deepEqual(lost.completionAccess, {
+    hiddenWeaponRequired: false,
+    endingIds: ["seal", "restore", "release"],
+    rewardProfileId: "sanctuary-standard",
+  });
+});
+
+test("lost Chorus dialogue exposes records instead of an assist or resurrected Lumen", () => {
+  assert.equal(typeof sanctuaryDialogue.chorusBranchDialogueModel, "function");
+  const rescued = sanctuaryDialogue.chorusBranchDialogueModel("rescued", {
+    phase: "anchors",
+    hiddenWeaponOwned: true,
+    lumenAssistUsed: false,
+  });
+  const lost = sanctuaryDialogue.chorusBranchDialogueModel("lost", {
+    phase: "anchors",
+    hiddenWeaponOwned: true,
+    lumenAssistUsed: false,
+  });
+
+  assert.deepEqual(rescued.actions, [{ id: "chorus-lumen-assist", label: "루멘의 기록 닻 안정화" }]);
+  assert.equal(rescued.title, "루멘의 생존 통신");
+  assert.deepEqual(lost.actions, []);
+  assert.match(lost.pages.join(" "), /미전송 철수 명령서/);
+  assert.match(lost.pages.join(" "), /잔류 기억/);
+  assert.doesNotMatch(lost.pages.join(" "), /현재 생존한 루멘|되살아|부활/);
 });

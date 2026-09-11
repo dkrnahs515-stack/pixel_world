@@ -229,6 +229,49 @@ const LUMEN_SOURCES = freeze({
   },
 });
 
+const CHORUS_COMPLETION_ACCESS = freeze({
+  hiddenWeaponRequired: false,
+  endingIds: ["seal", "restore", "release"],
+  rewardProfileId: "sanctuary-standard",
+});
+
+const CHORUS_BRANCH_PRESENTATIONS = freeze({
+  rescued: {
+    captainOutcome: "rescued",
+    officialStoryRoute: true,
+    lumen: {
+      mode: "live-voice",
+      presentActor: false,
+      interruptionId: "false-order-interrupt",
+      sourceRecordIds: ["lumen-current-testimony"],
+      pages: [
+        "살아 있는 루멘의 통신이 합창이 흉내 낸 거짓 명령을 한 번 끊는다.",
+        "루멘은 코어 분열의 유일한 원인이 아니라, 봉인을 건드린 자신의 선택과 지연 책임을 직접 증언한다.",
+      ],
+    },
+    completionAccess: CHORUS_COMPLETION_ACCESS,
+  },
+  lost: {
+    captainOutcome: "lost",
+    officialStoryRoute: false,
+    lumen: {
+      mode: "unsent-order",
+      presentActor: false,
+      interruptionId: null,
+      sourceRecordIds: ["lumen-unsent-retreat-order", "lumen-residual-memory"],
+      pages: [
+        "미전송 철수 명령서가 루멘이 남긴 선택과 책임을 증언한다.",
+        "봉인에 남은 잔류 기억이 그 기록을 보완하며, 현재의 인물이나 목소리로 나타나지 않는다.",
+      ],
+    },
+    completionAccess: CHORUS_COMPLETION_ACCESS,
+  },
+});
+
+export function chorusBranchPresentation(captainOutcome) {
+  return CHORUS_BRANCH_PRESENTATIONS[captainOutcome === "rescued" ? "rescued" : "lost"];
+}
+
 function recordFieldAnswers(fieldId) {
   const definition = RETURN_RECORD_FIELD_DEFINITIONS[fieldId];
   if (!definition) return [];

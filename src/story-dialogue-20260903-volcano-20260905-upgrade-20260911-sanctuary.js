@@ -5,6 +5,7 @@ import {
 import { VOLCANO_STORY_ACTORS } from "./volcano-story-data-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 import { chooseVolcanoRoute, normalizeWorldProgress } from "./chapter-progress-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 import { MEMORY_SOUND_IDS } from "./sanctuary-progress-20260911-sanctuary.js";
+import { chorusBranchPresentation } from "./sanctuary-story-data-20260911-sanctuary.js";
 
 const MEMORY_SOUND_LABELS = Object.freeze({
   "departure-bell": "출발 종",
@@ -23,6 +24,21 @@ function titleForVolcanoInteraction(interaction) {
   if (interaction.type === "volcano-core") return "세 번째 코어 조각";
   if (interaction.speaker) return `${interaction.speaker}의 기록`;
   return "활화산 조사";
+}
+
+export function chorusBranchDialogueModel(captainOutcome, context = {}) {
+  const branch = chorusBranchPresentation(captainOutcome);
+  const canAssist = branch.captainOutcome === "rescued"
+    && context.phase === "anchors"
+    && context.hiddenWeaponOwned === true
+    && context.lumenAssistUsed !== true;
+  return {
+    title: branch.lumen.mode === "live-voice" ? "루멘의 생존 통신" : "루멘의 보존 증언",
+    pages: [...branch.lumen.pages],
+    actions: canAssist
+      ? [{ id: "chorus-lumen-assist", label: "루멘의 기록 닻 안정화" }]
+      : [],
+  };
 }
 
 export function storyDialogueModel(interaction, worldProgress, options = {}) {
