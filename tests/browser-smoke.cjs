@@ -13,6 +13,14 @@ async function expectRegion(page, regionName) {
   await page.locator(".player-header small").filter({ hasText: regionName }).waitFor({ timeout: 8000 });
 }
 
+async function skipFirstJourneyIfVisible(page) {
+  const skip = page.locator("#firstJourneySkip");
+  if (await skip.isVisible()) {
+    await skip.click();
+    await page.locator("#firstJourneyOverlay").waitFor({ state: "hidden" });
+  }
+}
+
 (async () => {
   const executablePath = process.env.PLAYWRIGHT_BROWSER_PATH;
   const browser = await chromium.launch({
@@ -42,6 +50,7 @@ async function expectRegion(page, regionName) {
     await page.locator('[data-play-mode="solo"]').click();
     await page.locator("#enterButton").click();
     await page.locator("#hud").waitFor({ state: "visible" });
+    await skipFirstJourneyIfVisible(page);
     await expectRegion(page, "중앙 마을");
     assert.equal(await page.locator("#chatStatus").textContent(), "솔로");
     assert.equal(await page.locator("#chatPanel").isHidden(), true);

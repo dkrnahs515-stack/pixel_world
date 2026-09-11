@@ -5,7 +5,7 @@ import { WEAPON_ORDER_BY_CLASS } from "../src/weapon-data-20260905-upgrade.js";
 
 async function qaModule() {
   try {
-    return await import("../src/qa-mode.js");
+    return await import("../src/qa-mode-20260910-sanctuary.js");
   } catch {
     return {};
   }

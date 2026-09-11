@@ -40,12 +40,21 @@ async function walkAxis(page, axis, target, expectedMap = null) {
   }
 }
 
+async function skipFirstJourneyIfVisible(page) {
+  const skip = page.locator("#firstJourneySkip");
+  if (await skip.isVisible()) {
+    await skip.click();
+    await page.locator("#firstJourneyOverlay").waitFor({ state: "hidden" });
+  }
+}
+
 async function enterSolo(page, nickname) {
   await page.locator("#nicknameInput").fill(nickname);
   await page.locator('[data-class-id="warrior"]').click();
   await page.locator('[data-play-mode="solo"]').click();
   await page.locator("#enterButton").click();
   await page.locator("#hud").waitFor({ state: "visible" });
+  await skipFirstJourneyIfVisible(page);
 }
 
 async function expectMap(page, name) {
@@ -72,14 +81,14 @@ async function qaPrepareWeapons(page) {
 
 async function storedProgress(page) {
   return page.evaluate(() => {
-    const key = Object.keys(localStorage).find(candidate => candidate.startsWith("pixel-world.progress.v7:"));
+    const key = Object.keys(localStorage).find(candidate => candidate.startsWith("pixel-world.progress.v8:"));
     return key ? JSON.parse(localStorage.getItem(key)) : null;
   });
 }
 
 async function runtimeProgress(page, nickname) {
   return page.evaluate(async activeNickname => {
-    const { loadPlayerProgress } = await import("./src/game-20260903-volcano-20260905-upgrade.js");
+    const { loadPlayerProgress } = await import("./src/game-20260910-sanctuary.js");
     return loadPlayerProgress(localStorage, activeNickname).progress;
   }, nickname);
 }
@@ -88,8 +97,8 @@ async function seedObservatoryCheckpoint(page, prepared) {
   await page.locator("#qaButton").click();
   await page.locator('[data-qa-weapons="prepare"]').click();
   await page.evaluate(({ withAllAnchors }) => {
-    const key = Object.keys(localStorage).find(candidate => candidate.startsWith("pixel-world.progress.v7:"));
-    if (!key) throw new Error("v7 progress checkpoint is missing");
+    const key = Object.keys(localStorage).find(candidate => candidate.startsWith("pixel-world.progress.v8:"));
+    if (!key) throw new Error("v8 progress checkpoint is missing");
     const value = JSON.parse(localStorage.getItem(key));
     value.inventory = { hpPotion: 99, mpPotion: 99 };
     value.equipmentByClass.warrior.equippedWeaponId = "reinforced-masterwork-katana";
@@ -224,14 +233,14 @@ async function fightCaptain(page, label) {
       event.type === "boss-defeated" && event.encounterId === state.boss.encounterId);
   }, null, { timeout: 3000 });
   await page.waitForFunction(() => {
-    const key = Object.keys(localStorage).find(key => key.startsWith("pixel-world.progress.v7:"));
+    const key = Object.keys(localStorage).find(key => key.startsWith("pixel-world.progress.v8:"));
     return key && JSON.parse(localStorage.getItem(key)).worldProgress.chapters.volcano.coopBossDefeated;
   }, null, { timeout: 3000 });
   assert.equal(strongAttackObserved, true, `${label}: no successful Q was observed`);
 }
 
 async function installCombatObserver(page) {
-  await page.route("**/src/main-20260903-volcano-20260905-upgrade.js", async route => {
+  await page.route("**/src/main-20260910-sanctuary.js", async route => {
     const response = await route.fetch();
     const source = await response.text();
     await route.fulfill({ response, body: source + `
@@ -308,7 +317,7 @@ async function runRoute(browser, { nickname, prepared }) {
     await collectCore(page, { prepareWeapons: prepared });
 
     const beforeReload = await storedProgress(page);
-    assert.equal(beforeReload.version, 7);
+    assert.equal(beforeReload.version, 8);
     await reloadCheckpoint(page, nickname);
     const loaded = await runtimeProgress(page, nickname);
     const volcano = loaded.worldProgress.chapters.volcano;

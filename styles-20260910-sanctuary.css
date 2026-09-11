@@ -1,0 +1,130 @@
+@import url("./styles-20260903-volcano-20260905-upgrade.css");
+
+.sanctuary-ending-overlay {
+  z-index: 90;
+  background: radial-gradient(circle at center, rgba(30, 41, 59, .72), rgba(2, 6, 23, .98));
+}
+
+.sanctuary-ending-card {
+  width: min(760px, calc(100vw - 32px));
+  max-height: min(760px, calc(100vh - 32px));
+  overflow: auto;
+  text-align: center;
+}
+
+.sanctuary-ending-card .ending-kicker {
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  opacity: .72;
+}
+
+.ending-choice-grid {
+  display: grid;
+  gap: 12px;
+  margin: 24px 0;
+}
+
+.ending-choice-grid button {
+  min-height: 78px;
+  display: grid;
+  gap: 4px;
+  align-content: center;
+}
+
+.ending-choice-grid button strong {
+  font-size: 1.05rem;
+}
+
+.ending-choice-grid button small {
+  opacity: .78;
+}
+
+.ending-choice-grid button:disabled {
+  opacity: .42;
+  cursor: not-allowed;
+}
+
+.ending-locked-reason {
+  min-height: 1.5em;
+  margin: 8px 0 16px;
+  font-weight: 700;
+}
+
+.ending-confirm-actions,
+.ending-choice-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.ending-subtitle {
+  white-space: pre-line;
+  min-height: 4.5em;
+  padding: 18px;
+  margin: 18px 0;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, .72);
+  line-height: 1.65;
+}
+
+.ending-credits {
+  position: relative;
+  min-height: 460px;
+  overflow: hidden;
+  border-radius: 18px;
+  background: rgba(0, 0, 0, .78);
+}
+
+.ending-credits-text {
+  white-space: pre-line;
+  line-height: 2.15;
+  padding: 56px 24px 120px;
+  animation: sanctuaryCredits 30s linear forwards;
+}
+
+#endingCreditsSkip {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+}
+
+@keyframes sanctuaryCredits {
+  from { transform: translateY(45%); }
+  to { transform: translateY(-80%); }
+}
+
+@media (max-width: 640px) {
+  .sanctuary-ending-card {
+    width: calc(100vw - 18px);
+    max-height: calc(100vh - 18px);
+  }
+  .ending-choice-grid button {
+    min-height: 66px;
+  }
+}
+
+
+.first-journey-overlay {
+  position: fixed; inset: 0; z-index: 140; display: grid; place-items: center;
+  padding: clamp(18px, 4vw, 48px); background: #02050a; color: #e8f4ff;
+}
+.first-journey-overlay[hidden], .beginner-guide-overlay[hidden] { display: none !important; }
+.first-journey-card { width: min(760px, 100%); display: grid; gap: 22px; }
+.first-journey-card h2 { margin: 0; font-size: clamp(26px, 4vw, 44px); letter-spacing: .05em; }
+.first-journey-text { min-height: 11rem; margin: 0; white-space: pre-wrap; font-size: clamp(16px, 2.2vw, 22px); line-height: 1.8; text-wrap: pretty; }
+.first-journey-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.first-journey-actions button { min-width: 150px; }
+.beginner-guide-overlay { z-index: 135; }
+.beginner-guide-card { width: min(820px, calc(100vw - 28px)); max-height: min(86vh, 760px); overflow: auto; }
+.beginner-guide-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; text-align: left; }
+.beginner-guide-grid section { padding: 14px; border: 1px solid rgba(255,255,255,.12); border-radius: 12px; background: rgba(5,14,25,.45); }
+.beginner-guide-grid h3 { margin: 0 0 8px; }
+.beginner-guide-grid p { margin: 0; line-height: 1.7; }
+.beginner-guide-controls { grid-column: 1 / -1; }
+.beginner-guide-controls kbd { margin-inline: 2px; }
+/* arrival-glitch is canvas-only; this hook keeps reduced-motion semantics explicit. */
+@media (max-width: 680px) { .beginner-guide-grid { grid-template-columns: 1fr; } .beginner-guide-controls { grid-column: auto; } }
+@media (prefers-reduced-motion: reduce) {
+  .first-journey-overlay *, .beginner-guide-overlay * { animation: none !important; transition: none !important; }
+}

@@ -5,10 +5,36 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#111827" />
   <title>픽셀 월드 온라인 RPG</title>
-  <link rel="stylesheet" href="./styles-20260903-volcano-20260905-upgrade.css" />
+  <link rel="stylesheet" href="./styles-20260910-sanctuary.css" />
 </head>
 <body>
   <canvas id="game" tabindex="0" aria-label="2D 픽셀 온라인 RPG 게임 화면"></canvas>
+
+  <section id="firstJourneyOverlay" class="first-journey-overlay" hidden aria-label="픽셀 월드 시작 이야기">
+    <div class="first-journey-card" role="dialog" aria-modal="true" aria-labelledby="firstJourneyTitle" aria-describedby="firstJourneyText">
+      <p class="eyebrow">PIXEL WORLD // BOOT SEQUENCE</p>
+      <h2 id="firstJourneyTitle">세계 연결 복구 중</h2>
+      <p id="firstJourneyText" class="first-journey-text" aria-live="polite"></p>
+      <div class="first-journey-actions">
+        <button id="firstJourneyContinue" class="primary-button" type="button">계속</button>
+        <button id="firstJourneySkip" class="secondary-button" type="button">인트로 건너뛰기</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="beginnerGuideOverlay" class="screen-overlay beginner-guide-overlay" hidden>
+    <div class="modal-card beginner-guide-card" role="dialog" aria-modal="true" aria-labelledby="beginnerGuideTitle">
+      <button id="beginnerGuideClose" class="dialogue-close" type="button" aria-label="초심자 가이드 닫기">×</button>
+      <p class="eyebrow">BEGINNER GUIDE</p>
+      <h2 id="beginnerGuideTitle">픽셀 월드 초심자 가이드</h2>
+      <p class="modal-description">조각난 데이터의 대륙을 탐험하고 세 지역의 코어 반응을 추적하세요.</p>
+      <div class="beginner-guide-grid">
+        <section><h3>직업과 장비</h3><p><b>검사</b> 근접 검격 · <b>궁수</b> 원거리 화살 · <b>마법사</b> 범위 마법. 대장장이 브란의 대장간에서 레벨에 맞는 일반 장비 21종을 구매·판매·장착할 수 있습니다.</p></section>
+        <section><h3>플레이 모드</h3><p><b>솔로</b>는 스토리에 집중하는 오프라인 플레이, <b>온라인</b>은 최대 10명이 채팅과 협동 보스를 함께 즐기는 모드입니다.</p></section>
+        <section class="beginner-guide-controls"><h3>기본 조작</h3><p><kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd> 이동 · <kbd>Ctrl</kbd> 기본 공격 · <kbd>Q</kbd> 직업 스킬 · <kbd>E</kbd> Lv.5 해금 · <kbd>R</kbd> Lv.10 해금 · <kbd>F</kbd> 대화/조사 · <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> 퀵슬롯 · <kbd>I</kbd> 인벤토리 · <kbd>Enter</kbd> 온라인 채팅 · <kbd>Esc</kbd> 닫기/나가기</p></section>
+      </div>
+    </div>
+  </section>
 
   <div id="entryOverlay" class="screen-overlay">
     <form id="nicknameForm" class="modal-card entry-card" novalidate>
@@ -110,6 +136,7 @@
         </div>
         <div class="player-actions">
           <span id="networkBadge" class="status offline">오프라인</span>
+          <button id="helpButton" class="qa-button" type="button" aria-label="초심자 가이드 열기">?</button>
           <button id="qaButton" class="qa-button" type="button" aria-label="QA 도구 열기" hidden>QA</button>
           <button id="inventoryButton" class="inventory-button" type="button" aria-label="인벤토리 열기">
             <span aria-hidden="true">🎒</span><kbd>I</kbd>
@@ -151,7 +178,7 @@
       <small>QUEST</small>
       <strong>모험의 시작</strong>
       <span id="questProgress">현자 아렌과 대화하세요.</span>
-      <span id="chapterObjective" class="chapter-objective">CHAPTER · 푸른 해안의 신호를 찾는다.</span>
+      <span id="chapterObjective" class="chapter-objective">CHAPTER 1 · 아렌에게 대륙의 상황을 듣는다.</span>
       <button id="communicationLogButton" class="communication-log-button" type="button" aria-label="통신 기록 열기">통신 기록</button>
     </section>
 
@@ -310,6 +337,23 @@
             <button type="button" data-qa-world="volcano-magma-route">용암 수송로</button>
             <button type="button" data-qa-world="volcano-observatory">붕괴한 관측소</button>
             <button type="button" data-qa-world="volcano-core-caldera">화구 코어 제단</button>
+            <button type="button" data-qa-world="sanctuary">픽셀 코어 성역 입구</button>
+            <button type="button" data-qa-world="sanctuary-resonance-hall">공명 회랑</button>
+            <button type="button" data-qa-world="sanctuary-origin-archive">원점 기록고</button>
+            <button type="button" data-qa-world="sanctuary-zero-boundary">제로 경계</button>
+            <button type="button" data-qa-world="sanctuary-core-heart">코어 심장부</button>
+          </div>
+        </section>
+
+        <section class="qa-section" aria-labelledby="qaSanctuaryTitle">
+          <h3 id="qaSanctuaryTitle">픽셀 코어 성역 진행 준비</h3>
+          <div class="qa-weapon-actions">
+            <button class="qa-weapon-action" type="button" data-qa-sanctuary-setup="origin-records-3"><span>원점 기록 3/3</span>공명 엔딩 조건 준비</button>
+            <button class="qa-weapon-action" type="button" data-qa-sanctuary-setup="trinity-ready"><span>TRINITY-ready</span>제로 경계 전투 직전</button>
+            <button class="qa-weapon-action" type="button" data-qa-sanctuary-setup="origin-ready"><span>ORIGIN-ready</span>코어 심장부 전투 직전</button>
+            <button class="qa-weapon-action" type="button" data-qa-sanctuary-setup="ending-restore-ready"><span>복원 엔딩-ready</span>ORIGIN 처치·복원 선택 준비</button>
+            <button class="qa-weapon-action" type="button" data-qa-sanctuary-setup="ending-seal-ready"><span>봉인 엔딩-ready</span>ORIGIN 처치·봉인 선택 준비</button>
+            <button class="qa-weapon-action" type="button" data-qa-sanctuary-setup="ending-resonate-ready"><span>공명 엔딩-ready</span>원점 기록 3/3·공명 선택 준비</button>
           </div>
         </section>
 
@@ -405,7 +449,38 @@
     </section>
   </div>
 
+    <section id="sanctuaryEndingOverlay" class="screen-overlay sanctuary-ending-overlay" hidden>
+      <div class="modal-card sanctuary-ending-card" role="dialog" aria-modal="true" aria-labelledby="sanctuaryEndingTitle">
+        <p class="ending-kicker">PIXEL CORE SANCTUARY</p>
+        <h2 id="sanctuaryEndingTitle">최종 관리자 결정</h2>
+        <div id="endingChoicePanel">
+          <p>세계의 다음 규칙을 선택합니다. 확정한 엔딩은 이 닉네임에 영구 기록됩니다.</p>
+          <div class="ending-choice-grid">
+            <button id="endingRestoreButton" type="button"><strong>복원</strong><small>사건 이전의 안정 규칙으로 되돌린다</small></button>
+            <button id="endingSealButton" type="button"><strong>봉인</strong><small>현재 세계를 지키고 재작성 권한을 닫는다</small></button>
+            <button id="endingResonateButton" type="button"><strong>공명</strong><small>상호 승인으로 작동하는 새로운 규칙을 만든다</small></button>
+          </div>
+          <p id="endingLockedReason" class="ending-locked-reason" aria-live="polite"></p>
+          <div class="ending-choice-actions">
+            <button id="endingDeferButton" class="secondary-button" type="button">결정 보류</button>
+          </div>
+        </div>
+        <div id="endingConfirmPanel" hidden>
+          <p id="endingConfirmText" class="modal-description"></p>
+          <div class="ending-confirm-actions">
+            <button id="endingConfirmCancel" class="secondary-button" type="button">다시 선택</button>
+            <button id="endingConfirmButton" class="primary-button" type="button">이 선택 확정</button>
+          </div>
+        </div>
+        <p id="endingSubtitle" class="ending-subtitle" aria-live="polite"></p>
+        <div id="endingCredits" class="ending-credits" hidden>
+          <div id="endingCreditsText" class="ending-credits-text"></div>
+          <button id="endingCreditsSkip" class="secondary-button" type="button" disabled>크레딧 건너뛰기</button>
+        </div>
+      </div>
+    </section>
+
   <noscript>이 게임은 JavaScript가 필요합니다.</noscript>
-  <script type="module" src="./src/main-20260903-volcano-20260905-upgrade.js"></script>
+  <script type="module" src="./src/main-20260910-sanctuary.js"></script>
 </body>
 </html>

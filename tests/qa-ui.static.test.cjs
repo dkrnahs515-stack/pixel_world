@@ -4,7 +4,7 @@ const { readFileSync } = require("node:fs");
 const path = require("node:path");
 
 const html = readFileSync(path.join(__dirname, "../index.html"), "utf8");
-const main = readFileSync(path.join(__dirname, "../src/main-20260903-volcano-20260905-upgrade.js"), "utf8");
+const main = readFileSync(path.join(__dirname, "../src/main-20260910-sanctuary.js"), "utf8");
 const css = readFileSync(path.join(__dirname, "../styles-20260903-volcano-20260905-upgrade.css"), "utf8");
 const readme = readFileSync(path.join(__dirname, "../README.md"), "utf8");
 const coastSmoke = readFileSync(path.join(__dirname, "coast-browser-smoke.cjs"), "utf8");
@@ -28,7 +28,13 @@ test("QA 도구는 기본 문서에서 숨겨진 버튼과 모달로 제공된�
   ]) {
     assert.match(html, new RegExp(`data-qa-world="${mapId}"`));
   }
-  assert.doesNotMatch(html, /data-qa-world="sanctuary"/);
+  for (const mapId of [
+    "sanctuary", "sanctuary-resonance-hall", "sanctuary-origin-archive",
+    "sanctuary-zero-boundary", "sanctuary-core-heart",
+  ]) {
+    assert.match(html, new RegExp(`data-qa-world="${mapId}"`));
+  }
+  assert.equal((html.match(/data-qa-sanctuary-setup=/g) || []).length, 6);
   assert.match(html, /data-qa-world="forest"/);
   assert.equal((html.match(/data-qa-monster=/g) || []).length, 7);
   assert.equal((html.match(/data-qa-weapons="prepare"/g) || []).length, 1);
@@ -39,24 +45,30 @@ test("QA 도구는 기본 문서에서 숨겨진 버튼과 모달로 제공된�
   assert.match(html, /현재 지역 보스 앞으로 이동/);
 });
 
-test("README는 세 직업 전투·저장·21종 장비·온라인 동기화 범위를 설명한다", () => {
+test("README는 첫 플레이·세 직업·21종 장비·v8·15맵·온라인 경계를 설명한다", () => {
+  assert.match(readme, /조각난 데이터의 대륙[\s\S]*세계의 형태/);
   assert.match(readme, /검사[·\s]+궁수[·\s]+마법사/);
-  assert.match(readme, /재접속[\s\S]*직업.*변경/);
-  assert.match(readme, /레벨[·\s]+Gold[·\s]+퀘스트[\s\S]*유지/);
-  assert.match(readme, /직업별[\s\S]*보유[\s\S]*장착/);
+  assert.match(readme, /재접속[\s\S]*직업 변경[\s\S]*다시 재생하지/);
+  assert.match(readme, /레벨[·\s]+Gold[·\s]+퀘스트[·\s]+장비[·\s]+챕터 진행[\s\S]*유지/);
+  assert.match(readme, /직업별[\s\S]*보유[·\s]+장착/);
   assert.match(readme, /Ctrl[\s\S]*Q[\s\S]*MP/);
-  assert.match(readme, /검 7종[\s\S]*활 7종[\s\S]*지팡이 7종/);
-  assert.match(readme, /현재 직업[\s\S]*무기만 표시/);
-  assert.match(readme, /직업[·\s]+장착 무기[\s\S]*동기화/);
-  assert.match(readme, /원격 공격[\s\S]*피해.*동기화하지/);
-  for (const mapName of ["푸른 해변", "난파선 만", "침수된 통신소", "조수 코어 동굴"]) {
+  assert.match(readme, /검[·\s]*활[·\s]*지팡이[\s\S]*각 7단계[\s\S]*21종/);
+  assert.match(readme, /현재 직업 장비만[\s\S]*구매[·\s]+판매/);
+  assert.match(readme, /같은 물리 맵[\s\S]*직업[·\s]+장착 무기[\s\S]*동기화|위치\/외형/);
+  assert.match(readme, /Firebase에는[\s\S]*presence[·\s]+채팅[·\s]+공유 ORIGIN/);
+  assert.match(readme, /introSeen[\s\S]*Firebase에 올리지/);
+  for (const mapName of [
+    "푸른 해변", "난파선 만", "침수된 통신소", "조수 코어 동굴",
+    "공명 회랑", "원점 기록고", "제로 경계", "코어 심장부",
+  ]) {
     assert.match(readme, new RegExp(mapName));
   }
-  assert.match(readme, /통신 기록[\s\S]*F[\s\S]*세라[·\s]+에코[·\s]+마리/);
-  assert.match(readme, /솔로[\s\S]*로컬 보스[\s\S]*온라인[\s\S]*협동 보스/);
-  assert.match(readme, /연결[\s\S]*끊[\s\S]*최대 체력[\s\S]*로컬 보스/);
-  assert.match(readme, /pixel-world\.progress\.v7/);
-  assert.match(readme, /v1[~–-]+v6[\s\S]*이전/);
+  assert.match(readme, /15개 물리 맵/);
+  assert.match(readme, /TRINITY[\s\S]*개인 로컬 보스/);
+  assert.match(readme, /ORIGIN-0[\s\S]*공유 encounter/);
+  assert.match(readme, /pixel-world\.progress\.v8/);
+  assert.match(readme, /v1[~–→\s]*v7[\s\S]*v8로 이전/);
+  assert.match(readme, /결정 보류[\s\S]*원점 기록 3\/3/);
 });
 
 test("main은 qa=1 판정 결과만으로 QA 도구를 활성화한다", () => {
@@ -68,6 +80,7 @@ test("main은 qa=1 판정 결과만으로 QA 도구를 활성화한다", () => {
   assert.match(main, /qaWeaponButton:\s*document\.querySelector\("\[data-qa-weapons='prepare'\]"\)/);
   assert.match(main, /qaBlacksmithButton:\s*document\.querySelector\("\[data-qa-blacksmith='travel'\]"\)/);
   assert.match(main, /qaBossButton:\s*document\.querySelector\("\[data-qa-boss='approach'\]"\)/);
+  assert.match(main, /qaSanctuarySetupButtons:\s*\[\.\.\.document\.querySelectorAll\("\[data-qa-sanctuary-setup\]"\)\]/);
 });
 
 test("해안 브라우저 smoke는 두 지역 보스 모두 QA 접근 버튼으로 이동한 뒤 실제 키보드 공격을 반복한다", () => {

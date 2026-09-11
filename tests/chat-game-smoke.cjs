@@ -69,6 +69,14 @@ export const remove = async reference => {
   }
 };`;
 
+async function skipFirstJourneyIfVisible(page) {
+  const skip = page.locator("#firstJourneySkip");
+  if (await skip.isVisible()) {
+    await skip.click();
+    await page.locator("#firstJourneyOverlay").waitFor({ state: "hidden" });
+  }
+}
+
 (async () => {
   const executablePath = process.env.PLAYWRIGHT_BROWSER_PATH;
   const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
@@ -91,6 +99,7 @@ export const remove = async reference => {
     await page.locator('[data-play-mode="online"]').click();
     await page.locator("#enterButton").click();
     await page.locator("#hud").waitFor({ state: "visible" });
+    await skipFirstJourneyIfVisible(page);
     await page.locator("#chatInput").waitFor({ state: "attached" });
     await page.waitForFunction(() => !document.querySelector("#chatInput").disabled, null, { timeout: 5000 });
 

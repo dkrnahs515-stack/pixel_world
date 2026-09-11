@@ -3,7 +3,11 @@ const {chromium}=require("playwright");
 const http=require('node:http'),fs=require('node:fs');
 const server=http.createServer((req,res)=>{const file='.'+(req.url.split('?')[0]==='/'?'/index.html':req.url.split('?')[0]);try{res.setHeader('Content-Type',file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':'text/html');res.end(fs.readFileSync(file));}catch{res.statusCode=404;res.end();}});
 async function installReadAccess(page){
- await page.route('**/main-20260903-volcano-20260905-upgrade.js',async route=>{const response=await route.fetch();await route.fulfill({response,body:(await response.text())+'\nwindow.__rewardRead=()=>({mapId:game.mapId,player:{...game.player},progress:structuredClone(game.progress),bosses:(game.coopBossController?.renderableBosses?.()||[game.coopBossController?.renderableBoss?.()].filter(Boolean)).map(b=>({id:b.id,hp:b.hp,x:b.x,y:b.y}))});\n'});});
+ await page.route('**/main-20260910-sanctuary.js',async route=>{const response=await route.fetch();await route.fulfill({response,body:(await response.text())+'\nwindow.__rewardRead=()=>({mapId:game.mapId,player:{...game.player},progress:structuredClone(game.progress),bosses:(game.coopBossController?.renderableBosses?.()||[game.coopBossController?.renderableBoss?.()].filter(Boolean)).map(b=>({id:b.id,hp:b.hp,x:b.x,y:b.y}))});\n'});});
+}
+async function skipFirstJourneyIfVisible(page){
+ const skip=page.locator('#firstJourneySkip');
+ if(await skip.isVisible()){await skip.click();await page.locator('#firstJourneyOverlay').waitFor({state:'hidden'});}
 }
 (async()=>{
  await new Promise(resolve=>server.listen(4186,'127.0.0.1',resolve));
@@ -19,7 +23,7 @@ async function installReadAccess(page){
   await page.locator('.reward-code-panel summary').click();
   await page.locator('#rewardCodeInput').fill('JAEHOON MINAH KANGIN JOOHYEONG NOISE SLIME TEACHER BOSSKILLBOSS');
   await page.locator('#rewardCodePreview').click();await page.locator('#rewardCodeRedeem').click();
-  await page.locator('#enterButton').click();await page.locator('#hud').waitFor({state:'visible'});
+  await page.locator('#enterButton').click();await page.locator('#hud').waitFor({state:'visible'});await skipFirstJourneyIfVisible(page);
   let state=await page.evaluate(()=>window.__rewardRead());
   assert.equal(state.progress.level,100);assert.equal(state.progress.gold,5000000);assert.equal(state.progress.inventory.hpPotion,105);
   assert.equal(state.player.skinId,'slime');assert.equal(state.player.pencilWeapon,true);assert.equal(state.player.immortal,true);
@@ -52,7 +56,7 @@ async function installReadAccess(page){
     await peer.goto('http://127.0.0.1:4186/?qa=1');await peer.locator('#nicknameInput').fill(`전투${classId}`);
     await peer.locator(`[data-class-id="${classId}"]`).click();await peer.locator('[data-play-mode="solo"]').click();
     await peer.locator('.reward-code-panel summary').click();await peer.locator('#rewardCodeInput').fill('MINAH NOISE');await peer.locator('#rewardCodePreview').click();await peer.locator('#rewardCodeRedeem').click();
-    await peer.locator('#enterButton').click();await peer.locator('#hud').waitFor({state:'visible'});await peer.locator('.quest-banner button').click();
+    await peer.locator('#enterButton').click();await peer.locator('#hud').waitFor({state:'visible'});await skipFirstJourneyIfVisible(peer);const peerBanner=peer.locator('.quest-banner button');if(await peerBanner.isVisible())await peerBanner.click();
     await peer.locator('#qaButton').click();await peer.locator('[data-qa-world="forest"]').click();await peer.locator('#qaButton').click();await peer.locator('[data-qa-boss="approach"]').click();
     await peer.waitForFunction(()=>window.__rewardRead().player.hp<window.__rewardRead().player.maxHp,{},{timeout:6000});
     const beforeAttack=await peer.evaluate(()=>window.__rewardRead());await peer.keyboard.press('q');

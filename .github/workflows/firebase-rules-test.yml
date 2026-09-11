@@ -4,16 +4,20 @@ on:
   pull_request:
     branches: ["main"]
     paths:
+      - "index.html"
+      - "src/**"
+      - "tests/**"
       - "database.rules.json"
       - "firebase.json"
-      - "tests/firebase-rules-emulator.cjs"
       - ".github/workflows/firebase-rules-test.yml"
   push:
     branches: ["main"]
     paths:
+      - "index.html"
+      - "src/**"
+      - "tests/**"
       - "database.rules.json"
       - "firebase.json"
-      - "tests/firebase-rules-emulator.cjs"
       - ".github/workflows/firebase-rules-test.yml"
   workflow_dispatch:
 
@@ -41,7 +45,24 @@ jobs:
           java-version: "21"
 
       - name: Install Firebase test tools
-        run: npm install --no-save firebase-tools@15.26.0 @firebase/rules-unit-testing@5.0.0 firebase@12.6.0
+        run: npm install --no-save firebase-tools@15.26.0 @firebase/rules-unit-testing@5.0.0 firebase@12.16.0 playwright@1.55.0 esbuild@0.25.0
+
+      - name: Build isolated Firebase browser SDK
+        run: |
+          npx playwright install --with-deps chromium
+          printf "import * as appModule from 'firebase/app'; import * as authModule from 'firebase/auth'; import * as dbModule from 'firebase/database'; export {appModule,authModule,dbModule};" > tests/.firebase-sdk-entry.mjs
+          npx esbuild tests/.firebase-sdk-entry.mjs --bundle --format=esm --platform=browser --outfile=tests/.firebase-sdk.mjs
 
       - name: Run rules emulator tests
-        run: npx firebase emulators:exec --only database --project demo-pixel-world-rules "node tests/firebase-rules-emulator.cjs"
+        run: |
+          python3 -m http.server 4173 >/tmp/pixel-world-server.log 2>&1 &
+          npx firebase emulators:exec --only database,auth --project demo-pixel-world-rules "node tests/firebase-rules-emulator.cjs && node tests/sanctuary-rules-emulator.cjs && node tests/sanctuary-real-input-smoke.cjs --online"
+
+      - name: Save authenticated browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sanctuary-authenticated-evidence
+          path: tests/.artifacts/
+          include-hidden-files: true
+          retention-days: 7
