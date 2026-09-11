@@ -69,9 +69,7 @@
 - src/game-20260903-volcano-20260905-upgrade-20260911-sanctuary.js
 - src/main-20260903-volcano-20260905-upgrade-20260911-sanctuary.js
 - src/quest-guidance-20260905-upgrade-20260911-sanctuary.js
-- src/quest-banner-20260905-upgrade-20260911-sanctuary.js
-- src/npc-data-20260903-volcano-20260905-upgrade-20260911-sanctuary.js
-- src/qa-mode-20260903-volcano-20260905-upgrade-20260911-sanctuary.js
+- src/quest-guidance-20260905-upgrade-20260911-sanctuary.js
 - styles-20260903-volcano-20260905-upgrade-20260911-sanctuary.css
 - index.html
 - database.rules.json
@@ -240,10 +238,14 @@ Expected: exit 0.
       const portal = entrance.portals.find(value => value.id === "to-memory-archive");
       assert.equal(Boolean(portal), true);
       assert.equal(canUsePortal(portal, createInitialWorldProgress()), false);
-      const ready = progressSanctuary(volcanoCompleteProgress(), { type: "activate-core", coreId: "forest-core-casket" });
-      const ready2 = progressSanctuary(ready.progress, { type: "activate-core", coreId: "coast-core-casket" });
-      const ready3 = progressSanctuary(ready2.progress, { type: "activate-core", coreId: "volcano-core-casket" });
-      assert.equal(canUsePortal(portal, ready3.progress), true);
+      const ready = {
+        ...createInitialWorldProgress(),
+        unlockedMapIds: [
+          ...createInitialWorldProgress().unlockedMapIds,
+          "sanctuary-memory-archive",
+        ],
+      };
+      assert.equal(canUsePortal(portal, ready), true);
       assert.deepEqual(entrance.obstacles, SANCTUARY_WORLD_DEFINITIONS.sanctuary.obstacles);
     });
 
@@ -502,14 +504,31 @@ Expected: PASS; malformed JSON은 초기 진행으로 복구되고 migrationWrit
 - Test: tests/communication-log.test.mjs
 
 **Interfaces:**
-- Produces: collectRecordArchiveEntries(worldProgress) → ArchiveRecord[]
+- Produces: collectRecordArchiveEntries({ coastRecords, sanctuaryRecords }) → ArchiveRecord[]
 - Produces: orderedArchiveRecords(records), renderRecordArchive(list, records)
 - Compatibility: renderCommunicationLog(list, records) delegates to renderRecordArchive.
 
 - [ ] **Step 1: 원본 보존과 정정 연결 실패 테스트 작성**
 
     test("archive keeps the incorrect source beside its correction", () => {
-      const records = collectRecordArchiveEntries(correctedWorldProgress());
+      const originalFixture = {
+        id: "first-archivist-deletion-log",
+        chapterId: "sanctuary",
+        timelineOrder: 70,
+        pages: ["원본"],
+      };
+      const correctionFixture = {
+        id: "sanctuary-correction-link",
+        chapterId: "sanctuary",
+        timelineOrder: 80,
+        correctsRecordId: "first-archivist-deletion-log",
+        evidenceRecordIds: ["core-self-division-original", "false-return-resonance-time"],
+        pages: ["정정"],
+      };
+      const records = collectRecordArchiveEntries({
+        coastRecords: [],
+        sanctuaryRecords: [originalFixture, correctionFixture],
+      });
       const original = records.find(value => value.id === "first-archivist-deletion-log");
       const correction = records.find(value => value.id === "sanctuary-correction-link");
       assert.equal(Boolean(original), true);
@@ -521,7 +540,10 @@ Expected: PASS; malformed JSON은 초기 진행으로 복구되고 migrationWrit
     });
 
     test("coast records retain timeline order in the generic archive", () => {
-      const records = orderedArchiveRecords(coastAndSanctuaryRecords());
+      const records = orderedArchiveRecords(collectRecordArchiveEntries({
+        coastRecords: coastRecordsFixture(),
+        sanctuaryRecords: sanctuaryRecordsFixture(),
+      }));
       assert.deepEqual(records.filter(value => value.chapterId === "coast").map(value => value.timelineOrder), [10, 20, 30, 40, 50, 60]);
     });
 
@@ -532,10 +554,10 @@ Expected: FAIL because record-archive module is absent.
 
 - [ ] **Step 3: 범용 모델과 renderer 구현**
 
-    export function collectRecordArchiveEntries(worldProgress) {
+    export function collectRecordArchiveEntries({ coastRecords = [], sanctuaryRecords = [] } = {}) {
       return orderedArchiveRecords([
-        ...getCollectedCoastRecords(worldProgress).map(fromCoastRecord),
-        ...getCollectedSanctuaryRecords(worldProgress),
+        ...coastRecords.map(fromCoastRecord),
+        ...sanctuaryRecords.map(fromSanctuaryRecord),
       ]);
     }
 
@@ -554,7 +576,7 @@ HTML의 보이는 문구를 “기록 보관함”과 “수집한 통신·기�
 
 - [ ] **Step 4: game/main 연결**
 
-game.updateChapterUi는 getCollectedCoastRecords 대신 collectRecordArchiveEntries를 호출한다. 기존 communication-log 모듈은 renderCommunicationLog 이름을 유지한 compatibility export로 새 renderer를 호출한다.
+game.updateChapterUi는 collectRecordArchiveEntries({ coastRecords: getCollectedCoastRecords(worldProgress), sanctuaryRecords: [] })를 호출해 이 단계에서도 해안 기록 회귀를 유지한다. Task 6에서 getCollectedSanctuaryRecords를 연결한다. 기존 communication-log 모듈은 renderCommunicationLog 이름을 유지한 compatibility export로 새 renderer를 호출한다.
 
 - [ ] **Step 5: 기록 UI 테스트 통과 확인**
 
@@ -583,7 +605,7 @@ Expected: PASS; 해안 기록 재열기 동작도 유지된다.
 - Test: tests/story-rendering.test.mjs
 
 **Interfaces:**
-- Produces: SANCTUARY_STORY_INTERACTIONS, SANCTUARY_ARCHIVE_RECORDS, getSanctuaryStoryContent(mapId), getSanctuaryChapterObjective(worldProgress)
+- Produces: SANCTUARY_STORY_INTERACTIONS, SANCTUARY_ARCHIVE_RECORDS, getSanctuaryStoryContent(mapId), getCollectedSanctuaryRecords(worldProgress), getSanctuaryChapterObjective(worldProgress)
 - Extends: resolveStoryInteraction(progress, interactionId, response)
 
 - [ ] **Step 1: 기억 정답·오답·진실·환영 실패 테스트 작성**
@@ -635,7 +657,7 @@ Expected: FAIL because sanctuary story content is not registered.
 
 - [ ] **Step 4: dialogue action과 F 입력 전이 구현**
 
-storyDialogueModel은 memory-sequence-console에서 아직 선택하지 않은 네 소리 버튼과 “배열 제출”을 제공한다. game.handleDialogueAction은 story-memory-add-ID와 story-memory-submit을 응답 객체 { sequence }로 바꾼다. 오답 result.retryable은 overlay를 닫지 않고 오류 문구와 재시도 action을 유지한다.
+storyDialogueModel은 memory-sequence-console에서 아직 선택하지 않은 네 소리 버튼과 “배열 제출”을 제공한다. game.handleDialogueAction은 story-memory-add-ID와 story-memory-submit을 응답 객체 { sequence }로 바꾼다. 오답 result.retryable은 overlay를 닫지 않고 오류 문구와 재시도 action을 유지한다. game.updateChapterUi는 collectRecordArchiveEntries({ coastRecords: getCollectedCoastRecords(worldProgress), sanctuaryRecords: getCollectedSanctuaryRecords(worldProgress) })를 렌더링한다.
 
 - [ ] **Step 5: 로컬 노이즈 몬스터 추가**
 
@@ -691,7 +713,10 @@ Expected: PASS; 기존 coast/volcano story assertions도 유지된다.
         answerForRecordField("delay-lumen", "rescued").id,
         answerForRecordField("core-division-cause", "rescued").id,
       );
-      assert.equal(collectRecordArchiveEntries(linked).some(value => value.id === "first-archivist-deletion-log"), true);
+      assert.equal(collectRecordArchiveEntries({
+        coastRecords: [],
+        sanctuaryRecords: getCollectedSanctuaryRecords(linked),
+      }).some(value => value.id === "first-archivist-deletion-log"), true);
     });
 
 - [ ] **Step 2: 실패 확인**
@@ -1207,7 +1232,6 @@ Expected: PASS for equal rewards, three titles, three Echo states, Garen invaria
 
 **Files:**
 - Modify: src/quest-guidance-20260905-upgrade-20260911-sanctuary.js
-- Modify: src/quest-banner-20260905-upgrade-20260911-sanctuary.js
 - Modify: src/world-20260903-volcano-20260905-upgrade-20260911-sanctuary.js
 - Modify: src/main-20260903-volcano-20260905-upgrade-20260911-sanctuary.js
 - Modify: index.html
@@ -1264,7 +1288,7 @@ Expected: PASS; active graph count is exactly 88 and index has query-free new CS
 
 - [ ] **Step 6: 커밋**
 
-    git add src/quest-guidance-20260905-upgrade-20260911-sanctuary.js src/quest-banner-20260905-upgrade-20260911-sanctuary.js src/world-20260903-volcano-20260905-upgrade-20260911-sanctuary.js src/main-20260903-volcano-20260905-upgrade-20260911-sanctuary.js index.html tests/sanctuary-cache-contract.test.mjs tests/upgrade-cache-contract.test.mjs tests/volcano-cache-contract.test.mjs tests/quest-guidance.test.mjs tests/quest-ui.static.test.cjs
+    git add src/quest-guidance-20260905-upgrade-20260911-sanctuary.js src/world-20260903-volcano-20260905-upgrade-20260911-sanctuary.js src/main-20260903-volcano-20260905-upgrade-20260911-sanctuary.js index.html tests/sanctuary-cache-contract.test.mjs tests/upgrade-cache-contract.test.mjs tests/volcano-cache-contract.test.mjs tests/quest-guidance.test.mjs tests/quest-ui.static.test.cjs
     git commit -m "chore: activate the sanctuary physical release"
 
 ---
@@ -1324,7 +1348,7 @@ Expected: PASS; console errors=[], page errors=[], all screenshots non-empty, no
 
 - [ ] **Step 5: browser workflow 연결**
 
-browser-smoke.yml의 기존 smoke 명령 뒤에 PIXEL_WORLD_URL=http://127.0.0.1:4173 node tests/sanctuary-browser-smoke.cjs를 추가한다. page.goto의 networkidle은 탐색 옵션으로 사용할 수 있지만 waitForPlayable과 관찰 가능한 전이가 최종 성공 조건이다.
+browser-smoke.yml의 timeout-minutes를 30으로 늘리고 기존 smoke 명령 뒤에 PIXEL_WORLD_URL=http://127.0.0.1:4173 node tests/sanctuary-browser-smoke.cjs를 추가한다. page.goto의 networkidle은 탐색 옵션으로 사용할 수 있지만 waitForPlayable과 관찰 가능한 전이가 최종 성공 조건이다.
 
 - [ ] **Step 6: 커밋**
 
@@ -1368,13 +1392,14 @@ browser-smoke.yml의 기존 smoke 명령 뒤에 PIXEL_WORLD_URL=http://127.0.0.1
 
 - [ ] **Step 3: authority 종료와 개인 결말 분리 assertion 구현**
 
-현재 authority인 context를 닫고 남은 context가 epoch 증가와 authorityUid 변경을 관찰한 뒤 실제 입력으로 separated를 만든다. 기여 UID의 자기 completion claim만 각 페이지에 적용된다. A는 seal, B는 release를 선택하고 각 localStorage의 endingChoice가 다르며 Firebase chorus subtree에는 endingChoice와 contamination이 없음을 확인한다.
+현재 authority인 contextA에 contextA.setOffline(true)를 적용해 실제 Firebase 연결을 끊는다. contextB가 epoch 증가와 authorityUid 변경을 관찰한 뒤 실제 입력으로 separated를 만들고, authority가 기여자 A와 B의 completion claim을 생성했음을 읽기 전용으로 확인한다. contextA를 다시 online으로 바꾸고 같은 BrowserContext에서 페이지를 재진입해 기존 Auth UID와 localStorage를 유지한 채 자기 claim을 받는다. A는 seal, B는 release를 선택하고 각 localStorage의 endingChoice가 다르며 Firebase chorus subtree에는 endingChoice와 contamination이 없음을 확인한다.
 
 - [ ] **Step 4: 에뮬레이터 smoke 실행**
 
 Run: npm install --no-save firebase-tools@15.26.0 firebase@12.6.0 playwright@1.55.0  
 Run: npx playwright install chromium  
-Run: npx firebase emulators:exec --only auth,database --project demo-pixel-world-rules "node tests/sanctuary-network-browser-smoke.cjs"  
+Run in one shell: python -m http.server 4173  
+Run in another shell: npx firebase emulators:exec --only auth,database --project demo-pixel-world-rules "node tests/sanctuary-network-browser-smoke.cjs"  
 Expected: PASS with two distinct Auth UIDs, shared cohesion/phase, authority takeover, separated by input, isolated contamination and ending choice.
 
 - [ ] **Step 5: 전용 workflow 작성**
