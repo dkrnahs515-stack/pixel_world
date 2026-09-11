@@ -358,6 +358,10 @@ export class PixelRPG {
     this.sessionMode = "solo";
     this.coopBossController = null;
     this.chorusController = createSanctuaryChorusController({ uid: "local-player", mode: "solo" });
+    this.latestChorusSnapshot = null;
+    this.latestChorusActions = {};
+    this.lastPublishedChorusSignature = null;
+    this.chorusAuthorityAcquirePending = false;
     this.processedBossPlayerDamageIds = new Set();
     this.processedBossRewardIds = new Set();
     this.processedChorusEventIds = new Set();
@@ -547,12 +551,14 @@ export class PixelRPG {
     let entryFallbackReason = null;
     const bossNetworkGeneration = ++this.bossNetworkGeneration;
     const bossNetworkCallbacks = this.createBossNetworkCallbacks(bossNetworkGeneration);
+    const chorusNetworkCallbacks = this.createChorusNetworkCallbacks(bossNetworkGeneration);
     this.network = await createNetworkAdapter({
       playMode: this.sessionMode,
       onPlayersChanged: (players, metadata) => this.receiveRemotePlayers(players, metadata),
       onStatusChanged: (status, label) => this.updateNetworkStatus(status, label),
       onChatMessagesChanged: messages => this.receiveChatMessages(messages),
       ...bossNetworkCallbacks,
+      ...chorusNetworkCallbacks,
       onConnectionLost: reason => {
         if (this.bossNetworkGeneration === bossNetworkGeneration) void this.fallbackToSolo(reason);
       },
@@ -562,6 +568,7 @@ export class PixelRPG {
       if (playMode === "online") entryFallbackReason = this.network.reason;
     }
     await this.replaceBossControllerForMode(this.sessionMode);
+    await this.replaceChorusControllerForMode(this.sessionMode);
 
     this.persistProgress();
     this.running = true;
@@ -597,6 +604,9 @@ export class PixelRPG {
     this.coopBossController?.clear();
     this.coopBossController = null;
     this.chorusController?.clear?.();
+    this.latestChorusSnapshot = null;
+    this.latestChorusActions = {};
+    this.lastPublishedChorusSignature = null;
     this.updateChorusHud(null, Date.now());
     if (network) await network.stop();
 
@@ -648,12 +658,17 @@ export class PixelRPG {
   async fallbackToSolo(reason = "connection_lost") {
     if (this.sessionMode !== "online") return false;
     const network = this.network;
+    const seedSnapshot = this.latestChorusSnapshot
+      ? structuredClone(this.latestChorusSnapshot)
+      : null;
     this.bossNetworkGeneration += 1;
     this.network = createOfflineNetworkAdapter("solo", reason);
+    this.latestChorusActions = {};
     this.coopBossController?.clear?.();
     this.coopBossController = null;
     this.setSessionMode("solo", reason);
     await this.replaceBossControllerForMode("solo");
+    await this.replaceChorusControllerForMode("solo", { seedSnapshot });
     try {
       Promise.resolve(network?.stop?.()).catch(() => {});
     } catch {
@@ -729,6 +744,160 @@ export class PixelRPG {
       uid: this.network.uid,
       network: this.network.coopBoss,
     });
+  }
+
+  createChorusControllerForMode(mode = this.sessionMode, options = {}) {
+    const online = mode === "online" && this.network?.chorus;
+    return createSanctuaryChorusController({
+      uid: online ? this.network.uid : "local-player",
+      mode: online ? "online" : "solo",
+      network: online ? this.network.chorus : null,
+      seedSnapshot: online ? null : options.seedSnapshot || null,
+    });
+  }
+
+  wireOnlineChorusController(controller) {
+    if (!controller || controller.mode !== "online" || !controller.network) return controller;
+    const applyLocally = controller.applyRequest.bind(controller);
+    controller.applyRequest = (request, timestamp, authenticatedUid = controller.uid, context = {}) => {
+      const result = applyLocally(request, timestamp, authenticatedUid, context);
+      const localAction = !controller.receivingNetworkActions
+        && request?.uid === controller.uid
+        && authenticatedUid === controller.uid;
+      if (localAction && result?.ok) {
+        const sequence = Number(String(request.id).split(":").at(-2));
+        if (Number.isInteger(sequence) && sequence > 0) {
+          Promise.resolve(controller.network.sendAction({ ...request, sequence })).catch(error => {
+            this.reportBossCallbackError("무명의 합창 행동 전송 실패", error);
+          });
+        }
+        this.publishChorusStateIfAuthority();
+      }
+      return result;
+    };
+    return controller;
+  }
+
+  async replaceChorusControllerForMode(mode = this.sessionMode, options = {}) {
+    this.chorusController?.clear?.();
+    this.chorusController = this.createChorusControllerForMode(mode, options);
+    if (mode === "online") this.wireOnlineChorusController(this.chorusController);
+    this.lastPublishedChorusSignature = null;
+    await this.syncChorusMap();
+    this.updateChorusHud(this.chorusController?.renderModel?.(), Date.now());
+    return Boolean(this.chorusController);
+  }
+
+  receiveChorusSnapshot(snapshot) {
+    this.latestChorusSnapshot = snapshot ? structuredClone(snapshot) : null;
+    if (!this.chorusController || this.sessionMode !== "online") return false;
+    const correctionLinked = this.progress?.worldProgress?.chapters?.sanctuary?.correctionLinked === true;
+    this.chorusController.setMap?.(this.mapId, { correctionLinked: false });
+    if (snapshot) this.chorusController.receiveSnapshot?.(snapshot);
+    this.chorusController.setMap?.(this.mapId, { correctionLinked });
+    this.lastPublishedChorusSignature = snapshot ? JSON.stringify(snapshot) : null;
+    this.updateChorusHud(this.chorusController.renderModel?.(), Date.now());
+    if (snapshot?.authorityUid === this.network?.uid
+      && Object.keys(this.latestChorusActions || {}).length > 0) {
+      Promise.resolve(this.receiveChorusActions(this.latestChorusActions)).catch(error => {
+        this.reportBossCallbackError("관리자 이전 후 무명의 합창 행동 처리 실패", error);
+      });
+    }
+    if (snapshot && snapshot.status === "active" && Number(snapshot.leaseUntil) <= Date.now()
+      && !this.chorusAuthorityAcquirePending) {
+      this.chorusAuthorityAcquirePending = true;
+      Promise.resolve(this.network?.chorus?.tryAcquireAuthority?.())
+        .then(result => {
+          if (result?.ok && this.sessionMode === "online") this.receiveChorusSnapshot(result.encounter);
+        })
+        .catch(error => this.reportBossCallbackError("무명의 합창 관리자 이전 실패", error))
+        .finally(() => { this.chorusAuthorityAcquirePending = false; });
+    }
+    return true;
+  }
+
+  async receiveChorusActions(requests) {
+    this.latestChorusActions = requests ? structuredClone(requests) : {};
+    const network = this.network?.chorus;
+    const controller = this.chorusController;
+    if (!network || !controller || controller.snapshot?.authorityUid !== this.network?.uid) return false;
+    const actions = [];
+    for (const [requestUid, entries] of Object.entries(requests || {})) {
+      for (const [sequence, request] of Object.entries(entries || {})) {
+        if (!request || typeof request !== "object") continue;
+        actions.push({ ...request, uid: requestUid, sequence: Number(sequence) });
+      }
+    }
+    actions.sort((left, right) => Number(left.createdAt) - Number(right.createdAt)
+      || String(left.uid).localeCompare(String(right.uid))
+      || left.sequence - right.sequence);
+    controller.receivingNetworkActions = true;
+    let results;
+    try {
+      results = controller.receiveActions?.(actions) || [];
+    } finally {
+      controller.receivingNetworkActions = false;
+    }
+    const hasAppliedAction = results.some(result => result?.ok);
+    const publishResult = hasAppliedAction
+      ? await network.publishState(controller.snapshot)
+      : { ok: true };
+    if (publishResult?.ok) await this.writeChorusCompletionClaimsIfAuthority();
+    await Promise.all(actions.map((action, index) => (
+      (results[index]?.ok && publishResult?.ok) || results[index]?.reason === "duplicate_action"
+        ? network.acknowledgeAction(action.uid, action.sequence)
+        : Promise.resolve({ ok: false })
+    )));
+    this.latestChorusSnapshot = controller.snapshot ? structuredClone(controller.snapshot) : this.latestChorusSnapshot;
+    return true;
+  }
+
+  async writeChorusCompletionClaimsIfAuthority() {
+    const snapshot = this.chorusController?.snapshot;
+    const claims = this.chorusController?.completionClaims;
+    if (this.sessionMode !== "online" || snapshot?.status !== "separated"
+      || snapshot.authorityUid !== this.network?.uid
+      || !claims || Object.keys(claims).length === 0
+      || !this.network?.chorus?.writeCompletionClaims) return false;
+    const result = await this.network.chorus.writeCompletionClaims(snapshot.encounterId, claims);
+    return result?.ok === true;
+  }
+
+  publishChorusStateIfAuthority() {
+    const snapshot = this.chorusController?.snapshot;
+    const network = this.network?.chorus;
+    if (this.sessionMode !== "online" || !snapshot || !network
+      || snapshot.authorityUid !== this.network?.uid) return false;
+    const signature = JSON.stringify(snapshot);
+    if (signature === this.lastPublishedChorusSignature) return false;
+    this.lastPublishedChorusSignature = signature;
+    Promise.resolve(network.publishState(snapshot)).then(result => {
+      if (!result?.ok) this.lastPublishedChorusSignature = null;
+    }).catch(error => {
+      this.lastPublishedChorusSignature = null;
+      this.reportBossCallbackError("무명의 합창 상태 전송 실패", error);
+    });
+    return true;
+  }
+
+  createChorusNetworkCallbacks(generation) {
+    return {
+      onChorusChanged: snapshot => this.runBossNetworkCallback(
+        generation,
+        "무명의 합창 snapshot 처리 실패",
+        () => this.receiveChorusSnapshot(snapshot),
+      ),
+      onChorusActionsChanged: requests => this.runBossNetworkCallback(
+        generation,
+        "무명의 합창 행동 처리 실패",
+        () => this.receiveChorusActions(requests),
+      ),
+      onChorusCompletionClaimsChanged: claims => this.runBossNetworkCallback(
+        generation,
+        "무명의 합창 완료 claim 처리 실패",
+        () => this.chorusController?.receiveCompletionClaims?.(claims),
+      ),
+    };
   }
 
   async replaceBossControllerForMode(mode = this.sessionMode) {
@@ -1106,6 +1275,12 @@ export class PixelRPG {
       } else if (event?.type === "chorus-completion-claim" && event.claimId) {
         if (this.processedChorusCompletionIds.has(event.claimId)) continue;
         this.processedChorusCompletionIds.add(event.claimId);
+        if (this.sessionMode === "online"
+          && this.chorusController?.snapshot?.authorityUid === this.network?.uid) {
+          Promise.resolve(this.writeChorusCompletionClaimsIfAuthority()).catch(error => {
+            this.reportBossCallbackError("무명의 합창 완료 claim 전송 실패", error);
+          });
+        }
       } else if (event?.type === "chorus-separated") {
         if (this.ui?.message) this.notify("무명의 합창의 결속이 풀렸습니다. 기억 분리 완료.");
       } else if (event?.type === "chorus-branch-interruption"
@@ -1135,6 +1310,7 @@ export class PixelRPG {
     const tick = this.chorusController?.update?.(dt, context, timestamp);
     const events = Array.isArray(tick) ? tick : Array.isArray(tick?.events) ? tick.events : [];
     this.handleChorusControllerEvents(events);
+    this.publishChorusStateIfAuthority();
     this.updateChorusHud(this.chorusController?.renderModel?.(), timestamp);
     return events;
   }
@@ -2142,8 +2318,21 @@ export class PixelRPG {
 
   syncChorusMap() {
     this.syncChorusContext();
-    return this.chorusController?.setMap?.(this.mapId, {
-      correctionLinked: this.progress?.worldProgress?.chapters?.sanctuary?.correctionLinked === true,
+    const correctionLinked = this.progress?.worldProgress?.chapters?.sanctuary?.correctionLinked === true;
+    if (this.sessionMode !== "online" || !this.network?.chorus) {
+      return this.chorusController?.setMap?.(this.mapId, { correctionLinked });
+    }
+    this.chorusController?.setMap?.(this.mapId, { correctionLinked: false });
+    const activate = async () => {
+      const subscribed = await this.network.chorus.setMap(this.mapId);
+      if (!subscribed || !correctionLinked) return null;
+      const snapshot = this.network.chorus.latestState || await this.network.chorus.ensureEncounter();
+      if (snapshot) this.receiveChorusSnapshot(snapshot);
+      return snapshot;
+    };
+    return activate().catch(error => {
+      this.reportBossCallbackError("무명의 합창 지역 동기화 실패", error);
+      return null;
     });
   }
 

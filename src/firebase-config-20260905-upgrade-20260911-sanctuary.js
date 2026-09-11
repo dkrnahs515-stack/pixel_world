@@ -12,3 +12,13 @@ export const FIREBASE_CONFIG = {
   appId: "1:244334952755:web:816f3d8a04398457b23e46",
   measurementId: "G-5E1Y4BKT1F"
 };
+
+export function getFirebaseEmulatorConfig(locationRef = globalThis.location) {
+  const local = ["127.0.0.1", "localhost"].includes(locationRef?.hostname);
+  const enabled = new URLSearchParams(locationRef?.search || "").get("firebaseEmulator") === "1";
+  return local && enabled ? {
+    authUrl: "http://127.0.0.1:9099",
+    databaseHost: "127.0.0.1",
+    databasePort: 9000,
+  } : null;
+}

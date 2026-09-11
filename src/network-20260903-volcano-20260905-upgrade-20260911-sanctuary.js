@@ -1,9 +1,11 @@
 import { FIREBASE_CONFIG, GAME_CONFIG as C, ROOM_ID } from "./config-20260905-upgrade-20260911-sanctuary.js";
+import { getFirebaseEmulatorConfig } from "./firebase-config-20260905-upgrade-20260911-sanctuary.js";
 import { createFirebaseChatAdapter, createOfflineChatAdapter } from "./chat-network-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 import { filterPlayersForMap, serializePlayerState } from "./network-state-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 import { createPublishPolicyState, nextPublishDecision } from "./network-publish-policy-20260905-upgrade-20260911-sanctuary.js";
 import { claimRoomSlot } from "./room-capacity-20260905-upgrade-20260911-sanctuary.js";
 import { createCoopBossNetwork } from "./coop-boss-network-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import { createChorusNetwork } from "./sanctuary-chorus-network-20260911-sanctuary.js";
 
 export function createOfflineNetworkAdapter(mode = "solo", reason = "selected") {
   return {
@@ -13,6 +15,7 @@ export function createOfflineNetworkAdapter(mode = "solo", reason = "selected") 
     publish: () => {},
     chat: createOfflineChatAdapter(),
     coopBoss: null,
+    chorus: null,
     stop: async () => {},
   };
 }
@@ -43,6 +46,9 @@ export async function createNetworkAdapter(callbacks = {}, dependencies = {}) {
     onBossAttackRequestsChanged,
     onBossPlayerDamageChanged,
     onBossRewardClaimsChanged,
+    onChorusChanged,
+    onChorusActionsChanged,
+    onChorusCompletionClaimsChanged,
     onConnectionLost,
     playMode = "solo",
   } = callbacks;
@@ -52,6 +58,7 @@ export async function createNetworkAdapter(callbacks = {}, dependencies = {}) {
   const documentVisible = dependencies.documentVisible ?? (() => globalThis.document?.visibilityState !== "hidden");
   const setTimer = dependencies.setTimer ?? ((callback, delay) => setTimeout(callback, delay));
   const clearTimer = dependencies.clearTimer ?? (handle => clearTimeout(handle));
+  const locationRef = dependencies.locationRef ?? globalThis.location;
 
   if (playMode !== "online") {
     onStatusChanged?.("solo", "솔로");
@@ -72,9 +79,14 @@ export async function createNetworkAdapter(callbacks = {}, dependencies = {}) {
 
     const app = appModule.getApps().length ? appModule.getApp() : appModule.initializeApp(firebaseConfig);
     const auth = authModule.getAuth(app);
+    const db = dbModule.getDatabase(app);
+    const emulator = getFirebaseEmulatorConfig(locationRef);
+    if (emulator) {
+      authModule.connectAuthEmulator(auth, emulator.authUrl, { disableWarnings: true });
+      dbModule.connectDatabaseEmulator(db, emulator.databaseHost, emulator.databasePort);
+    }
     const user = auth.currentUser || (await authModule.signInAnonymously(auth)).user;
     const uid = user.uid;
-    const db = dbModule.getDatabase(app);
     dbModule.goOnline?.(db);
     activeFirebaseSession = { authModule, auth, dbModule, db };
     roomSlot = await claimRoomSlot({ dbModule, db, roomId: ROOM_ID, uid });
@@ -133,6 +145,19 @@ export async function createNetworkAdapter(callbacks = {}, dependencies = {}) {
       onAttackRequestsChanged: onBossAttackRequestsChanged,
       onPlayerDamageChanged: onBossPlayerDamageChanged,
       onRewardClaimsChanged: onBossRewardClaimsChanged,
+    });
+    const chorus = createChorusNetwork({
+      dbModule,
+      db,
+      roomId: ROOM_ID,
+      uid,
+      callbacks: {
+        onStateChanged: onChorusChanged,
+        onActionsChanged: onChorusActionsChanged,
+        onCompletionClaimsChanged: onChorusCompletionClaimsChanged,
+      },
+      now: dependencies.wallNow ?? (() => Date.now()),
+      timers: { set: setTimer, clear: clearTimer },
     });
 
     const unsubscribeConnected = dbModule.onValue(connectedRef, async snapshot => {
@@ -197,12 +222,14 @@ export async function createNetworkAdapter(callbacks = {}, dependencies = {}) {
       publish,
       chat,
       coopBoss,
+      chorus,
       stop: async () => {
         if (stopped) return;
         stopped = true;
         if (disconnectTimer !== null) clearTimer(disconnectTimer);
         disconnectTimer = null;
         await coopBoss.stop();
+        await chorus.stop();
         try {
           await roomSlot.release();
         } catch (error) {

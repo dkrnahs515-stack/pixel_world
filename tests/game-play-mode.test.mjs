@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PixelRPG } from "../src/game-20260903-volcano-20260905-upgrade.js";
+import { PixelRPG as SanctuaryPixelRPG } from "../src/game-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import { createChorusEncounter } from "../src/sanctuary-chorus-state-20260911-sanctuary.js";
 
 function node() {
   return { hidden: false, textContent: "", className: "", style: {}, classList: { add() {}, remove() {} } };
@@ -166,4 +168,217 @@ test("현재 지역 원격 참가자 수를 협동 보스 생성 인원에 반�
   assert.equal(partySize, 3);
   assert.deepEqual(participants.map(item => item.uid), ["me", "a", "b"]);
   assert.equal(readyCalls, 1);
+});
+
+test("online Chorus controller receives the dedicated network transport and authenticated uid", () => {
+  const game = Object.create(SanctuaryPixelRPG.prototype);
+  const chorus = { setMap: async () => true };
+  game.network = { uid: "firebase-user", chorus };
+
+  const controller = game.createChorusControllerForMode("online");
+
+  assert.equal(controller.uid, "firebase-user");
+  assert.equal(controller.mode, "online");
+  assert.equal(controller.network, chorus);
+  assert.equal(controller.seedSnapshot, null);
+});
+
+test("connection fallback seeds the local Chorus from the latest shared snapshot before clearing online state", async () => {
+  const game = Object.create(SanctuaryPixelRPG.prototype);
+  const latest = {
+    ...createChorusEncounter({ encounterId: "shared-e1", authorityUid: "host", now: 1_000 }),
+    stabilizedAnchorIds: ["forest"],
+  };
+  let cleared = 0;
+  let capturedSeed = null;
+  game.sessionMode = "online";
+  game.network = { stop: async () => {}, chorus: { stop: async () => {} } };
+  game.latestChorusSnapshot = latest;
+  game.chorusController = {
+    snapshot: latest,
+    clear() {
+      cleared += 1;
+      this.snapshot = null;
+    },
+  };
+  game.coopBossController = { clear() {} };
+  game.createOfflineNetworkAdapter = undefined;
+  game.replaceBossControllerForMode = async () => true;
+  game.createChorusControllerForMode = (mode, options = {}) => {
+    capturedSeed = options.seedSnapshot;
+    return { mode, snapshot: options.seedSnapshot, setMap: () => options.seedSnapshot, clear() {} };
+  };
+  game.mapId = "sanctuary-return-record";
+  game.progress = { worldProgress: { chapters: { sanctuary: { correctionLinked: true } } } };
+  game.player = {};
+  game.remotePlayers = new Map();
+  game.chatMessages = [];
+  game.ui = { playerCount: node(), coopBossHud: node() };
+  game.chat = { setMode() {}, renderMessages() {} };
+  game.notify = () => {};
+  game.syncChorusMap = () => game.chorusController.setMap(game.mapId, { correctionLinked: true });
+
+  assert.equal(await game.fallbackToSolo("connection_lost"), true);
+  assert.equal(cleared, 1);
+  assert.deepEqual(capturedSeed, latest);
+  assert.notEqual(capturedSeed, latest);
+  assert.equal(game.chorusController.snapshot.encounterId, "shared-e1");
+  assert.equal(game.chorusController.network, undefined);
+});
+
+test("switching back online never seeds shared state from a solo-completed Chorus", () => {
+  const game = Object.create(SanctuaryPixelRPG.prototype);
+  const chorus = { setMap: async () => true };
+  game.network = { uid: "firebase-user", chorus };
+  game.chorusController = {
+    snapshot: { encounterId: "solo-finished", status: "separated", hp: 0 },
+  };
+
+  const online = game.createChorusControllerForMode("online");
+
+  assert.equal(online.seedSnapshot, null);
+  assert.equal(online.snapshot, null);
+  assert.equal(online.network, chorus);
+});
+
+test("authority keeps an applied action queued when publishing the resulting state fails", async () => {
+  const game = Object.create(SanctuaryPixelRPG.prototype);
+  const state = createChorusEncounter({ encounterId: "shared-e1", authorityUid: "host", now: 1_000 });
+  const acknowledgements = [];
+  game.sessionMode = "online";
+  game.network = {
+    uid: "host",
+    chorus: {
+      publishState: async () => ({ ok: false, reason: "authority_changed" }),
+      acknowledgeAction: async (...args) => { acknowledgements.push(args); return { ok: true }; },
+    },
+  };
+  game.chorusController = game.createChorusControllerForMode("online");
+  game.chorusController.receiveSnapshot(state);
+  game.chorusController.setMap("sanctuary-return-record", { correctionLinked: true });
+
+  await game.receiveChorusActions({
+    remote: {
+      1: {
+        id: "remote:1:1:anchor-stabilize",
+        encounterId: "shared-e1",
+        authorityEpoch: 1,
+        phase: "anchors",
+        uid: "remote",
+        type: "anchor-stabilize",
+        fragmentId: "forest",
+        anchorId: "forest",
+        createdAt: 1_100,
+      },
+    },
+  });
+
+  assert.deepEqual(game.chorusController.snapshot.stabilizedAnchorIds, ["forest"]);
+  assert.deepEqual(acknowledgements, []);
+});
+
+test("a new authority applies actions that arrived before its transferred state snapshot", async () => {
+  const game = Object.create(SanctuaryPixelRPG.prototype);
+  const oldState = createChorusEncounter({
+    encounterId: "shared-e1",
+    authorityUid: "old-host",
+    authorityEpoch: 2,
+    now: 1_000,
+  });
+  const transferred = { ...oldState, authorityUid: "new-host", authorityEpoch: 3, leaseUntil: Date.now() + 5_000 };
+  const acknowledgements = [];
+  game.sessionMode = "online";
+  game.mapId = "sanctuary-return-record";
+  game.progress = { worldProgress: { chapters: { sanctuary: { correctionLinked: true } } } };
+  game.ui = {};
+  game.network = {
+    uid: "new-host",
+    chorus: {
+      publishState: async () => ({ ok: true }),
+      acknowledgeAction: async (...args) => { acknowledgements.push(args); return { ok: true }; },
+    },
+  };
+  game.chorusController = game.createChorusControllerForMode("online");
+  game.chorusController.receiveSnapshot(oldState);
+  game.chorusController.setMap(game.mapId, { correctionLinked: true });
+  game.updateChorusHud = () => {};
+  const requests = {
+    remote: {
+      1: {
+        id: "remote:3:1:anchor-stabilize",
+        encounterId: "shared-e1",
+        authorityEpoch: 3,
+        phase: "anchors",
+        uid: "remote",
+        type: "anchor-stabilize",
+        fragmentId: "forest",
+        anchorId: "forest",
+        createdAt: Date.now(),
+      },
+    },
+  };
+
+  assert.equal(await game.receiveChorusActions(requests), false);
+  game.receiveChorusSnapshot(transferred);
+  await new Promise(resolve => setImmediate(resolve));
+
+  assert.deepEqual(game.chorusController.snapshot.stabilizedAnchorIds, ["forest"]);
+  assert.deepEqual(acknowledgements, [["remote", 1]]);
+});
+
+test("authority writes completion claims when a remote contributor separates the final bond", async () => {
+  const game = Object.create(SanctuaryPixelRPG.prototype);
+  const now = Date.now();
+  const ready = {
+    ...createChorusEncounter({ encounterId: "shared-e1", authorityUid: "host", now: now - 100 }),
+    stabilizedAnchorIds: ["forest", "coast", "volcano"],
+    resolvedTestimonyIds: [
+      "core-self-division-original",
+      "lumen-caused-core-division",
+      "lumen-touched-seal-to-delay-eruption",
+      "return-delay-was-lumen-alone",
+      "first-archivist-deletion-protected-everyone",
+      "resonance-time-was-incident-time",
+    ],
+    severedBondIds: ["roan", "sera", "garen"],
+    activeRecordId: "lumen",
+    vulnerableUntil: now + 3_000,
+    contributors: {
+      remote: { firstContributedAt: now - 50, lastContributedAt: now - 50, actionTypes: ["bond-cut"] },
+    },
+    updatedAt: now - 10,
+  };
+  const writes = [];
+  game.sessionMode = "online";
+  game.network = {
+    uid: "host",
+    chorus: {
+      publishState: async () => ({ ok: true }),
+      acknowledgeAction: async () => ({ ok: true }),
+      writeCompletionClaims: async (...args) => { writes.push(args); return { ok: true }; },
+    },
+  };
+  game.chorusController = game.createChorusControllerForMode("online");
+  game.chorusController.receiveSnapshot(ready);
+  game.chorusController.setMap("sanctuary-return-record", { correctionLinked: true });
+
+  await game.receiveChorusActions({
+    remote: {
+      9: {
+        id: "remote:1:9:bond-cut",
+        encounterId: "shared-e1",
+        authorityEpoch: 1,
+        phase: "onslaught",
+        uid: "remote",
+        type: "bond-cut",
+        bondId: "lumen",
+        createdAt: now,
+      },
+    },
+  });
+
+  assert.equal(game.chorusController.snapshot.status, "separated");
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0][0], "shared-e1");
+  assert.deepEqual(Object.keys(writes[0][1]), ["remote"]);
 });
