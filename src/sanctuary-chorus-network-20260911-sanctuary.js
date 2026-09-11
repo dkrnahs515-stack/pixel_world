@@ -19,6 +19,9 @@ const COMBAT_STATE_FIELDS = Object.freeze([
   "activeRecordId", "currentPatternId", "patternStartedAt", "patternEndsAt", "vulnerableUntil",
   "lumenAssistUsed", "processedActionIds", "contributors", "separatedAt", "reformAt",
 ]);
+const OBJECTIVE_MEMBERSHIP_FIELDS = Object.freeze([
+  "stabilizedAnchorIds", "resolvedTestimonyIds", "severedBondIds",
+]);
 
 function validKey(value, maxLength = 160) {
   return typeof value === "string" && value.length > 0 && value.length <= maxLength
@@ -38,6 +41,58 @@ function withoutUndefined(value) {
     .map(([key, entry]) => [key, withoutUndefined(entry)]));
 }
 
+function membershipValues(value, predicate = () => true) {
+  const candidates = Array.isArray(value)
+    ? value
+    : value && typeof value === "object"
+      ? Object.entries(value).filter(([, included]) => included === true).map(([id]) => id)
+      : [];
+  return [...new Set(candidates.filter(predicate))];
+}
+
+function membershipMap(values, predicate = () => true) {
+  return Object.fromEntries(membershipValues(values, predicate).map(value => [value, true]));
+}
+
+function decodeWireEncounter(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const decoded = { ...value };
+  for (const field of OBJECTIVE_MEMBERSHIP_FIELDS) decoded[field] = membershipValues(value[field]);
+  decoded.processedActionIds = membershipValues(value.processedActionIds, validActionId)
+    .slice(-CHORUS_PROCESSED_ACTION_LIMIT);
+  decoded.contributors = Object.fromEntries(Object.entries(value.contributors || {}).map(([contributorUid, contributor]) => [
+    contributorUid,
+    {
+      ...contributor,
+      actionTypes: membershipValues(contributor?.actionTypes),
+    },
+  ]));
+  return decoded;
+}
+
+function encodeWireEncounter(value) {
+  const wire = withoutUndefined({ ...value });
+  for (const field of OBJECTIVE_MEMBERSHIP_FIELDS) {
+    const encoded = membershipMap(value?.[field]);
+    if (Object.keys(encoded).length > 0) wire[field] = encoded;
+    else delete wire[field];
+  }
+  const processed = membershipMap(value?.processedActionIds, validActionId);
+  if (Object.keys(processed).length > 0) wire.processedActionIds = processed;
+  else delete wire.processedActionIds;
+  const contributors = Object.fromEntries(Object.entries(value?.contributors || {}).map(([contributorUid, contributor]) => [
+    contributorUid,
+    {
+      firstContributedAt: contributor.firstContributedAt,
+      lastContributedAt: contributor.lastContributedAt,
+      actionTypes: membershipMap(contributor.actionTypes),
+    },
+  ]));
+  if (Object.keys(contributors).length > 0) wire.contributors = contributors;
+  else delete wire.contributors;
+  return withoutUndefined(wire);
+}
+
 function sameClaim(left, right) {
   return CLAIM_FIELDS.every(field => left?.[field] === right?.[field]);
 }
@@ -51,17 +106,66 @@ function mergeProcessedActionIds(current, incoming) {
   return [...new Set([...(current || []), ...(incoming || [])])].slice(-CHORUS_PROCESSED_ACTION_LIMIT);
 }
 
+function mergeContributors(current = {}, incoming = {}) {
+  const merged = {};
+  for (const contributorUid of new Set([...Object.keys(current), ...Object.keys(incoming)])) {
+    const previous = current[contributorUid];
+    const next = incoming[contributorUid];
+    if (!previous) {
+      merged[contributorUid] = next;
+      continue;
+    }
+    if (!next) {
+      merged[contributorUid] = previous;
+      continue;
+    }
+    merged[contributorUid] = {
+      firstContributedAt: previous.firstContributedAt,
+      lastContributedAt: Math.max(previous.lastContributedAt, next.lastContributedAt),
+      actionTypes: membershipValues([...previous.actionTypes, ...next.actionTypes]),
+    };
+  }
+  return merged;
+}
+
+function filterProcessedActions(value, processedIds) {
+  const filtered = {};
+  for (const [actionUid, actions] of Object.entries(value || {})) {
+    const pending = Object.fromEntries(Object.entries(actions || {})
+      .filter(([, action]) => !processedIds.has(action?.id)));
+    if (Object.keys(pending).length > 0) filtered[actionUid] = pending;
+  }
+  return filtered;
+}
+
 function sameCombatState(left, right) {
   return COMBAT_STATE_FIELDS.every(field => JSON.stringify(left?.[field]) === JSON.stringify(right?.[field]));
 }
 
-function statePatch(current, next) {
+function statePatch(current, next, processedReceiptIds) {
   const patch = {};
   for (const field of COMBAT_STATE_FIELDS) {
-    if (field === "contributors") {
+    if (OBJECTIVE_MEMBERSHIP_FIELDS.includes(field)) {
+      const currentIds = new Set(current?.[field] || []);
+      for (const id of next[field] || []) {
+        if (!currentIds.has(id)) patch[`${field}/${id}`] = true;
+      }
+    } else if (field === "processedActionIds") {
+      for (const id of next.processedActionIds || []) {
+        if (!processedReceiptIds.has(id)) patch[`processedActionIds/${id}`] = true;
+      }
+    } else if (field === "contributors") {
       for (const [contributorUid, contributor] of Object.entries(next.contributors || {})) {
-        if (JSON.stringify(current?.contributors?.[contributorUid]) !== JSON.stringify(contributor)) {
-          patch[`contributors/${contributorUid}`] = contributor;
+        const previous = current?.contributors?.[contributorUid];
+        if (!previous) {
+          patch[`contributors/${contributorUid}/firstContributedAt`] = contributor.firstContributedAt;
+          patch[`contributors/${contributorUid}/lastContributedAt`] = contributor.lastContributedAt;
+        } else if (previous.lastContributedAt !== contributor.lastContributedAt) {
+          patch[`contributors/${contributorUid}/lastContributedAt`] = contributor.lastContributedAt;
+        }
+        const previousTypes = new Set(previous?.actionTypes || []);
+        for (const type of contributor.actionTypes) {
+          if (!previousTypes.has(type)) patch[`contributors/${contributorUid}/actionTypes/${type}`] = true;
         }
       }
     } else if (JSON.stringify(current?.[field]) !== JSON.stringify(next[field])) {
@@ -100,6 +204,9 @@ export function createChorusNetwork({
   let renewalTimer = null;
   let renewalEpoch = null;
   let latestState = null;
+  let processedReceiptIds = new Set();
+  let stateSnapshotReady = false;
+  let pendingActions = null;
   let stateMutationQueue = Promise.resolve();
 
   const pathRef = suffix => dbModule.ref(db, suffix ? `${BASE_PATH}/${suffix}` : BASE_PATH);
@@ -107,7 +214,9 @@ export function createChorusNetwork({
     if (latestState) return latestState;
     if (typeof dbModule.get !== "function") return null;
     const snapshot = await dbModule.get(pathRef("state"));
-    return normalizeChorusEncounter(snapshot.val());
+    const wire = snapshot.val();
+    processedReceiptIds = new Set(membershipValues(wire?.processedActionIds, validActionId));
+    return normalizeChorusEncounter(decodeWireEncounter(wire));
   };
 
   const clearRenewal = () => {
@@ -179,8 +288,10 @@ export function createChorusNetwork({
   };
 
   const rememberState = value => {
-    const encounter = normalizeChorusEncounter(value);
+    processedReceiptIds = new Set(membershipValues(value?.processedActionIds, validActionId));
+    const encounter = normalizeChorusEncounter(decodeWireEncounter(value));
     latestState = encounter;
+    stateSnapshotReady = true;
     subscribeToOwnClaim(encounter?.encounterId);
     if (isAuthority(encounter) && renewalEpoch !== encounter.authorityEpoch) {
       scheduleRenewal(encounter.authorityEpoch);
@@ -188,6 +299,10 @@ export function createChorusNetwork({
       clearRenewal();
     }
     onStateChanged(encounter);
+    if (pendingActions) {
+      onActionsChanged(filterProcessedActions(pendingActions, processedReceiptIds));
+      pendingActions = null;
+    }
   };
 
   const api = {
@@ -199,6 +314,9 @@ export function createChorusNetwork({
       clearSubscriptions();
       mapId = nextMapId === CHORUS_MAP_ID ? CHORUS_MAP_ID : null;
       latestState = null;
+      processedReceiptIds = new Set();
+      stateSnapshotReady = false;
+      pendingActions = null;
       if (!active()) {
         onStateChanged(null);
         onActionsChanged({});
@@ -206,7 +324,14 @@ export function createChorusNetwork({
         return false;
       }
       unsubscribers.push(dbModule.onValue(pathRef("state"), snapshot => rememberState(snapshot.val() ?? null)));
-      unsubscribers.push(dbModule.onValue(pathRef("actions"), snapshot => onActionsChanged(snapshot.val() || {})));
+      unsubscribers.push(dbModule.onValue(pathRef("actions"), snapshot => {
+        const actions = snapshot.val() || {};
+        if (!stateSnapshotReady) {
+          pendingActions = actions;
+          return;
+        }
+        onActionsChanged(filterProcessedActions(actions, processedReceiptIds));
+      }));
       return true;
     },
 
@@ -226,7 +351,7 @@ export function createChorusNetwork({
           now: timestamp,
         });
         if (!encounter) return null;
-        await dbModule.update(pathRef("state"), withoutUndefined(encounter));
+        await dbModule.update(pathRef("state"), encodeWireEncounter(encounter));
         if (encounter) {
           latestState = encounter;
           if (isAuthority(encounter)) scheduleRenewal(encounter.authorityEpoch);
@@ -302,10 +427,11 @@ export function createChorusNetwork({
             ? incoming.updatedAt
             : current.updatedAt,
           processedActionIds: mergeProcessedActionIds(current.processedActionIds, incoming.processedActionIds),
-          contributors: { ...current.contributors, ...incoming.contributors },
+          contributors: mergeContributors(current.contributors, incoming.contributors),
         }));
-        const patch = statePatch(current, next);
+        const patch = statePatch(current, next, processedReceiptIds);
         if (Object.keys(patch).length > 0) await dbModule.update(pathRef("state"), patch);
+        for (const id of next.processedActionIds) processedReceiptIds.add(id);
         latestState = next;
         return { ok: true, encounter: latestState };
       });

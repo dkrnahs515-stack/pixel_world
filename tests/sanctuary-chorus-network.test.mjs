@@ -2,7 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createChorusNetwork } from "../src/sanctuary-chorus-network-20260911-sanctuary.js";
 import { createChorusEncounter } from "../src/sanctuary-chorus-state-20260911-sanctuary.js";
-import { CHORUS_TESTIMONIES } from "../src/sanctuary-chorus-data-20260911-sanctuary.js";
+import {
+  ANCHOR_IDS,
+  BOND_IDS,
+  CHORUS_TESTIMONIES,
+  TESTIMONY_IDS,
+} from "../src/sanctuary-chorus-data-20260911-sanctuary.js";
 
 const BASE_PATH = "rooms/public/chorus/sanctuary-return-record";
 
@@ -87,6 +92,16 @@ function networkOptions(fake, uid, now = 10_000, callbacks = {}) {
 
 function activeEncounter(authorityUid = "a", now = 1_000) {
   return createChorusEncounter({ encounterId: "e1", authorityUid, authorityEpoch: 2, now });
+}
+
+function membership(values) {
+  return Object.fromEntries(values.map(value => [value, true]));
+}
+
+function permutations(values) {
+  if (values.length <= 1) return [values];
+  return values.flatMap((value, index) => permutations(values.toSpliced(index, 1))
+    .map(rest => [value, ...rest]));
 }
 
 test("chorus network uses only the dedicated sanctuary path", async () => {
@@ -175,7 +190,7 @@ test("only the active authority publishes state and removes applied actions", as
     path: `${BASE_PATH}/state`,
     value: {
       hp: 90,
-      stabilizedAnchorIds: ["forest"],
+      "stabilizedAnchorIds/forest": true,
       combatRevision: 1,
       updatedAt: 10_000,
     },
@@ -357,6 +372,122 @@ test("encounter creation uses an atomic child patch instead of a parent state tr
   assert.equal(fake.updates.at(-1).path, `${BASE_PATH}/state`);
   assert.equal(fake.updates.at(-1).value.encounterId, encounter.encounterId);
   assert.equal(fake.transactions.some(value => value.path === `${BASE_PATH}/state`), false);
+});
+
+test("encounter creation omits empty membership containers from the Firebase wire", async () => {
+  const fake = firebaseModulesFake();
+  const network = createChorusNetwork(networkOptions(fake, "host"));
+  await network.setMap("sanctuary-return-record");
+
+  await network.ensureEncounter();
+
+  const wire = fake.updates.at(-1).value;
+  for (const field of [
+    "stabilizedAnchorIds", "resolvedTestimonyIds", "severedBondIds", "processedActionIds", "contributors",
+  ]) {
+    assert.equal(Object.hasOwn(wire, field), false, `${field} must be absent while empty`);
+  }
+});
+
+test("Firebase wire uses order-independent add-only membership leaves for every objective family", async () => {
+  const families = [
+    ["stabilizedAnchorIds", ANCHOR_IDS],
+    ["resolvedTestimonyIds", TESTIMONY_IDS],
+    ["severedBondIds", BOND_IDS],
+  ];
+  for (const [field, ids] of families) {
+    for (const order of permutations(ids)) {
+      const fake = firebaseModulesFake();
+      const network = createChorusNetwork(networkOptions(fake, "a"));
+      await network.setMap("sanctuary-return-record");
+      let state = {
+        ...activeEncounter("a", 9_000),
+        ...(field === "resolvedTestimonyIds" || field === "severedBondIds"
+          ? { stabilizedAnchorIds: [...ANCHOR_IDS] }
+          : {}),
+        ...(field === "severedBondIds" ? { resolvedTestimonyIds: [...TESTIMONY_IDS] } : {}),
+      };
+      const completed = [];
+      for (const id of order) {
+        completed.push(id);
+        const canonical = ids.filter(value => completed.includes(value));
+        const next = {
+          ...state,
+          [field]: canonical,
+          combatRevision: state.combatRevision + 1,
+          updatedAt: 10_000,
+        };
+        fake.emit(`${BASE_PATH}/state`, {
+          ...state,
+          [field]: membership(state[field]),
+        });
+        const result = await network.publishState(next);
+        assert.equal(result.ok, true, `${field}: ${order.join(" -> ")}`);
+        assert.equal(fake.updates.at(-1).value[`${field}/${id}`], true);
+        assert.equal(Object.hasOwn(fake.updates.at(-1).value, field), false);
+        state = result.encounter;
+      }
+      await network.stop();
+    }
+  }
+});
+
+test("raw receipt history filters ancient replays and publishes only additive history leaves", async () => {
+  const ancientId = "player:2:1:fragment-strike";
+  const freshId = "player:2:999:anchor-stabilize";
+  const receivedActions = [];
+  const state = {
+    ...activeEncounter("a", 9_000),
+    processedActionIds: membership([
+      ancientId,
+      ...Array.from({ length: 300 }, (_, index) => `receipt-${String(index).padStart(3, "0")}`),
+    ]),
+    contributors: {
+      player: {
+        firstContributedAt: 9_000,
+        lastContributedAt: 9_100,
+        actionTypes: membership(["fragment-strike"]),
+      },
+    },
+  };
+  const fake = firebaseModulesFake({ [`${BASE_PATH}/state`]: state });
+  const network = createChorusNetwork(networkOptions(fake, "a", 10_000, {
+    onActionsChanged: value => receivedActions.push(value),
+  }));
+  await network.setMap("sanctuary-return-record");
+  fake.emit(`${BASE_PATH}/actions`, {
+    player: {
+      1: { id: ancientId },
+      999: { id: freshId },
+    },
+  });
+  assert.deepEqual(receivedActions, []);
+  fake.emit(`${BASE_PATH}/state`, state);
+
+  assert.equal(network.latestState.processedActionIds.length, 256);
+  assert.deepEqual(receivedActions.at(-1), { player: { 999: { id: freshId } } });
+
+  const result = await network.publishState({
+    ...network.latestState,
+    stabilizedAnchorIds: ["forest"],
+    processedActionIds: [...network.latestState.processedActionIds, freshId],
+    contributors: {
+      player: {
+        firstContributedAt: 9_000,
+        lastContributedAt: 10_000,
+        actionTypes: ["fragment-strike", "anchor-stabilize"],
+      },
+    },
+    combatRevision: network.latestState.combatRevision + 1,
+    updatedAt: 10_000,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(fake.updates.at(-1).value[`processedActionIds/${freshId}`], true);
+  assert.equal(fake.updates.at(-1).value["contributors/player/actionTypes/anchor-stabilize"], true);
+  assert.equal(fake.updates.at(-1).value["contributors/player/lastContributedAt"], 10_000);
+  assert.equal(Object.hasOwn(fake.updates.at(-1).value, "processedActionIds"), false);
+  assert.equal(Object.hasOwn(fake.updates.at(-1).value, "contributors/player"), false);
 });
 
 test("invalid action IDs are rejected before allocating a sequence", async () => {
