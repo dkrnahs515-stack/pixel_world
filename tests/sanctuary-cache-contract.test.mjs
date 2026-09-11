@@ -345,9 +345,15 @@ function relativeModuleSpecifiers(source) {
           expectsOperand = false;
           continue;
         }
-        controlParenPending = source[wordStart - 1] !== "."
+        const afterWord = skipTrivia(index);
+        const forAwaitHeader = word === "for"
+          && source.startsWith("await", afterWord)
+          && !isIdentifierPart(source[afterWord + "await".length])
+          && source[skipTrivia(afterWord + "await".length)] === "(";
+        const continuingForAwait = controlParenPending && word === "await" && source[afterWord] === "(";
+        controlParenPending = continuingForAwait || (source[wordStart - 1] !== "."
           && ["catch", "for", "if", "switch", "while", "with"].includes(word)
-          && source[skipTrivia(index)] === "(";
+          && (source[afterWord] === "(" || forAwaitHeader));
         expectsOperand = ["case", "delete", "do", "else", "in", "instanceof", "new", "return", "throw", "typeof", "void", "yield"].includes(word);
         continue;
       }
@@ -455,6 +461,11 @@ test("cache scanner treats a control-condition close as a regex-literal position
     for (let index = 0; index < 1; index += 1) /for-same+/.test(name); import("./after-for-same-20260905-upgrade.js");
     for (let index = 0; index < 1; index += 1) /for-asi+/.test(name)
     import("./after-for-asi-20260905-upgrade.js");
+    async function scanForAwait() {
+      for /* for note */ await /* await note */ (const item of stream) /for-await-same+/.test(item); import("./after-for-await-same-20260905-upgrade.js");
+      for /* for note */ await /* await note */ (const item of stream) /for-await-asi+/.test(item)
+      import("./after-for-await-asi-20260905-upgrade.js");
+    }
     with (scope) /with+/.test(name); import("./after-with-20260905-upgrade.js");
     try {} catch (error) { /catch+/.test(name); } import("./after-catch-20260905-upgrade.js");
     switch (value) { default: /switch+/.test(name); } import("./after-switch-20260905-upgrade.js");
@@ -471,6 +482,8 @@ test("cache scanner treats a control-condition close as a regex-literal position
     "./after-while-asi-20260905-upgrade.js",
     "./after-for-same-20260905-upgrade.js",
     "./after-for-asi-20260905-upgrade.js",
+    "./after-for-await-same-20260905-upgrade.js",
+    "./after-for-await-asi-20260905-upgrade.js",
     "./after-with-20260905-upgrade.js",
     "./after-catch-20260905-upgrade.js",
     "./after-switch-20260905-upgrade.js",
