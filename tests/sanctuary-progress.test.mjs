@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   MEMORY_SOUND_IDS,
+  RECORD_FIELD_IDS,
   createInitialSanctuaryChapter,
   normalizeSanctuaryChapter,
   reduceSanctuaryChapter,
@@ -107,6 +108,42 @@ test("normalization cannot assert false return rejection without every contradic
   ]);
 });
 
+test("record fields normalize to the six canonical ids and only accept validated answers", () => {
+  const ready = {
+    ...memoryCollectedChapter(),
+    activatedCoreIds: ["forest-core-casket", "coast-core-casket", "volcano-core-casket"],
+    collectedMemoryIds: [...MEMORY_SOUND_IDS, ...CONTRADICTION_IDS],
+    memorySequence: [...MEMORY_SOUND_IDS],
+    memoryOrderSolved: true,
+    coreTruthRevealed: true,
+    falseReturnRejected: true,
+    completedRecordFieldIds: ["departure", "witness", "seal", "delay-roan"],
+  };
+  const normalized = normalizeSanctuaryChapter(ready);
+  assert.deepEqual(RECORD_FIELD_IDS, [
+    "vanguard-return-state",
+    "core-division-cause",
+    "delay-roan",
+    "delay-sera",
+    "delay-garen",
+    "delay-lumen",
+  ]);
+  assert.deepEqual(normalized.completedRecordFieldIds, ["delay-roan"]);
+
+  const wrong = reduceSanctuaryChapter(normalized, {
+    type: "complete-record-field",
+    fieldId: "core-division-cause",
+    answerId: "lumen-broke-core-alone",
+  }).chapter;
+  assert.deepEqual(wrong.completedRecordFieldIds, ["delay-roan"]);
+  const correct = reduceSanctuaryChapter(wrong, {
+    type: "complete-record-field",
+    fieldId: "core-division-cause",
+    answerId: "conflicting-records-self-division",
+  }).chapter;
+  assert.deepEqual(correct.completedRecordFieldIds, ["delay-roan", "core-division-cause"]);
+});
+
 test("chorus separation only accepts the matching eligible contributor claim", () => {
   const chapter = {
     ...createInitialSanctuaryChapter(),
@@ -116,7 +153,7 @@ test("chorus separation only accepts the matching eligible contributor claim", (
     memoryOrderSolved: true,
     coreTruthRevealed: true,
     falseReturnRejected: true,
-    completedRecordFieldIds: ["departure", "witness", "seal"],
+    completedRecordFieldIds: [...RECORD_FIELD_IDS],
     correctionLinked: true,
   };
   const rejected = reduceSanctuaryChapter(chapter, {

@@ -27,6 +27,7 @@ function titleForVolcanoInteraction(interaction) {
 
 export function storyDialogueModel(interaction, worldProgress, options = {}) {
   if (interaction?.chapterId === "sanctuary") {
+    const progress = normalizeWorldProgress(worldProgress);
     const pages = [...(interaction.pages || [])];
     if (options.retryError) pages.push(options.retryError);
     if (interaction.type === "sanctuary-memory-sequence") {
@@ -38,6 +39,19 @@ export function storyDialogueModel(interaction, worldProgress, options = {}) {
         .map(id => ({ id: `story-memory-add-${id}`, label: `${MEMORY_SOUND_LABELS[id]} 추가` }));
       actions.push({ id: "story-memory-submit", label: "배열 제출" });
       return { title: "기억 소리 배열 장치", pages, actions };
+    }
+    if (interaction.type === "sanctuary-record-field") {
+      const outcome = progress.chapters.volcano.captainOutcome === "rescued" ? "rescued" : "lost";
+      const source = interaction.sourceByCaptainOutcome?.[outcome];
+      if (source?.pages) pages.push(...source.pages);
+      return {
+        title: interaction.title || "마지막 귀환 기록",
+        pages,
+        actions: (interaction.answers || []).map(answer => ({
+          id: `story-record-answer-${answer.id}`,
+          label: answer.label,
+        })),
+      };
     }
     return {
       title: interaction.speaker || "기억 회랑",

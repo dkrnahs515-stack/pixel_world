@@ -20,6 +20,7 @@ import {
 import {
   FALSE_RETURN_CONTRADICTION_IDS,
   MEMORY_SOUND_IDS,
+  RECORD_FIELD_IDS,
   SANCTUARY_CORE_IDS,
 } from "./sanctuary-progress-20260911-sanctuary.js";
 
@@ -77,6 +78,13 @@ export function isStoryInteractionEligible(interaction, worldProgress) {
         return sanctuary.coreTruthRevealed
           && !sanctuary.falseReturnRejected
           && !sanctuary.collectedMemoryIds.includes(interaction.id);
+      case "sanctuary-record-field":
+        return sanctuary.falseReturnRejected
+          && !sanctuary.completedRecordFieldIds.includes(interaction.fieldId);
+      case "sanctuary-correction-link":
+        return sanctuary.falseReturnRejected
+          && RECORD_FIELD_IDS.every(id => sanctuary.completedRecordFieldIds.includes(id))
+          && !sanctuary.correctionLinked;
       default:
         return false;
     }
@@ -120,6 +128,19 @@ function resolveSanctuaryInteraction(progress, interaction, response) {
           effects: [...resolved.effects, ...rejected.effects],
         };
       }
+      break;
+    case "sanctuary-record-field": {
+      const answerId = responseValue(response, "answerId");
+      resolved = progressSanctuary(initial, {
+        type: "complete-record-field",
+        fieldId: interaction.fieldId,
+        answerId,
+      });
+      if (!changed(initial, resolved.progress)) return result(initial, interaction.id, "retryable", true);
+      break;
+    }
+    case "sanctuary-correction-link":
+      resolved = progressSanctuary(initial, { type: "link-correction" });
       break;
     default:
       return result(initial, interaction.id, "unavailable");

@@ -1581,6 +1581,9 @@ export class PixelRPG {
         response = { decision: action.slice("story-volcano-route-".length) };
       }
       else if (action === "story-memory-submit") response = { sequence: [...(this.pendingMemorySequence || [])] };
+      else if (action.startsWith("story-record-answer-")) {
+        response = { answerId: action.slice("story-record-answer-".length) };
+      }
       const resolved = resolveStoryInteraction(this.progress.worldProgress, this.pendingStoryInteraction.id, response);
       const completed = this.applyStoryInteraction(this.pendingStoryInteraction.id, response, resolved);
       if (completed) this.closeNpcDialogue();

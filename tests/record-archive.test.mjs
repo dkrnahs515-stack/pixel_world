@@ -4,6 +4,7 @@ import {
   collectRecordArchiveEntries,
   orderedArchiveRecords,
 } from "../src/record-archive-20260911-sanctuary.js";
+import * as sanctuaryStory from "../src/sanctuary-story-data-20260911-sanctuary.js";
 
 function coastRecordsFixture() {
   return [60, 10, 50, 20, 40, 30].map(timelineOrder => ({
@@ -58,4 +59,40 @@ test("coast records retain timeline order in the generic archive", () => {
     records.filter(value => value.chapterId === "coast").map(value => value.timelineOrder),
     [10, 20, 30, 40, 50, 60],
   );
+});
+
+test("a linked correction keeps the deletion log and cites both original evidence records", () => {
+  assert.equal(typeof sanctuaryStory.createCorrectionArchiveRecord, "function");
+  const correction = sanctuaryStory.createCorrectionArchiveRecord({
+    activatedCoreIds: ["forest-core-casket", "coast-core-casket", "volcano-core-casket"],
+    collectedMemoryIds: [
+      "departure-bell", "dawn-bird", "tide-bell", "mine-shift-bell",
+      "false-return-garen-unscarred", "false-return-source-erased", "false-return-resonance-time",
+    ],
+    memorySequence: ["departure-bell", "dawn-bird", "tide-bell", "mine-shift-bell"],
+    memoryOrderSolved: true,
+    coreTruthRevealed: true,
+    falseReturnRejected: true,
+    completedRecordFieldIds: [
+      "vanguard-return-state", "core-division-cause", "delay-roan",
+      "delay-sera", "delay-garen", "delay-lumen",
+    ],
+    correctionLinked: true,
+  });
+  const records = collectRecordArchiveEntries({
+    sanctuaryRecords: [
+      { id: "first-archivist-deletion-log", timelineOrder: 80, pages: ["원본"] },
+      correction,
+    ],
+  });
+
+  assert.deepEqual(records.map(value => value.id), [
+    "first-archivist-deletion-log",
+    "sanctuary-correction-link",
+  ]);
+  assert.equal(correction.correctsRecordId, "first-archivist-deletion-log");
+  assert.deepEqual(correction.evidenceRecordIds, [
+    "core-self-division-original",
+    "false-return-resonance-time",
+  ]);
 });

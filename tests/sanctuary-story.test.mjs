@@ -7,8 +7,10 @@ import {
   getSanctuaryChapterObjective,
   getSanctuaryStoryContent,
 } from "../src/sanctuary-story-data-20260911-sanctuary.js";
+import * as sanctuaryStory from "../src/sanctuary-story-data-20260911-sanctuary.js";
 import {
   MEMORY_SOUND_IDS,
+  RECORD_FIELD_IDS,
   SANCTUARY_CORE_IDS,
 } from "../src/sanctuary-progress-20260911-sanctuary.js";
 import {
@@ -22,8 +24,14 @@ import {
   storyDialogueModel,
 } from "../src/story-dialogue-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 import { PixelRPG } from "../src/game-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import { collectRecordArchiveEntries } from "../src/record-archive-20260911-sanctuary.js";
 
 const interaction = id => SANCTUARY_STORY_INTERACTIONS.find(value => value.id === id);
+
+function answerForRecordField(...args) {
+  assert.equal(typeof sanctuaryStory.answerForRecordField, "function");
+  return sanctuaryStory.answerForRecordField(...args);
+}
 
 function chapter12ReadyProgress() {
   let progress = createInitialWorldProgress();
@@ -42,6 +50,28 @@ function collectAllSounds(progress) {
 
 function revealAllTruths(progress) {
   for (const id of ["truth-resonance-time", "truth-first-archivist-log", "truth-core-self-division"]) {
+    progress = resolveStoryInteraction(progress, id).progress;
+  }
+  return progress;
+}
+
+function returnRecordReadyProgress(captainOutcome = "rescued") {
+  let progress = chapter12ReadyProgress();
+  progress = {
+    ...progress,
+    chapters: {
+      ...progress.chapters,
+      volcano: { ...progress.chapters.volcano, captainOutcome },
+    },
+  };
+  progress = collectAllSounds(progress);
+  progress = resolveStoryInteraction(progress, "memory-sequence-console", { sequence: MEMORY_SOUND_IDS }).progress;
+  progress = revealAllTruths(progress);
+  for (const id of [
+    "false-return-resonance-time",
+    "false-return-source-erased",
+    "false-return-garen-unscarred",
+  ]) {
     progress = resolveStoryInteraction(progress, id).progress;
   }
   return progress;
@@ -257,4 +287,72 @@ test("a failed browser save rolls the local defense back with chapter progress",
   assert.equal(game.applyStoryInteraction("truth-core-self-division"), false);
   assert.equal(game.progress.worldProgress.chapters.sanctuary.coreTruthRevealed, false);
   assert.deepEqual(game.enemies, []);
+});
+
+test("all six fields are required and Lumen is not the core split cause", () => {
+  let progress = returnRecordReadyProgress("rescued");
+  for (const fieldId of RECORD_FIELD_IDS) {
+    progress = progressSanctuary(progress, {
+      type: "complete-record-field",
+      fieldId,
+      answerId: answerForRecordField(fieldId, "rescued").id,
+    }).progress;
+  }
+  const linked = progressSanctuary(progress, { type: "link-correction" }).progress;
+  assert.equal(linked.chapters.sanctuary.correctionLinked, true);
+  assert.equal(
+    answerForRecordField("core-division-cause", "rescued").id,
+    "conflicting-records-self-division",
+  );
+  assert.notEqual(
+    answerForRecordField("delay-lumen", "rescued").id,
+    answerForRecordField("core-division-cause", "rescued").id,
+  );
+  assert.equal(collectRecordArchiveEntries({
+    coastRecords: [],
+    sanctuaryRecords: getCollectedSanctuaryRecords(linked),
+  }).some(value => value.id === "first-archivist-deletion-log"), true);
+});
+
+test("rescued and lost records use distinct Lumen sources without changing the facts", () => {
+  const field = interaction("delay-lumen");
+  const rescued = storyDialogueModel(field, returnRecordReadyProgress("rescued"));
+  const lost = storyDialogueModel(field, returnRecordReadyProgress("lost"));
+
+  assert.equal(rescued.actions.length >= 2, true);
+  assert.deepEqual(rescued.actions.map(value => value.id), lost.actions.map(value => value.id));
+  assert.match(rescued.pages.join(" "), /현재 생존한 루멘의 증언/);
+  assert.match(lost.pages.join(" "), /미전송 철수 명령서/);
+  assert.match(lost.pages.join(" "), /잔류 기억/);
+  assert.doesNotMatch(lost.pages.join(" "), /유령|되살아|현재 생존한 루멘/);
+  assert.equal(
+    answerForRecordField("delay-lumen", "rescued").id,
+    answerForRecordField("delay-lumen", "lost").id,
+  );
+});
+
+test("game record answer actions validate a field and keep an incomplete answer retryable", () => {
+  const game = Object.create(PixelRPG.prototype);
+  game.progress = { worldProgress: returnRecordReadyProgress("lost") };
+  game.pendingStoryInteraction = interaction("delay-lumen");
+  game.npcs = [];
+  game.ui = {};
+  game.mapId = "sanctuary-return-record";
+  game.persistProgress = () => true;
+  game.updateChapterUi = () => {};
+  game.updateNpcPrompt = () => {};
+  game.updateInventoryHud = () => {};
+  game.updateBlacksmithHud = () => {};
+  let closed = 0;
+  game.dialogue = { open() {}, actionButtons() { return []; } };
+  game.closeNpcDialogue = () => { closed += 1; };
+  game.notify = () => {};
+
+  game.handleDialogueAction("story-record-answer-lumen-broke-core-alone");
+  assert.equal(closed, 0);
+  assert.deepEqual(game.progress.worldProgress.chapters.sanctuary.completedRecordFieldIds, []);
+
+  game.handleDialogueAction(`story-record-answer-${answerForRecordField("delay-lumen", "lost").id}`);
+  assert.equal(closed, 1);
+  assert.deepEqual(game.progress.worldProgress.chapters.sanctuary.completedRecordFieldIds, ["delay-lumen"]);
 });

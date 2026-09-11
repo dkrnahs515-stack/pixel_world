@@ -1,7 +1,10 @@
 import {
   FALSE_RETURN_CONTRADICTION_IDS,
   MEMORY_SOUND_IDS,
+  RECORD_FIELD_ANSWER_IDS,
+  RECORD_FIELD_IDS,
   SANCTUARY_CORE_IDS,
+  normalizeSanctuaryChapter,
 } from "./sanctuary-progress-20260911-sanctuary.js";
 
 function freeze(value) {
@@ -182,10 +185,118 @@ function falseReturnContradictionTargets() {
   ));
 }
 
-// Chapter 13 interaction groups are deliberately empty until their own task adds
-// record fields, the Chorus encounter, future previews, and ending resolution.
-function returnRecordTargets() { return []; }
-function correctionConsoleTarget() { return []; }
+const RETURN_RECORD_FIELD_DEFINITIONS = freeze({
+  "vanguard-return-state": {
+    label: "선발대 귀환 상태",
+    fact: "선발대는 온전히 귀환하지 못했고, 가렌은 화산의 흉터와 영향을 안고 돌아왔다.",
+    incomplete: { id: "vanguard-returned-unharmed", label: "선발대 전원이 상처 없이 귀환했다" },
+  },
+  "core-division-cause": {
+    label: "코어 분열 원인",
+    fact: "상충하는 귀환 기록을 동시에 실행하려던 코어가 스스로 갈라졌다.",
+    incomplete: { id: "lumen-broke-core-alone", label: "루멘 한 사람만이 코어를 파괴했다" },
+  },
+  "delay-roan": {
+    label: "로안의 지연 책임",
+    fact: "로안은 숲길을 붙들어 붕괴의 확산을 늦추고 그 지연의 몫을 맡았다.",
+    incomplete: { id: "roan-left-before-delay", label: "로안은 지연에 관여하지 않았다" },
+  },
+  "delay-sera": {
+    label: "세라의 지연 책임",
+    fact: "세라는 해안 신호를 유지해 귀환 기록의 소실을 늦추고 그 지연의 몫을 맡았다.",
+    incomplete: { id: "sera-erased-coast-signal", label: "세라는 해안 신호를 지웠다" },
+  },
+  "delay-garen": {
+    label: "가렌의 지연 책임",
+    fact: "가렌은 화산 붕괴를 늦추다 흉터와 영향을 남겼고 그 지연의 몫을 맡았다.",
+    incomplete: { id: "garen-delayed-unscarred", label: "가렌은 아무 영향도 받지 않았다" },
+  },
+  "delay-lumen": {
+    label: "루멘의 지연 책임",
+    fact: "루멘은 분화를 늦추기 위해 봉인을 건드리는 선택을 했고 자기 몫의 지연 책임을 맡았다.",
+    incomplete: { id: "lumen-broke-core-alone", label: "루멘 혼자 코어를 깨뜨렸다" },
+  },
+});
+
+const LUMEN_SOURCES = freeze({
+  rescued: {
+    ids: ["lumen-current-testimony"],
+    pages: ["현재 생존한 루멘의 증언을 보존 원본과 대조한다."],
+  },
+  lost: {
+    ids: ["lumen-unsent-retreat-order", "lumen-residual-memory"],
+    pages: ["미전송 철수 명령서와 봉인에 남은 잔류 기억을 보존 원본과 대조한다."],
+  },
+});
+
+function recordFieldAnswers(fieldId) {
+  const definition = RETURN_RECORD_FIELD_DEFINITIONS[fieldId];
+  if (!definition) return [];
+  return freeze([
+    {
+      id: RECORD_FIELD_ANSWER_IDS[fieldId],
+      label: definition.fact,
+      validated: true,
+    },
+    {
+      ...definition.incomplete,
+      validated: false,
+    },
+  ]);
+}
+
+export function answerForRecordField(fieldId, captainOutcome) {
+  const answer = recordFieldAnswers(fieldId).find(value => value.validated === true);
+  if (!answer) return null;
+  const source = fieldId === "delay-lumen"
+    ? LUMEN_SOURCES[captainOutcome === "rescued" ? "rescued" : "lost"]
+    : { ids: ["sanctuary-preserved-originals"], pages: [] };
+  return freeze({ ...answer, sourceRecordIds: [...source.ids], sourcePages: [...source.pages] });
+}
+
+function returnRecordTargets() {
+  const positions = freeze([
+    ["vanguard-return-state", 480, 520],
+    ["core-division-cause", 1080, 420],
+    ["delay-roan", 1680, 520],
+    ["delay-sera", 480, 1120],
+    ["delay-garen", 1080, 1220],
+    ["delay-lumen", 1680, 1120],
+  ]);
+  return positions.map(([fieldId, x, y]) => {
+    const definition = RETURN_RECORD_FIELD_DEFINITIONS[fieldId];
+    return target(
+      "sanctuary-record-field",
+      fieldId,
+      "sanctuary-return-record",
+      x,
+      y,
+      `F · ${definition.label} 기록 검증`,
+      [`${definition.label}에 맞는 보존 근거를 선택한다.`],
+      {
+        fieldId,
+        title: definition.label,
+        answers: recordFieldAnswers(fieldId),
+        sourceByCaptainOutcome: fieldId === "delay-lumen" ? LUMEN_SOURCES : null,
+        visualVariant: fieldId === "core-division-cause" ? "grave" : "hand",
+      },
+    );
+  });
+}
+
+function correctionConsoleTarget() {
+  return [target(
+    "sanctuary-correction-link",
+    "correction-link-console",
+    "sanctuary-return-record",
+    1080,
+    820,
+    "F · 보존 후 정정 연결",
+    ["삭제 로그를 지우지 않고 여섯 책임 기록과 두 원본 근거를 정정 링크로 잇는다."],
+    { visualVariant: "architecture" },
+  )];
+}
+// Chorus, future previews, and ending resolution are added by later tasks.
 function futureOpinionTargets() { return []; }
 function futurePreviewTargets() { return []; }
 function endingConsoleTarget() { return []; }
@@ -218,9 +329,23 @@ export function getSanctuaryStoryContent(mapId) {
 }
 
 export function getCollectedSanctuaryRecords(worldProgress) {
-  return worldProgress?.chapters?.sanctuary?.coreTruthRevealed === true
-    ? [...SANCTUARY_ARCHIVE_RECORDS]
-    : [];
+  const chapter = worldProgress?.chapters?.sanctuary;
+  if (chapter?.coreTruthRevealed !== true) return [];
+  const correction = createCorrectionArchiveRecord(chapter);
+  return correction ? [...SANCTUARY_ARCHIVE_RECORDS, correction] : [...SANCTUARY_ARCHIVE_RECORDS];
+}
+
+export function createCorrectionArchiveRecord(chapter) {
+  if (normalizeSanctuaryChapter(chapter).correctionLinked !== true) return null;
+  return freeze({
+    id: "sanctuary-correction-link",
+    chapterId: "sanctuary",
+    recordKind: "correction",
+    correctsRecordId: "first-archivist-deletion-log",
+    evidenceRecordIds: ["core-self-division-original", "false-return-resonance-time"],
+    title: "보존 후 정정된 마지막 귀환 기록",
+    pages: ["기존 기록을 보존한 채 여섯 책임 기록과 원본 근거를 연결했다."],
+  });
 }
 
 function objective(id, label, mapId, interactionIds = []) {
@@ -253,5 +378,22 @@ export function getSanctuaryChapterObjective(worldProgress) {
       FALSE_RETURN_CONTRADICTION_IDS,
     );
   }
-  return objective("chapter-12-complete", "기억 회랑의 원본을 보존했다. 마지막 귀환 기록실로 향한다.", "sanctuary-return-record");
+  const completedFields = sanctuary.completedRecordFieldIds || [];
+  if (!RECORD_FIELD_IDS.every(id => completedFields.includes(id))) {
+    return objective(
+      "complete-return-record",
+      "여섯 책임 기록을 보존 근거로 검증한다.",
+      "sanctuary-return-record",
+      RECORD_FIELD_IDS,
+    );
+  }
+  if (!sanctuary.correctionLinked) {
+    return objective(
+      "link-return-record-correction",
+      "원본을 보존한 채 마지막 귀환 기록의 정정 링크를 만든다.",
+      "sanctuary-return-record",
+      ["correction-link-console"],
+    );
+  }
+  return objective("chapter-13-complete", "마지막 귀환 기록을 보존 후 정정했다.", "sanctuary-return-record");
 }

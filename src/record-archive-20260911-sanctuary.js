@@ -1,6 +1,9 @@
 function normalizeArchiveRecord(record, fallbackChapterId) {
   return {
     ...record,
+    timelineOrder: Number.isFinite(record.timelineOrder)
+      ? record.timelineOrder
+      : (record.recordKind === "correction" ? 100 : record.timelineOrder),
     chapterId: record.chapterId || fallbackChapterId,
     pages: Array.isArray(record.pages) ? [...record.pages] : [],
     evidenceRecordIds: Array.isArray(record.evidenceRecordIds) ? [...record.evidenceRecordIds] : [],

@@ -18,7 +18,22 @@ const COLLECTIBLE_MEMORY_IDS = Object.freeze([
   ...MEMORY_SOUND_IDS,
   ...FALSE_RETURN_CONTRADICTION_IDS,
 ]);
-export const RECORD_FIELD_IDS = Object.freeze(["departure", "witness", "seal"]);
+export const RECORD_FIELD_IDS = Object.freeze([
+  "vanguard-return-state",
+  "core-division-cause",
+  "delay-roan",
+  "delay-sera",
+  "delay-garen",
+  "delay-lumen",
+]);
+export const RECORD_FIELD_ANSWER_IDS = Object.freeze({
+  "vanguard-return-state": "vanguard-partial-return-garen-scarred",
+  "core-division-cause": "conflicting-records-self-division",
+  "delay-roan": "roan-held-forest-route",
+  "delay-sera": "sera-maintained-coast-signal",
+  "delay-garen": "garen-delayed-volcano-collapse-scarred",
+  "delay-lumen": "lumen-touched-seal-to-delay-division",
+});
 export const TESTIMONY_IDS = Object.freeze(["forest", "coast", "volcano"]);
 export const FUTURE_IDS = Object.freeze(["seal", "restore", "release"]);
 const ENDING_CHOICES = Object.freeze(["seal", "restore", "release"]);
@@ -139,7 +154,10 @@ function applySanctuaryAction(chapter, action) {
       }
       break;
     case "complete-record-field":
-      if (chapter.falseReturnRejected) addIfAllowed(chapter.completedRecordFieldIds, action.fieldId, RECORD_FIELD_IDS);
+      if (
+        chapter.falseReturnRejected
+        && RECORD_FIELD_ANSWER_IDS[action.fieldId] === action.answerId
+      ) addIfAllowed(chapter.completedRecordFieldIds, action.fieldId, RECORD_FIELD_IDS);
       break;
     case "link-correction":
       if (chapter.falseReturnRejected && hasAll(chapter.completedRecordFieldIds, RECORD_FIELD_IDS)) chapter.correctionLinked = true;
