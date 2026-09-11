@@ -294,7 +294,7 @@ test("a new authority applies actions that arrived before its transferred state 
   game.network = {
     uid: "new-host",
     chorus: {
-      publishState: async () => ({ ok: true }),
+      publishState: async snapshot => ({ ok: true, encounter: structuredClone(snapshot) }),
       acknowledgeAction: async (...args) => { acknowledgements.push(args); return { ok: true }; },
     },
   };
@@ -353,7 +353,7 @@ test("authority writes completion claims when a remote contributor separates the
   game.network = {
     uid: "host",
     chorus: {
-      publishState: async () => ({ ok: true }),
+      publishState: async snapshot => ({ ok: true, encounter: structuredClone(snapshot) }),
       acknowledgeAction: async () => ({ ok: true }),
       writeCompletionClaims: async (...args) => { writes.push(args); return { ok: true }; },
     },
@@ -381,4 +381,131 @@ test("authority writes completion claims when a remote contributor separates the
   assert.equal(writes.length, 1);
   assert.equal(writes[0][0], "shared-e1");
   assert.deepEqual(Object.keys(writes[0][1]), ["remote"]);
+});
+
+test("a failed publish never replaces the last Firebase-confirmed fallback seed with optimistic local state", async () => {
+  const game = Object.create(SanctuaryPixelRPG.prototype);
+  const confirmed = createChorusEncounter({ encounterId: "shared-e1", authorityUid: "host", now: 1_000 });
+  game.sessionMode = "online";
+  game.latestChorusSnapshot = structuredClone(confirmed);
+  game.network = {
+    uid: "host",
+    chorus: {
+      publishState: async () => ({ ok: false, reason: "authority_changed" }),
+      acknowledgeAction: async () => ({ ok: true }),
+    },
+  };
+  game.chorusController = game.createChorusControllerForMode("online");
+  game.chorusController.receiveSnapshot(confirmed);
+  game.chorusController.setMap("sanctuary-return-record", { correctionLinked: true });
+
+  await game.receiveChorusActions({
+    remote: {
+      1: {
+        id: "remote-action-1",
+        encounterId: "shared-e1",
+        authorityEpoch: 1,
+        phase: "anchors",
+        uid: "remote",
+        type: "anchor-stabilize",
+        fragmentId: "forest",
+        anchorId: "forest",
+        createdAt: 1_100,
+      },
+    },
+  });
+
+  assert.deepEqual(game.chorusController.snapshot.stabilizedAnchorIds, ["forest"]);
+  assert.deepEqual(game.latestChorusSnapshot.stabilizedAnchorIds, []);
+  assert.notEqual(game.latestChorusSnapshot, game.chorusController.snapshot);
+});
+
+test("a duplicate listener action is acknowledged only after its id exists in Firebase-confirmed state", async () => {
+  const game = Object.create(SanctuaryPixelRPG.prototype);
+  const actionId = "host-session-action-1";
+  const confirmed = createChorusEncounter({ encounterId: "shared-e1", authorityUid: "host", now: 1_000 });
+  const optimistic = { ...confirmed, processedActionIds: [actionId] };
+  const acknowledgements = [];
+  game.sessionMode = "online";
+  game.latestChorusSnapshot = confirmed;
+  game.network = {
+    uid: "host",
+    chorus: {
+      publishState: async () => ({ ok: false, reason: "not_confirmed" }),
+      acknowledgeAction: async (...args) => { acknowledgements.push(args); return { ok: true }; },
+    },
+  };
+  game.chorusController = game.createChorusControllerForMode("online");
+  game.chorusController.receiveSnapshot(optimistic);
+  game.chorusController.setMap("sanctuary-return-record", { correctionLinked: true });
+  const requests = {
+    host: {
+      7: {
+        id: actionId,
+        encounterId: "shared-e1",
+        authorityEpoch: 1,
+        phase: "anchors",
+        uid: "host",
+        type: "fragment-strike",
+        fragmentId: "forest",
+        createdAt: 1_100,
+      },
+    },
+  };
+
+  await game.receiveChorusActions(requests);
+  assert.deepEqual(acknowledgements, []);
+
+  game.latestChorusSnapshot = { ...confirmed, processedActionIds: [actionId] };
+  await game.receiveChorusActions(requests);
+  assert.deepEqual(acknowledgements, [["host", 7]]);
+});
+
+test("same-time action results remain paired by action id before acknowledgement", async () => {
+  const game = Object.create(SanctuaryPixelRPG.prototype);
+  const state = createChorusEncounter({ encounterId: "shared-e1", authorityUid: "host", now: 1_000 });
+  const acknowledgements = [];
+  game.sessionMode = "online";
+  game.latestChorusSnapshot = state;
+  game.network = {
+    uid: "host",
+    chorus: {
+      publishState: async snapshot => ({ ok: true, encounter: structuredClone(snapshot) }),
+      acknowledgeAction: async (...args) => { acknowledgements.push(args); return { ok: true }; },
+    },
+  };
+  game.chorusController = game.createChorusControllerForMode("online");
+  game.chorusController.receiveSnapshot(state);
+  game.chorusController.setMap("sanctuary-return-record", { correctionLinked: true });
+
+  await game.receiveChorusActions({
+    a: {
+      1: {
+        id: "z-wrong-action",
+        encounterId: "shared-e1",
+        authorityEpoch: 1,
+        phase: "anchors",
+        uid: "a",
+        type: "anchor-stabilize",
+        fragmentId: "forest",
+        anchorId: "coast",
+        createdAt: 1_100,
+      },
+    },
+    b: {
+      2: {
+        id: "a-valid-action",
+        encounterId: "shared-e1",
+        authorityEpoch: 1,
+        phase: "anchors",
+        uid: "b",
+        type: "anchor-stabilize",
+        fragmentId: "forest",
+        anchorId: "forest",
+        createdAt: 1_100,
+      },
+    },
+  });
+
+  assert.deepEqual(acknowledgements, [["b", 2]]);
 });

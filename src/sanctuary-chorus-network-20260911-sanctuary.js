@@ -12,6 +12,12 @@ import {
 
 const BASE_PATH = `rooms/public/chorus/${CHORUS_MAP_ID}`;
 const CLAIM_FIELDS = Object.freeze(["encounterId", "uid", "eligible", "createdAt"]);
+const COMBAT_STATE_FIELDS = Object.freeze([
+  "status", "phase", "hp", "maxHp",
+  "stabilizedAnchorIds", "resolvedTestimonyIds", "severedBondIds",
+  "activeRecordId", "currentPatternId", "patternStartedAt", "patternEndsAt", "vulnerableUntil",
+  "lumenAssistUsed", "processedActionIds", "contributors", "separatedAt", "reformAt",
+]);
 
 function validKey(value, maxLength = 160) {
   return typeof value === "string" && value.length > 0 && value.length <= maxLength
@@ -39,6 +45,10 @@ function mergeProcessedActionIds(current, incoming) {
   return [...new Set([...(current || []), ...(incoming || [])])].slice(-CHORUS_PROCESSED_ACTION_LIMIT);
 }
 
+function sameCombatState(left, right) {
+  return COMBAT_STATE_FIELDS.every(field => JSON.stringify(left?.[field]) === JSON.stringify(right?.[field]));
+}
+
 export function createChorusNetwork({
   dbModule,
   db,
@@ -63,6 +73,7 @@ export function createChorusNetwork({
   let renewalTimer = null;
   let renewalEpoch = null;
   let latestState = null;
+  let stateMutationQueue = Promise.resolve();
 
   const pathRef = suffix => dbModule.ref(db, suffix ? `${BASE_PATH}/${suffix}` : BASE_PATH);
 
@@ -79,6 +90,11 @@ export function createChorusNetwork({
   };
 
   const active = () => !stopped && mapId === CHORUS_MAP_ID;
+  const enqueueStateMutation = operation => {
+    const result = stateMutationQueue.then(operation, operation);
+    stateMutationQueue = result.catch(() => {});
+    return result;
+  };
   const isAuthority = (encounter = latestState) => Boolean(
     encounter
     && encounter.authorityUid === uid
@@ -138,47 +154,56 @@ export function createChorusNetwork({
 
     async ensureEncounter() {
       if (!active()) return null;
-      const timestamp = now();
-      const transaction = await dbModule.runTransaction(pathRef("state"), current => {
-        const encounter = normalizeChorusEncounter(current);
-        if (encounter) return undefined;
-        return createChorusEncounter({
-          encounterId: `sanctuary-chorus-${Math.trunc(timestamp)}-${uid.slice(0, 12)}`,
-          authorityUid: uid,
-          now: timestamp,
+      return enqueueStateMutation(async () => {
+        if (!active()) return null;
+        const timestamp = now();
+        const transaction = await dbModule.runTransaction(pathRef("state"), current => {
+          const encounter = normalizeChorusEncounter(current);
+          if (encounter) return undefined;
+          return createChorusEncounter({
+            encounterId: `sanctuary-chorus-${Math.trunc(timestamp)}-${uid.slice(0, 12)}`,
+            authorityUid: uid,
+            now: timestamp,
+          });
         });
+        const encounter = normalizeChorusEncounter(transaction.snapshot.val());
+        if (encounter) {
+          latestState = encounter;
+          if (isAuthority(encounter)) scheduleRenewal(encounter.authorityEpoch);
+        }
+        return encounter;
       });
-      const encounter = normalizeChorusEncounter(transaction.snapshot.val());
-      if (encounter) {
-        latestState = encounter;
-        if (isAuthority(encounter)) scheduleRenewal(encounter.authorityEpoch);
-      }
-      return encounter;
     },
 
     async tryAcquireAuthority() {
       if (!active()) return { ok: false, reason: "inactive" };
-      let outcome = { ok: false, reason: "transaction_aborted" };
-      const transaction = await dbModule.runTransaction(pathRef("state"), current => {
-        outcome = acquireChorusAuthority(current, { uid, now: now() });
-        return outcome.ok ? outcome.encounter : undefined;
+      return enqueueStateMutation(async () => {
+        if (!active()) return { ok: false, reason: "inactive" };
+        let outcome = { ok: false, reason: "transaction_aborted" };
+        const transaction = await dbModule.runTransaction(pathRef("state"), current => {
+          outcome = acquireChorusAuthority(current, { uid, now: now() });
+          return outcome.ok ? outcome.encounter : undefined;
+        });
+        if (!transaction.committed) return outcome;
+        latestState = normalizeChorusEncounter(transaction.snapshot.val());
+        scheduleRenewal(latestState.authorityEpoch);
+        return { ok: true, encounter: latestState };
       });
-      if (!transaction.committed) return outcome;
-      latestState = normalizeChorusEncounter(transaction.snapshot.val());
-      scheduleRenewal(latestState.authorityEpoch);
-      return { ok: true, encounter: latestState };
     },
 
     async renewAuthority(epoch = renewalEpoch) {
       if (!active()) return { ok: false, reason: "inactive" };
-      let outcome = { ok: false, reason: "transaction_aborted" };
-      const transaction = await dbModule.runTransaction(pathRef("state"), current => {
-        outcome = renewChorusAuthority(current, { uid, authorityEpoch: epoch, now: now() });
-        return outcome.ok ? outcome.encounter : undefined;
+      return enqueueStateMutation(async () => {
+        if (!active()) return { ok: false, reason: "inactive" };
+        let outcome = { ok: false, reason: "transaction_aborted" };
+        const transaction = await dbModule.runTransaction(pathRef("state"), current => {
+          outcome = renewChorusAuthority(current, { uid, authorityEpoch: epoch, now: now() });
+          return outcome.ok ? outcome.encounter : undefined;
+        });
+        if (!transaction.committed) return outcome;
+        latestState = normalizeChorusEncounter(transaction.snapshot.val());
+        return { ok: true, encounter: latestState };
       });
-      if (!transaction.committed) return outcome;
-      latestState = normalizeChorusEncounter(transaction.snapshot.val());
-      return { ok: true, encounter: latestState };
     },
 
     async publishState(value) {
@@ -189,27 +214,38 @@ export function createChorusNetwork({
         || incoming.encounterId !== latestState.encounterId) {
         return { ok: false, reason: "not_authority" };
       }
-      let outcome = { ok: false, reason: "authority_changed" };
-      const transaction = await dbModule.runTransaction(pathRef("state"), currentValue => {
-        const current = normalizeChorusEncounter(currentValue);
-        if (!current || current.authorityUid !== uid
-          || current.authorityEpoch !== incoming.authorityEpoch
-          || current.encounterId !== incoming.encounterId) return undefined;
-        if (!containsAll(incoming.stabilizedAnchorIds, current.stabilizedAnchorIds)
-          || !containsAll(incoming.resolvedTestimonyIds, current.resolvedTestimonyIds)
-          || !containsAll(incoming.severedBondIds, current.severedBondIds)) {
-          outcome = { ok: false, reason: "stale_state" };
-          return undefined;
-        }
-        outcome = { ok: true };
-        return withoutUndefined({
-          ...incoming,
-          processedActionIds: mergeProcessedActionIds(current.processedActionIds, incoming.processedActionIds),
+      return enqueueStateMutation(async () => {
+        if (!active()) return { ok: false, reason: "inactive" };
+        let outcome = { ok: false, reason: "authority_changed" };
+        const transaction = await dbModule.runTransaction(pathRef("state"), currentValue => {
+          const current = normalizeChorusEncounter(currentValue);
+          if (!current || current.authorityUid !== uid
+            || current.authorityEpoch !== incoming.authorityEpoch
+            || current.encounterId !== incoming.encounterId) return undefined;
+          const olderRevision = incoming.combatRevision < current.combatRevision;
+          const conflictingSameRevision = incoming.combatRevision === current.combatRevision
+            && !sameCombatState(incoming, current);
+          if (olderRevision || conflictingSameRevision
+            || !containsAll(incoming.stabilizedAnchorIds, current.stabilizedAnchorIds)
+            || !containsAll(incoming.resolvedTestimonyIds, current.resolvedTestimonyIds)
+            || !containsAll(incoming.severedBondIds, current.severedBondIds)) {
+            outcome = { ok: false, reason: "stale_state" };
+            return undefined;
+          }
+          outcome = { ok: true };
+          return withoutUndefined({
+            ...incoming,
+            leaseUntil: Math.max(current.leaseUntil, incoming.leaseUntil),
+            updatedAt: incoming.combatRevision > current.combatRevision
+              ? incoming.updatedAt
+              : current.updatedAt,
+            processedActionIds: mergeProcessedActionIds(current.processedActionIds, incoming.processedActionIds),
+          });
         });
+        if (!transaction.committed) return outcome;
+        latestState = normalizeChorusEncounter(transaction.snapshot.val());
+        return { ok: true, encounter: latestState };
       });
-      if (!transaction.committed) return outcome;
-      latestState = normalizeChorusEncounter(transaction.snapshot.val());
-      return { ok: true, encounter: latestState };
     },
 
     async sendAction(request) {
@@ -217,8 +253,14 @@ export function createChorusNetwork({
         || !validKey(String(request.sequence), 24)) {
         return { ok: false, reason: "invalid_action" };
       }
-      const action = withoutUndefined({ ...request, uid });
-      await dbModule.set(pathRef(`actions/${uid}/${request.sequence}`), action);
+      const sequenceTransaction = await dbModule.runTransaction(pathRef(`actionSequences/${uid}`), current => {
+        const previous = Number.isInteger(current) && current >= 0 ? current : 0;
+        return previous + 1;
+      });
+      if (!sequenceTransaction.committed) return { ok: false, reason: "sequence_allocation_failed" };
+      const sequence = sequenceTransaction.snapshot.val();
+      const action = withoutUndefined({ ...request, uid, sequence });
+      await dbModule.set(pathRef(`actions/${uid}/${sequence}`), action);
       return { ok: true, action };
     },
 

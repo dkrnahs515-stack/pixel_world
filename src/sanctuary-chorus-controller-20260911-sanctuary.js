@@ -156,6 +156,13 @@ function normalizeClassId(classId) {
   return CLASS_IDS.includes(classId) ? classId : "warrior";
 }
 
+function createActionSessionId(value) {
+  if (typeof value === "string" && /^[a-zA-Z0-9-]{8,64}$/.test(value)) return value;
+  const uuid = globalThis.crypto?.randomUUID?.();
+  if (uuid) return uuid.replaceAll("-", "");
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
+}
+
 export function chorusAttackPresentation(classId, actionType = "bond-cut") {
   if (actionType !== "bond-cut") return null;
   const normalizedClassId = normalizeClassId(classId);
@@ -185,6 +192,7 @@ class SanctuaryChorusController {
     this.mapId = null;
     this.correctionLinked = false;
     this.actionSequence = 0;
+    this.actionSessionId = createActionSessionId(options.actionSessionId);
     this.patternSequence = 0;
     this.activePattern = null;
     this.processedPatternEventIds = new Set();
@@ -246,7 +254,7 @@ class SanctuaryChorusController {
   nextAction(type, fields, timestamp) {
     this.actionSequence += 1;
     return {
-      id: `${this.uid}:${this.snapshot.authorityEpoch}:${this.actionSequence}:${type}`,
+      id: `${this.actionSessionId}:${this.snapshot.authorityEpoch}:${this.actionSequence}:${type}`,
       encounterId: this.snapshot.encounterId,
       authorityEpoch: this.snapshot.authorityEpoch,
       phase: this.snapshot.phase,
@@ -342,13 +350,20 @@ class SanctuaryChorusController {
     );
   }
 
+  canMutateSharedState() {
+    return this.mode !== "online" || this.snapshot?.authorityUid === this.uid;
+  }
+
   expireRecordWindow(timestamp = this.now()) {
     if (!this.snapshot || this.snapshot.status !== "active" || this.snapshot.phase !== "onslaught"
-      || !this.snapshot.activeRecordId || this.snapshot.vulnerableUntil >= timestamp) return false;
+      || !this.snapshot.activeRecordId || this.snapshot.vulnerableUntil >= timestamp
+      || !this.canMutateSharedState()) return false;
     this.snapshot = normalizeChorusEncounter({
       ...this.snapshot,
       activeRecordId: null,
       vulnerableUntil: 0,
+      combatRevision: this.snapshot.combatRevision + 1,
+      updatedAt: timestamp,
     });
     this.savedSnapshot = this.snapshot;
     return true;
@@ -444,6 +459,7 @@ class SanctuaryChorusController {
   }
 
   startPattern(timestamp) {
+    if (!this.canMutateSharedState()) return false;
     const definition = PATTERNS[this.patternSequence % PATTERNS.length];
     this.patternSequence += 1;
     this.activePattern = clonePattern(definition, timestamp, timestamp + PATTERN_IMPACT_DELAY_MS);
@@ -452,8 +468,11 @@ class SanctuaryChorusController {
       currentPatternId: definition.sharedId,
       patternStartedAt: timestamp,
       patternEndsAt: this.activePattern.impactAt,
+      combatRevision: this.snapshot.combatRevision + 1,
+      updatedAt: timestamp,
     });
     this.savedSnapshot = this.snapshot;
+    return true;
   }
 
   update(_dt, context = {}, timestamp = this.now()) {
@@ -476,7 +495,9 @@ class SanctuaryChorusController {
     if (!this.snapshot || this.snapshot.phase !== "onslaught" || this.snapshot.status !== "active") {
       return { events, shared: this.snapshot, personal: this.personalSnapshot };
     }
-    if (!this.activePattern) this.startPattern(timestamp);
+    if (!this.activePattern && !this.startPattern(timestamp)) {
+      return { events, shared: this.snapshot, personal: this.personalSnapshot };
+    }
     const eventId = `${this.snapshot.encounterId}:pattern:${this.activePattern.startedAt}:${this.activePattern.id}`;
     if (timestamp >= this.activePattern.impactAt && timestamp <= this.activePattern.endsAt
       && !this.processedPatternEventIds.has(eventId)) {
@@ -488,7 +509,9 @@ class SanctuaryChorusController {
         source: { x: this.activePattern.x, y: this.activePattern.y },
       });
     }
-    if (timestamp > this.activePattern.endsAt) this.startPattern(timestamp);
+    if (timestamp > this.activePattern.endsAt) {
+      if (!this.startPattern(timestamp)) this.activePattern = null;
+    }
     return { events, shared: this.snapshot, personal: this.personalSnapshot };
   }
 
@@ -605,6 +628,7 @@ export function createSanctuaryChorusController(options = {}) {
     ownedWeaponIds: options.ownedWeaponIds,
     equipmentByClass: options.equipmentByClass,
     hiddenWeaponOwned: options.hiddenWeaponOwned,
+    actionSessionId: options.actionSessionId,
     now: options.now || (() => Date.now()),
   });
 }

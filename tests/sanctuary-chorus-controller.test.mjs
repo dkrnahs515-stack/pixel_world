@@ -413,3 +413,49 @@ test("lost and rescued players without a hidden weapon never receive an assist p
     assert.equal(controller.nearbyInteraction({ x: 700, y: 1120 }, 3000), null);
   }
 });
+
+test("only online authority creates shared patterns while a viewer applies received impact locally once", () => {
+  const seed = encounterAt("onslaught");
+  const viewer = createSanctuaryChorusController({
+    uid: "viewer",
+    mode: "online",
+    seedSnapshot: { ...seed, authorityUid: "host" },
+    now: () => 3000,
+  });
+  viewer.setMap("sanctuary-return-record", { correctionLinked: true });
+  const before = structuredClone(viewer.snapshot);
+
+  const waiting = viewer.update(1 / 60, { player: { x: 1080, y: 900 } }, 3000);
+  assert.equal(waiting.events.some(event => event.type === "damage-player"), false);
+  assert.equal(viewer.renderModel().telegraph, null);
+  assert.deepEqual(viewer.snapshot, before);
+
+  const authority = createSanctuaryChorusController({
+    uid: "host",
+    mode: "online",
+    seedSnapshot: { ...seed, authorityUid: "host" },
+    now: () => 3000,
+  });
+  authority.setMap("sanctuary-return-record", { correctionLinked: true });
+  authority.update(1 / 60, { player: { x: 300, y: 300 } }, 3000);
+  assert.equal(authority.renderModel().telegraph.id, "forest-root-sweep");
+
+  assert.equal(viewer.receiveSnapshot(authority.snapshot), true);
+  const firstImpact = viewer.update(1 / 60, { player: { x: 1080, y: 900 } }, 3900);
+  const replay = viewer.update(1 / 60, { player: { x: 1080, y: 900 } }, 3900);
+  assert.equal(firstImpact.events.filter(event => event.type === "damage-player").length, 1);
+  assert.equal(replay.events.filter(event => event.type === "damage-player").length, 0);
+});
+
+test("recreated controllers for one uid produce collision-free action ids even when local counters restart", async () => {
+  const seed = encounterAt("anchors");
+  const first = createSanctuaryChorusController({ uid: "same-user", seedSnapshot: seed, now: () => 2000 });
+  const second = createSanctuaryChorusController({ uid: "same-user", seedSnapshot: seed, now: () => 2000 });
+  first.setMap("sanctuary-return-record", { correctionLinked: true });
+  second.setMap("sanctuary-return-record", { correctionLinked: true });
+
+  await first.requestAttack({ targetId: "unnamed-chorus", attackKind: "basic", fragmentId: "forest" }, 2000);
+  await second.requestAttack({ targetId: "unnamed-chorus", attackKind: "basic", fragmentId: "forest" }, 2000);
+
+  assert.notEqual(first.snapshot.processedActionIds.at(-1), second.snapshot.processedActionIds.at(-1));
+});

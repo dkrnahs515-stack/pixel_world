@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createChorusNetwork } from "../src/sanctuary-chorus-network-20260911-sanctuary.js";
 import { createChorusEncounter } from "../src/sanctuary-chorus-state-20260911-sanctuary.js";
+import { CHORUS_TESTIMONIES } from "../src/sanctuary-chorus-data-20260911-sanctuary.js";
 
 const BASE_PATH = "rooms/public/chorus/sanctuary-return-record";
 
@@ -215,4 +216,110 @@ test("a solo-completed snapshot is never uploaded as a shared encounter", async 
   assert.equal(result.ok, false);
   assert.equal(result.reason, "not_authority");
   assert.equal(fake.values.get(`${BASE_PATH}/state`).status, "active");
+});
+
+test("renewal and combat publishes are serialized while newer combat state preserves the current lease", async () => {
+  let clock = 10_000;
+  const state = {
+    ...activeEncounter("a", 9_000),
+    stabilizedAnchorIds: ["forest", "coast", "volcano"],
+    resolvedTestimonyIds: CHORUS_TESTIMONIES.map(value => value.id),
+    combatRevision: 4,
+    currentPatternId: "coast-tide",
+    patternStartedAt: 9_000,
+    patternEndsAt: 9_900,
+  };
+  const fake = firebaseModulesFake({ [`${BASE_PATH}/state`]: state });
+  const network = createChorusNetwork({ ...networkOptions(fake, "a"), now: () => clock });
+  await network.setMap("sanctuary-return-record");
+  fake.emit(`${BASE_PATH}/state`, state);
+
+  const renewed = await network.renewAuthority(2);
+  assert.equal(renewed.encounter.leaseUntil, 15_000);
+
+  const stale = await network.publishState({
+    ...state,
+    combatRevision: 3,
+    currentPatternId: "forest-roots",
+    patternStartedAt: 8_000,
+    patternEndsAt: 8_900,
+  });
+  assert.equal(stale.ok, false);
+  assert.equal(stale.reason, "stale_state");
+
+  clock = 10_100;
+  const published = await network.publishState({
+    ...state,
+    combatRevision: 5,
+    currentPatternId: "volcano-rift",
+    patternStartedAt: 10_100,
+    patternEndsAt: 11_000,
+    leaseUntil: 14_000,
+  });
+  assert.equal(published.ok, true);
+  assert.equal(published.encounter.combatRevision, 5);
+  assert.equal(published.encounter.currentPatternId, "volcano-rift");
+  assert.equal(published.encounter.leaseUntil, 15_000);
+});
+
+test("state mutations never overlap even when Firebase transactions settle later", async () => {
+  const state = activeEncounter("a", 9_000);
+  const fake = firebaseModulesFake({ [`${BASE_PATH}/state`]: state });
+  const originalTransaction = fake.dbModule.runTransaction;
+  const releases = [];
+  let inFlight = 0;
+  let maxInFlight = 0;
+  fake.dbModule.runTransaction = async (ref, update) => {
+    inFlight += 1;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    await new Promise(resolve => releases.push(resolve));
+    try {
+      return await originalTransaction(ref, update);
+    } finally {
+      inFlight -= 1;
+    }
+  };
+  const network = createChorusNetwork(networkOptions(fake, "a"));
+  await network.setMap("sanctuary-return-record");
+  fake.emit(`${BASE_PATH}/state`, state);
+
+  const renewing = network.renewAuthority(2);
+  const publishing = network.publishState({ ...state, combatRevision: 1 });
+  for (let turn = 0; turn < 4; turn += 1) await Promise.resolve();
+  assert.equal(maxInFlight, 1);
+  assert.equal(releases.length, 1);
+  releases.shift()();
+  while (releases.length === 0) await Promise.resolve();
+  releases.shift()();
+  await Promise.all([renewing, publishing]);
+  assert.equal(maxInFlight, 1);
+});
+
+test("reconnected clients allocate a new monotonic Firebase action sequence for the same uid", async () => {
+  const fake = firebaseModulesFake();
+  const first = createChorusNetwork(networkOptions(fake, "same-user"));
+  await first.setMap("sanctuary-return-record");
+  const firstResult = await first.sendAction({
+    id: "session-a:1",
+    type: "fragment-strike",
+    sequence: 1,
+    encounterId: "e1",
+  });
+  await first.stop();
+
+  const reconnected = createChorusNetwork(networkOptions(fake, "same-user"));
+  await reconnected.setMap("sanctuary-return-record");
+  const secondResult = await reconnected.sendAction({
+    id: "session-b:1",
+    type: "fragment-strike",
+    sequence: 1,
+    encounterId: "e1",
+  });
+
+  assert.equal(firstResult.action.sequence, 1);
+  assert.equal(secondResult.action.sequence, 2);
+  assert.deepEqual(fake.sets.slice(-2).map(value => value.path), [
+    `${BASE_PATH}/actions/same-user/1`,
+    `${BASE_PATH}/actions/same-user/2`,
+  ]);
 });

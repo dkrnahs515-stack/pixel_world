@@ -828,13 +828,15 @@ export class PixelRPG {
         actions.push({ ...request, uid: requestUid, sequence: Number(sequence) });
       }
     }
-    actions.sort((left, right) => Number(left.createdAt) - Number(right.createdAt)
-      || String(left.uid).localeCompare(String(right.uid))
-      || left.sequence - right.sequence);
+    actions.sort((left, right) => {
+      const leftCreatedAt = Number.isFinite(left.createdAt) ? left.createdAt : 0;
+      const rightCreatedAt = Number.isFinite(right.createdAt) ? right.createdAt : 0;
+      return leftCreatedAt - rightCreatedAt || String(left.id).localeCompare(String(right.id));
+    });
     controller.receivingNetworkActions = true;
     let results;
     try {
-      results = controller.receiveActions?.(actions) || [];
+      results = actions.map(action => controller.receiveActions?.([action])?.[0]);
     } finally {
       controller.receivingNetworkActions = false;
     }
@@ -842,13 +844,19 @@ export class PixelRPG {
     const publishResult = hasAppliedAction
       ? await network.publishState(controller.snapshot)
       : { ok: true };
+    const confirmedSnapshot = publishResult?.ok && publishResult.encounter
+      ? structuredClone(publishResult.encounter)
+      : this.latestChorusSnapshot;
+    if (publishResult?.ok && publishResult.encounter) {
+      this.latestChorusSnapshot = confirmedSnapshot;
+      this.lastPublishedChorusSignature = JSON.stringify(confirmedSnapshot);
+    }
     if (publishResult?.ok) await this.writeChorusCompletionClaimsIfAuthority();
     await Promise.all(actions.map((action, index) => (
-      (results[index]?.ok && publishResult?.ok) || results[index]?.reason === "duplicate_action"
+      confirmedSnapshot?.processedActionIds?.includes(action.id)
         ? network.acknowledgeAction(action.uid, action.sequence)
         : Promise.resolve({ ok: false })
     )));
-    this.latestChorusSnapshot = controller.snapshot ? structuredClone(controller.snapshot) : this.latestChorusSnapshot;
     return true;
   }
 
@@ -872,7 +880,12 @@ export class PixelRPG {
     if (signature === this.lastPublishedChorusSignature) return false;
     this.lastPublishedChorusSignature = signature;
     Promise.resolve(network.publishState(snapshot)).then(result => {
-      if (!result?.ok) this.lastPublishedChorusSignature = null;
+      if (!result?.ok || !result.encounter) {
+        this.lastPublishedChorusSignature = null;
+        return;
+      }
+      this.latestChorusSnapshot = structuredClone(result.encounter);
+      this.lastPublishedChorusSignature = JSON.stringify(result.encounter);
     }).catch(error => {
       this.lastPublishedChorusSignature = null;
       this.reportBossCallbackError("무명의 합창 상태 전송 실패", error);

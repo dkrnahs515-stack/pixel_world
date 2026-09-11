@@ -412,3 +412,25 @@ test("optional Lumen assist is eligible once and counts as an anchor contributio
     context(encounter, "a", 1600, { lumenAssistEligible: true }),
   ).reason, "duplicate_objective");
 });
+
+test("combat revision advances only for shared combat mutations and survives lease takeover", () => {
+  let encounter = createChorusEncounter({
+    encounterId: "chorus-revision",
+    authorityUid: "host",
+    now: 1000,
+  });
+  assert.equal(encounter.combatRevision, 0);
+  const request = action(encounter, "host", "fragment-strike", 1100, { fragmentId: "forest" });
+  encounter = applyValid(encounter, request, 1100);
+  assert.equal(encounter.combatRevision, 1);
+
+  const renewed = renewChorusAuthority(encounter, {
+    uid: "host",
+    authorityEpoch: encounter.authorityEpoch,
+    now: 6000,
+  });
+  assert.equal(renewed.encounter.combatRevision, 1);
+  const acquired = acquireChorusAuthority(renewed.encounter, { uid: "next", now: 11000 });
+  assert.equal(acquired.encounter.combatRevision, 1);
+  assert.equal(normalizeChorusEncounter({ ...encounter, combatRevision: -9 }).combatRevision, 0);
+});

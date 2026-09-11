@@ -31,6 +31,10 @@ function nonNegativeTime(value, fallback = 0) {
   return Math.max(0, finite(value, fallback));
 }
 
+function nonNegativeInteger(value, fallback = 0) {
+  return Math.max(0, Math.trunc(finite(value, fallback)));
+}
+
 function validId(value, maxLength = 160) {
   return typeof value === "string" && value.length > 0 && value.length <= maxLength;
 }
@@ -159,6 +163,7 @@ export function createChorusEncounter({
     patternEndsAt: 0,
     vulnerableUntil: 0,
     lumenAssistUsed: false,
+    combatRevision: 0,
     processedActionIds: [],
     contributors: {},
     authorityUid,
@@ -195,6 +200,7 @@ export function normalizeChorusEncounter(value) {
     patternEndsAt: onslaught ? nonNegativeTime(source.patternEndsAt) : 0,
     vulnerableUntil: onslaught ? nonNegativeTime(source.vulnerableUntil) : 0,
     lumenAssistUsed: source.lumenAssistUsed === true,
+    combatRevision: nonNegativeInteger(source.combatRevision),
     processedActionIds: normalizeProcessedActionIds(source.processedActionIds),
     contributors: normalizeContributors(source.contributors),
     authorityUid: source.authorityUid,
@@ -359,6 +365,7 @@ export function applyChorusAction(value, validated, now = Date.now()) {
   const next = cloneEncounter(encounter);
   const events = [];
   next.processedActionIds = [...next.processedActionIds, action.id].slice(-CHORUS_PROCESSED_ACTION_LIMIT);
+  next.combatRevision += 1;
   applyObjectiveAction(next, action, now, events);
   recordContribution(next, action.uid, action.type, now);
   next.updatedAt = now;
