@@ -377,6 +377,11 @@ test("authority can be renewed by its epoch and taken over only after the five-s
     uid: "next", authorityEpoch: 5, now: 7000,
   });
   assert.equal(renewed.encounter.leaseUntil, 12000);
+  assert.equal(renewChorusAuthority(acquired.encounter, {
+    uid: "next", authorityEpoch: 5, now: 11000,
+  }).reason, "lease_expired");
+  const sameOwnerTakeover = acquireChorusAuthority(acquired.encounter, { uid: "next", now: 11000 });
+  assert.equal(sameOwnerTakeover.encounter.authorityEpoch, 6);
 });
 
 test("completion claims are created only for contributors of a separated encounter", () => {
@@ -427,10 +432,30 @@ test("combat revision advances only for shared combat mutations and survives lea
   const renewed = renewChorusAuthority(encounter, {
     uid: "host",
     authorityEpoch: encounter.authorityEpoch,
-    now: 6000,
+    now: 5999,
   });
   assert.equal(renewed.encounter.combatRevision, 1);
   const acquired = acquireChorusAuthority(renewed.encounter, { uid: "next", now: 11000 });
   assert.equal(acquired.encounter.combatRevision, 1);
   assert.equal(normalizeChorusEncounter({ ...encounter, combatRevision: -9 }).combatRevision, 0);
+});
+
+test("lease renewal preserves combat time so an already issued vulnerable bond cut remains valid", () => {
+  let encounter = onslaughtEncounter();
+  const recordAt = encounter.updatedAt + 100;
+  encounter = applyValid(encounter, action(encounter, "recorder", "record-activate", recordAt, {
+    recordId: "roan",
+  }));
+  const combatUpdatedAt = encounter.updatedAt;
+  const cut = action(encounter, "cutter", "bond-cut", recordAt + 100, { bondId: "roan" });
+
+  const renewed = renewChorusAuthority(encounter, {
+    uid: "host",
+    authorityEpoch: encounter.authorityEpoch,
+    now: recordAt + 150,
+  });
+
+  assert.equal(renewed.ok, true);
+  assert.equal(renewed.encounter.updatedAt, combatUpdatedAt);
+  assert.equal(validateChorusAction(cut, context(renewed.encounter, "cutter", recordAt + 150)).ok, true);
 });

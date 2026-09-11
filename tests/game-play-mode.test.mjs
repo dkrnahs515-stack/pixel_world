@@ -323,7 +323,7 @@ test("a new authority applies actions that arrived before its transferred state 
   await new Promise(resolve => setImmediate(resolve));
 
   assert.deepEqual(game.chorusController.snapshot.stabilizedAnchorIds, ["forest"]);
-  assert.deepEqual(acknowledgements, [["remote", 1]]);
+  assert.deepEqual(acknowledgements, [["remote", 1, 3]]);
 });
 
 test("authority writes completion claims when a remote contributor separates the final bond", async () => {
@@ -458,7 +458,7 @@ test("a duplicate listener action is acknowledged only after its id exists in Fi
 
   game.latestChorusSnapshot = { ...confirmed, processedActionIds: [actionId] };
   await game.receiveChorusActions(requests);
-  assert.deepEqual(acknowledgements, [["host", 7]]);
+  assert.deepEqual(acknowledgements, [["host", 7, 1]]);
 });
 
 test("same-time action results remain paired by action id before acknowledgement", async () => {
@@ -507,5 +507,5 @@ test("same-time action results remain paired by action id before acknowledgement
     },
   });
 
-  assert.deepEqual(acknowledgements, [["b", 2]]);
+  assert.deepEqual(acknowledgements, [["b", 2, 1]]);
 });

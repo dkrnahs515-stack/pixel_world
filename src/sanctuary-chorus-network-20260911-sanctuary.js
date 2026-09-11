@@ -95,10 +95,16 @@ export function createChorusNetwork({
     stateMutationQueue = result.catch(() => {});
     return result;
   };
-  const isAuthority = (encounter = latestState) => Boolean(
+  const isAuthority = (
+    encounter = latestState,
+    timestamp = now(),
+    authorityEpoch = encounter?.authorityEpoch,
+  ) => Boolean(
     encounter
     && encounter.authorityUid === uid
-    && Number.isInteger(encounter.authorityEpoch),
+    && Number.isInteger(encounter.authorityEpoch)
+    && encounter.authorityEpoch === authorityEpoch
+    && encounter.leaseUntil > timestamp,
   );
 
   const scheduleRenewal = epoch => {
@@ -208,7 +214,7 @@ export function createChorusNetwork({
 
     async publishState(value) {
       const incoming = normalizeChorusEncounter(value);
-      if (!active() || !incoming || !isAuthority(latestState)
+      if (!active() || !incoming || !isAuthority(latestState, now(), incoming?.authorityEpoch)
         || incoming.authorityUid !== uid
         || incoming.authorityEpoch !== latestState.authorityEpoch
         || incoming.encounterId !== latestState.encounterId) {
@@ -222,6 +228,10 @@ export function createChorusNetwork({
           if (!current || current.authorityUid !== uid
             || current.authorityEpoch !== incoming.authorityEpoch
             || current.encounterId !== incoming.encounterId) return undefined;
+          if (current.leaseUntil <= now()) {
+            outcome = { ok: false, reason: "lease_expired" };
+            return undefined;
+          }
           const olderRevision = incoming.combatRevision < current.combatRevision;
           const conflictingSameRevision = incoming.combatRevision === current.combatRevision
             && !sameCombatState(incoming, current);
@@ -264,8 +274,8 @@ export function createChorusNetwork({
       return { ok: true, action };
     },
 
-    async acknowledgeAction(requestUid, sequence) {
-      if (!isAuthority() || !validKey(requestUid, 128)
+    async acknowledgeAction(requestUid, sequence, authorityEpoch = latestState?.authorityEpoch) {
+      if (!active() || !isAuthority(latestState, now(), authorityEpoch) || !validKey(requestUid, 128)
         || !Number.isInteger(Number(sequence)) || Number(sequence) < 1) {
         return { ok: false, reason: "not_authority" };
       }

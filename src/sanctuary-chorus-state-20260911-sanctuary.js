@@ -434,13 +434,13 @@ export function acquireChorusAuthority(value, { uid, now = Date.now() } = {}) {
   const encounter = normalizeChorusEncounter(value);
   if (!encounter || !validId(uid, 128) || !Number.isFinite(now)) return rejection("invalid_authority");
   if (encounter.authorityUid !== uid && encounter.leaseUntil > now) return rejection("lease_active");
-  const changedOwner = encounter.authorityUid !== uid;
+  const startsNewEpoch = encounter.authorityUid !== uid || encounter.leaseUntil <= now;
   return {
     ok: true,
     encounter: {
       ...encounter,
       authorityUid: uid,
-      authorityEpoch: changedOwner ? encounter.authorityEpoch + 1 : encounter.authorityEpoch,
+      authorityEpoch: startsNewEpoch ? encounter.authorityEpoch + 1 : encounter.authorityEpoch,
       leaseUntil: now + CHORUS_AUTHORITY_LEASE_MS,
       updatedAt: now,
     },
@@ -451,12 +451,12 @@ export function renewChorusAuthority(value, { uid, authorityEpoch, now = Date.no
   const encounter = normalizeChorusEncounter(value);
   if (!encounter || encounter.authorityUid !== uid || encounter.authorityEpoch !== authorityEpoch
     || !Number.isFinite(now)) return rejection("authority_mismatch");
+  if (encounter.leaseUntil <= now) return rejection("lease_expired");
   return {
     ok: true,
     encounter: {
       ...encounter,
       leaseUntil: now + CHORUS_AUTHORITY_LEASE_MS,
-      updatedAt: now,
     },
   };
 }

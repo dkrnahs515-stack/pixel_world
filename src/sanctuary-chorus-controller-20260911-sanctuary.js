@@ -350,14 +350,18 @@ class SanctuaryChorusController {
     );
   }
 
-  canMutateSharedState() {
-    return this.mode !== "online" || this.snapshot?.authorityUid === this.uid;
+  canMutateSharedState(timestamp = this.now()) {
+    return this.mode !== "online" || Boolean(
+      this.snapshot?.authorityUid === this.uid
+      && Number.isInteger(this.snapshot.authorityEpoch)
+      && this.snapshot.leaseUntil > timestamp,
+    );
   }
 
   expireRecordWindow(timestamp = this.now()) {
     if (!this.snapshot || this.snapshot.status !== "active" || this.snapshot.phase !== "onslaught"
       || !this.snapshot.activeRecordId || this.snapshot.vulnerableUntil >= timestamp
-      || !this.canMutateSharedState()) return false;
+      || !this.canMutateSharedState(timestamp)) return false;
     this.snapshot = normalizeChorusEncounter({
       ...this.snapshot,
       activeRecordId: null,
@@ -459,7 +463,7 @@ class SanctuaryChorusController {
   }
 
   startPattern(timestamp) {
-    if (!this.canMutateSharedState()) return false;
+    if (!this.canMutateSharedState(timestamp)) return false;
     const definition = PATTERNS[this.patternSequence % PATTERNS.length];
     this.patternSequence += 1;
     this.activePattern = clonePattern(definition, timestamp, timestamp + PATTERN_IMPACT_DELAY_MS);
@@ -579,6 +583,10 @@ class SanctuaryChorusController {
   receiveSnapshot(value) {
     const snapshot = normalizeChorusEncounter(value);
     if (!snapshot || (this.snapshot && snapshot.encounterId !== this.snapshot.encounterId)) return false;
+    if (snapshot.status === "active") {
+      this.completionClaims = {};
+      this.pendingEvents = this.pendingEvents.filter(event => event?.type !== "chorus-completion-claim");
+    }
     this.savedSnapshot = snapshot;
     if (this.mapId === CHORUS_MAP_ID && this.correctionLinked) {
       this.snapshot = snapshot;

@@ -854,7 +854,7 @@ export class PixelRPG {
     if (publishResult?.ok) await this.writeChorusCompletionClaimsIfAuthority();
     await Promise.all(actions.map((action, index) => (
       confirmedSnapshot?.processedActionIds?.includes(action.id)
-        ? network.acknowledgeAction(action.uid, action.sequence)
+        ? network.acknowledgeAction(action.uid, action.sequence, confirmedSnapshot.authorityEpoch)
         : Promise.resolve({ ok: false })
     )));
     return true;

@@ -459,3 +459,64 @@ test("recreated controllers for one uid produce collision-free action ids even w
 
   assert.notEqual(first.snapshot.processedActionIds.at(-1), second.snapshot.processedActionIds.at(-1));
 });
+
+test("an expired online authority does not create or advance a shared attack pattern", () => {
+  const seed = encounterAt("onslaught");
+  const controller = createSanctuaryChorusController({
+    uid: "local-player",
+    mode: "online",
+    seedSnapshot: { ...seed, leaseUntil: 2_999 },
+    now: () => 3_000,
+  });
+  controller.setMap("sanctuary-return-record", { correctionLinked: true });
+  const beforeRevision = controller.snapshot.combatRevision;
+
+  controller.update(1 / 60, { player: { x: 1080, y: 900 } }, 3_000);
+
+  assert.equal(controller.snapshot.currentPatternId, null);
+  assert.equal(controller.snapshot.combatRevision, beforeRevision);
+  assert.equal(controller.renderModel().telegraph, null);
+});
+
+test("an authoritative active rollback clears optimistic claims before the real contributor set separates", () => {
+  let active = encounterAt("onslaught");
+  for (const bondId of BOND_IDS.slice(0, -1)) {
+    active = advance(active, "record-activate", { recordId: bondId });
+    active = advance(active, "bond-cut", { bondId });
+  }
+  active = advance(active, "record-activate", { recordId: BOND_IDS.at(-1) });
+  const controller = createSanctuaryChorusController({
+    uid: "local-player",
+    mode: "online",
+    seedSnapshot: active,
+    now: () => active.updatedAt + 20,
+  });
+  controller.setMap("sanctuary-return-record", { correctionLinked: true });
+
+  const optimistic = sharedAction(active, "optimistic", "bond-cut", active.updatedAt + 10, {
+    bondId: BOND_IDS.at(-1),
+  });
+  assert.equal(controller.receiveActions([optimistic])[0].ok, true);
+  assert.equal(controller.completionClaims.optimistic.uid, "optimistic");
+
+  const authoritativeActive = {
+    ...active,
+    contributors: {
+      ...active.contributors,
+      later: {
+        firstContributedAt: active.updatedAt,
+        lastContributedAt: active.updatedAt,
+        actionTypes: ["record-activate"],
+      },
+    },
+  };
+  assert.equal(controller.receiveSnapshot(authoritativeActive), true);
+  assert.deepEqual(controller.completionClaims, {});
+
+  const actual = sharedAction(authoritativeActive, "actual", "bond-cut", active.updatedAt + 20, {
+    bondId: BOND_IDS.at(-1),
+  });
+  assert.equal(controller.receiveActions([actual])[0].ok, true);
+  assert.deepEqual(Object.keys(controller.completionClaims).sort(), ["actual", "later", "local-player"]);
+  assert.equal(controller.completionClaims.optimistic, undefined);
+});

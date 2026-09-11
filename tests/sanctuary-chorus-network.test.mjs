@@ -323,3 +323,26 @@ test("reconnected clients allocate a new monotonic Firebase action sequence for 
     `${BASE_PATH}/actions/same-user/2`,
   ]);
 });
+
+test("an expired owner cannot publish combat state or remove an action before takeover", async () => {
+  let clock = 13_999;
+  const state = activeEncounter("a", 9_000);
+  const fake = firebaseModulesFake({ [`${BASE_PATH}/state`]: state });
+  const network = createChorusNetwork({ ...networkOptions(fake, "a"), now: () => clock });
+  await network.setMap("sanctuary-return-record");
+  fake.emit(`${BASE_PATH}/state`, state);
+  clock = state.leaseUntil;
+  const transactionCount = fake.transactions.length;
+
+  const published = await network.publishState({
+    ...state,
+    combatRevision: state.combatRevision + 1,
+    processedActionIds: ["expired-owner-action"],
+  });
+  const acknowledged = await network.acknowledgeAction("b", 7, state.authorityEpoch);
+
+  assert.equal(published.ok, false);
+  assert.equal(acknowledged.ok, false);
+  assert.equal(fake.transactions.length, transactionCount);
+  assert.deepEqual(fake.removes, []);
+});
