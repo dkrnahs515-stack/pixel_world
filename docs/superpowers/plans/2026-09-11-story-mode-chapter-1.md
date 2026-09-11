@@ -72,10 +72,11 @@ Create `tests/experience-entry-ui.static.test.cjs`:
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { readFileSync } = require("node:fs");
+const path = require("node:path");
 
-const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
-const css = readFileSync(new URL("../styles-20260911-story.css", import.meta.url), "utf8");
-const main = readFileSync(new URL("../src/main-20260911-story.js", import.meta.url), "utf8");
+const html = readFileSync(path.join(__dirname, "../index.html"), "utf8");
+const css = readFileSync(path.join(__dirname, "../styles-20260911-story.css"), "utf8");
+const main = readFileSync(path.join(__dirname, "../src/main-20260911-story.js"), "utf8");
 
 test("루트 첫 화면은 RPG와 조사형 스토리를 먼저 선택한다", () => {
   assert.match(html, /id="experienceOverlay"[^>]*(?!hidden)/);
