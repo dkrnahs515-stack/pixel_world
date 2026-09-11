@@ -144,6 +144,8 @@ async function assertStorageRecovery(browser) {
       unsupportedBytes,
       "unsupported bytes must survive an in-memory start",
     );
+    await page.locator("[data-story-next]").click();
+    await waitForScene(page, "폐기 기준 확인");
     await advanceThroughInvestigation(page);
     await selectAcceptedEvidence(page);
     await page.locator('[data-story-submit]').click();
