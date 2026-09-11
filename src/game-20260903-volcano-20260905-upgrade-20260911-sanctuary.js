@@ -36,6 +36,7 @@ import { getRegionForMap } from "./region-data-20260903-volcano-20260905-upgrade
 import {
   getCollectedCoastRecords,
 } from "./coast-story-data-20260829-coast-20260905-upgrade-20260911-sanctuary.js";
+import { collectRecordArchiveEntries } from "./record-archive-20260911-sanctuary.js";
 import { actorDialogueModel, storyDialogueModel } from "./story-dialogue-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 import {
   ALL_STORY_INTERACTIONS,
@@ -1701,7 +1702,10 @@ export class PixelRPG {
     if (this.ui.chapterObjective) {
       this.ui.chapterObjective.textContent = `CHAPTER · ${objective.label}`;
     }
-    this.ui.renderCommunicationLog?.(getCollectedCoastRecords(worldProgress));
+    this.ui.renderCommunicationLog?.(collectRecordArchiveEntries({
+      coastRecords: getCollectedCoastRecords(worldProgress),
+      sanctuaryRecords: [],
+    }));
   }
 
   currentChapterObjective() {
