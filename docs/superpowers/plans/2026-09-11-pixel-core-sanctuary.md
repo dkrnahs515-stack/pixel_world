@@ -1368,6 +1368,15 @@ getVolcanoChapterObjective가 volcano 완료 뒤 getSanctuaryChapterObjective로
 
 QA 지역 그리드에 sanctuary, sanctuary-memory-archive, sanctuary-return-record, sanctuary-three-futures 버튼을 추가한다. 이 버튼은 배치·렌더링 점검용이며 실제 입력 완주 증거는 Task 15의 포털 경로로 별도 검증한다.
 
+    for (const mapId of [
+      "sanctuary",
+      "sanctuary-memory-archive",
+      "sanctuary-return-record",
+      "sanctuary-three-futures",
+    ]) {
+      assert.match(html, new RegExp('data-qa-world="' + mapId + '"'));
+    }
+
     <link rel="stylesheet" href="./styles-20260903-volcano-20260905-upgrade-20260911-sanctuary.css" />
     <script type="module" src="./src/main-20260903-volcano-20260905-upgrade-20260911-sanctuary.js"></script>
 
@@ -1375,12 +1384,12 @@ query parameter cache busting을 넣지 않는다. old suffix에 도달하는 �
 
 - [ ] **Step 5: import와 정적 UI 검사**
 
-Run: node --test tests/sanctuary-cache-contract.test.mjs tests/upgrade-cache-contract.test.mjs tests/volcano-cache-contract.test.mjs tests/quest-guidance.test.mjs tests/quest-ui.static.test.cjs tests/qa-ui.static.test.cjs tests/qa-ui.static.test.cjs  
+Run: node --test tests/sanctuary-cache-contract.test.mjs tests/upgrade-cache-contract.test.mjs tests/volcano-cache-contract.test.mjs tests/quest-guidance.test.mjs tests/quest-ui.static.test.cjs tests/qa-ui.static.test.cjs  
 Expected: PASS; active graph count is exactly 88 and index has query-free new CSS/JS URL.
 
 - [ ] **Step 6: 커밋**
 
-    git add src/quest-guidance-20260905-upgrade-20260911-sanctuary.js src/world-20260903-volcano-20260905-upgrade-20260911-sanctuary.js src/main-20260903-volcano-20260905-upgrade-20260911-sanctuary.js index.html tests/sanctuary-cache-contract.test.mjs tests/upgrade-cache-contract.test.mjs tests/volcano-cache-contract.test.mjs tests/quest-guidance.test.mjs tests/quest-ui.static.test.cjs
+    git add src/quest-guidance-20260905-upgrade-20260911-sanctuary.js src/world-20260903-volcano-20260905-upgrade-20260911-sanctuary.js src/main-20260903-volcano-20260905-upgrade-20260911-sanctuary.js index.html tests/sanctuary-cache-contract.test.mjs tests/upgrade-cache-contract.test.mjs tests/volcano-cache-contract.test.mjs tests/quest-guidance.test.mjs tests/quest-ui.static.test.cjs tests/qa-ui.static.test.cjs
     git commit -m "chore: activate the sanctuary physical release"
 
 ---
