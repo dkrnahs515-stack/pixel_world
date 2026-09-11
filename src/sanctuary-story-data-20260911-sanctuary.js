@@ -456,16 +456,16 @@ export function getSanctuaryChapterObjective(worldProgress) {
   const activated = sanctuary.activatedCoreIds || [];
   const memories = sanctuary.collectedMemoryIds || [];
   if (!SANCTUARY_CORE_IDS.every(id => activated.includes(id))) {
-    return objective("activate-sanctuary-cores", "세 코어 조각을 성역 석관에 안치한다.", "sanctuary", SANCTUARY_CORE_IDS);
+    return objective("activate-three-cores", "세 코어 조각을 성역 석관에 안치한다.", "sanctuary", SANCTUARY_CORE_IDS);
   }
   if (!MEMORY_SOUND_IDS.every(id => memories.includes(id))) {
-    return objective("collect-memory-sounds", "기억 회랑의 네 소리를 수집한다.", "sanctuary-memory-archive", MEMORY_SOUND_IDS);
+    return objective("collect-four-sounds", "기억 회랑의 네 소리를 수집한다.", "sanctuary-memory-archive", MEMORY_SOUND_IDS);
   }
   if (!sanctuary.memoryOrderSolved) {
-    return objective("solve-memory-order", "네 소리를 기억의 순서대로 배열한다.", "sanctuary-memory-archive", ["memory-sequence-console"]);
+    return objective("restore-memory-order", "네 소리를 기억의 순서대로 배열한다.", "sanctuary-memory-archive", ["memory-sequence-console"]);
   }
   if (!sanctuary.coreTruthRevealed) {
-    return objective("reveal-core-truth", "세 보존 원본을 대조해 코어의 진실을 복원한다.", "sanctuary-memory-archive", [
+    return objective("restore-three-originals", "세 보존 원본을 대조해 코어의 진실을 복원한다.", "sanctuary-memory-archive", [
       "truth-resonance-time", "truth-first-archivist-log", "truth-core-self-division",
     ]);
   }
@@ -480,7 +480,7 @@ export function getSanctuaryChapterObjective(worldProgress) {
   const completedFields = sanctuary.completedRecordFieldIds || [];
   if (!RECORD_FIELD_IDS.every(id => completedFields.includes(id))) {
     return objective(
-      "complete-return-record",
+      "complete-six-fields",
       "여섯 책임 기록을 보존 근거로 검증한다.",
       "sanctuary-return-record",
       RECORD_FIELD_IDS,
@@ -488,19 +488,19 @@ export function getSanctuaryChapterObjective(worldProgress) {
   }
   if (!sanctuary.correctionLinked) {
     return objective(
-      "link-return-record-correction",
+      "link-correction",
       "원본을 보존한 채 마지막 귀환 기록의 정정 링크를 만든다.",
       "sanctuary-return-record",
       ["correction-link-console"],
     );
   }
   if (!sanctuary.chorusSeparated) {
-    return objective("separate-nameless-chorus", "무명의 합창에서 기억들을 분리한다.", "sanctuary-return-record");
+    return objective("separate-chorus", "무명의 합창에서 기억들을 분리한다.", "sanctuary-return-record");
   }
   const testimonies = sanctuary.collectedTestimonyIds || [];
   if (!TESTIMONY_IDS.every(id => testimonies.includes(id))) {
     return objective(
-      "collect-future-testimonies",
+      "collect-three-testimonies",
       "세 지역에 남은 증언을 듣는다.",
       "sanctuary-three-futures",
       TESTIMONY_IDS.map(id => `future-testimony-${id}`),
@@ -517,7 +517,7 @@ export function getSanctuaryChapterObjective(worldProgress) {
   }
   if (!sanctuary.endingChoice) {
     return objective(
-      "choose-sanctuary-ending",
+      "choose-future",
       "남겨진 기억의 운명을 정한다.",
       "sanctuary-three-futures",
       ["sanctuary-ending-console"],

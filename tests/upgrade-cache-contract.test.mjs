@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-test('every local module reachable from the upgrade entry has a fresh physical release URL',async()=>{
+test('the upgrade entry retains its physical release graph alongside the sanctuary release',async()=>{
   const visited=new Set();
   async function visit(url){
     if(visited.has(url.href))return;visited.add(url.href);

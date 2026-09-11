@@ -43,7 +43,7 @@ export function getVolcanoChapterObjective(worldProgress) {
   const anchors = volcano.coolantAnchorIds || [];
   const anchorStatus = ` · 냉각 쐐기 ${anchors.length}/3`;
   if (completed.includes("volcano") && volcano.coreFragmentObtained) {
-    return objective("volcano-completed", "활화산을 완료했다. 픽셀 코어 성역으로 향한다.", "sanctuary");
+    return getSanctuaryChapterObjective(worldProgress);
   }
   if (!repaired.includes("ash-gate-pressure-seal")) {
     return objective("repair-ash-gate-pressure-seal", `잿불 관문의 압력 봉인장치를 복구한다.${anchorStatus}`, "volcano", ["ash-gate-pressure-seal"]);
