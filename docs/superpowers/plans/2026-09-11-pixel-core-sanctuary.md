@@ -69,7 +69,6 @@
 - src/game-20260903-volcano-20260905-upgrade-20260911-sanctuary.js
 - src/main-20260903-volcano-20260905-upgrade-20260911-sanctuary.js
 - src/quest-guidance-20260905-upgrade-20260911-sanctuary.js
-- src/quest-guidance-20260905-upgrade-20260911-sanctuary.js
 - styles-20260903-volcano-20260905-upgrade-20260911-sanctuary.css
 - index.html
 - database.rules.json
@@ -115,6 +114,7 @@
 
 **Interfaces:**
 - Consumes: sourceEntry, sourceCss, suffix, rootDir
+- Produces: localModuleSpecifiers(source), normalizeRelativeModule(importer, specifier), rewriteLocalImports(source, importer, targetOf, visited)
 - Produces: rollPhysicalRelease(options) → { sourceEntry, targetEntry, sourceCss, targetCss, files }; 각 target module의 상대 import는 같은 target graph를 가리킨다.
 
 - [ ] **Step 1: rollover 도구의 실패 테스트 작성**
@@ -150,7 +150,38 @@ Expected: FAIL with ERR_MODULE_NOT_FOUND for scripts/roll-physical-release.mjs.
 
 - [ ] **Step 3: import graph copier 구현**
 
+    import { copyFile, readFile, writeFile } from "node:fs/promises";
+    import { posix, resolve, sep } from "node:path";
+
+    const LOCAL_IMPORT = /((?:import|export)\s+(?:[^"'\n]+?\s+from\s+)?["'])(\.[^"']+)(["'])/g;
+
+    export function localModuleSpecifiers(source) {
+      return [...source.matchAll(LOCAL_IMPORT)].map(match => match[2]);
+    }
+
+    export function normalizeRelativeModule(importer, specifier) {
+      return posix.normalize(posix.join(posix.dirname(importer), specifier));
+    }
+
+    export function rewriteLocalImports(source, importer, targetOf, visited) {
+      return source.replace(LOCAL_IMPORT, (full, open, specifier, close) => {
+        const dependency = normalizeRelativeModule(importer, specifier);
+        if (!visited.has(dependency)) return full;
+        let relative = posix.relative(posix.dirname(targetOf(importer)), targetOf(dependency));
+        if (!relative.startsWith(".")) relative = "./" + relative;
+        return open + relative + close;
+      });
+    }
+
     export async function rollPhysicalRelease({ rootDir, sourceEntry, sourceCss, suffix }) {
+      const root = resolve(rootDir);
+      const safePath = path => {
+        const absolute = resolve(root, path);
+        if (absolute !== root && !absolute.startsWith(root + sep)) {
+          throw new Error("release path escaped rootDir: " + path);
+        }
+        return absolute;
+      };
       const visited = new Set();
       const queue = [sourceEntry];
       const targetOf = path => path.replace(/\.js$/, "-" + suffix + ".js");
@@ -158,19 +189,19 @@ Expected: FAIL with ERR_MODULE_NOT_FOUND for scripts/roll-physical-release.mjs.
         const path = queue.shift();
         if (visited.has(path)) continue;
         visited.add(path);
-        const source = await readFile(resolve(rootDir, path), "utf8");
+        const source = await readFile(safePath(path), "utf8");
         for (const specifier of localModuleSpecifiers(source)) {
           queue.push(normalizeRelativeModule(path, specifier));
         }
       }
       for (const path of visited) {
-        const source = await readFile(resolve(rootDir, path), "utf8");
+        const source = await readFile(safePath(path), "utf8");
         const rewritten = rewriteLocalImports(source, path, targetOf, visited);
         const target = targetOf(path);
-        await writeFile(resolve(rootDir, target), rewritten);
+        await writeFile(safePath(target), rewritten);
       }
       const targetCss = sourceCss.replace(/\.css$/, "-" + suffix + ".css");
-      await copyFile(resolve(rootDir, sourceCss), resolve(rootDir, targetCss));
+      await copyFile(safePath(sourceCss), safePath(targetCss));
       return { sourceEntry, targetEntry: targetOf(sourceEntry), sourceCss, targetCss, files: [...visited].map(targetOf) };
     }
 
@@ -184,7 +215,7 @@ Expected: PASS, 1 test.
 - [ ] **Step 5: 현재 78개 그래프와 CSS 복제**
 
 Run: node scripts/roll-physical-release.mjs --entry src/main-20260903-volcano-20260905-upgrade.js --css styles-20260903-volcano-20260905-upgrade.css --suffix 20260911-sanctuary  
-Expected: summary reports modules=78, target entry src/main-20260903-volcano-20260905-upgrade-20260911-sanctuary.js, sourceChanged=0.
+Expected: summary reports modules=78 and target entry src/main-20260903-volcano-20260905-upgrade-20260911-sanctuary.js. The test and git diff confirm source files are unchanged.
 
 Run: node --check scripts/roll-physical-release.mjs  
 Expected: exit 0.
@@ -420,6 +451,7 @@ Expected: PASS; coast와 volcano 기존 테스트 결과가 변하지 않는다.
 ### Task 4: v8 저장과 v1~v7 이전
 
 **Files:**
+- Modify: src/sanctuary-ending-20260911-sanctuary.js
 - Modify: src/quest-state-20260903-volcano-20260905-upgrade-20260911-sanctuary.js
 - Modify: src/progress-storage-20260903-volcano-20260905-upgrade-20260911-sanctuary.js
 - Test: tests/sanctuary-storage-v8.test.mjs
@@ -429,6 +461,7 @@ Expected: PASS; coast와 volcano 기존 테스트 결과가 변하지 않는다.
 - Produces: progressStorageKey(nickname) with pixel-world.progress.v8:
 - Produces: v7ProgressStorageKey(nickname)
 - Player progress additions: earnedTitleIds: string[], claimedNarrativeRewardIds: string[]
+- Produces from sanctuary-ending: SANCTUARY_TITLE_IDS, SANCTUARY_REWARD_COMPONENT_IDS
 
 - [ ] **Step 1: v1~v7 보존과 v8 손상 입력 실패 테스트 작성**
 
@@ -461,7 +494,20 @@ Expected: PASS; coast와 volcano 기존 테스트 결과가 변하지 않는다.
 Run: node --test tests/sanctuary-storage-v8.test.mjs tests/progress-storage.test.mjs  
 Expected: FAIL because current STORAGE_VERSION is 7 and v7 key has no migration branch.
 
-- [ ] **Step 3: 저장 스키마 갱신**
+- [ ] **Step 3: 결말 ID 상수와 저장 스키마 갱신**
+
+    export const SANCTUARY_TITLE_IDS = Object.freeze([
+      "sanctuary-title-seal",
+      "sanctuary-title-restore",
+      "sanctuary-title-release",
+    ]);
+    export const SANCTUARY_REWARD_COMPONENT_IDS = Object.freeze(
+      ["seal", "restore", "release"].flatMap(choice => [
+        "sanctuary-ending-" + choice + "-exp",
+        "sanctuary-ending-" + choice + "-gold",
+        "sanctuary-ending-" + choice + "-title",
+      ]),
+    );
 
     const STORAGE_VERSION = 8;
     const STORAGE_PREFIX = "pixel-world.progress.v8:";
@@ -486,7 +532,7 @@ Expected: PASS; malformed JSON은 초기 진행으로 복구되고 migrationWrit
 
 - [ ] **Step 5: 커밋**
 
-    git add src/quest-state-20260903-volcano-20260905-upgrade-20260911-sanctuary.js src/progress-storage-20260903-volcano-20260905-upgrade-20260911-sanctuary.js tests/sanctuary-storage-v8.test.mjs tests/progress-storage.test.mjs
+    git add src/sanctuary-ending-20260911-sanctuary.js src/quest-state-20260903-volcano-20260905-upgrade-20260911-sanctuary.js src/progress-storage-20260903-volcano-20260905-upgrade-20260911-sanctuary.js tests/sanctuary-storage-v8.test.mjs tests/progress-storage.test.mjs
     git commit -m "feat: migrate player saves to sanctuary v8"
 
 ---
@@ -554,22 +600,51 @@ Expected: FAIL because record-archive module is absent.
 
 - [ ] **Step 3: 범용 모델과 renderer 구현**
 
+    function normalizeArchiveRecord(record, fallbackChapterId) {
+      return {
+        ...record,
+        chapterId: record.chapterId || fallbackChapterId,
+        pages: Array.isArray(record.pages) ? [...record.pages] : [],
+        evidenceRecordIds: Array.isArray(record.evidenceRecordIds) ? [...record.evidenceRecordIds] : [],
+      };
+    }
+
     export function collectRecordArchiveEntries({ coastRecords = [], sanctuaryRecords = [] } = {}) {
       return orderedArchiveRecords([
-        ...coastRecords.map(fromCoastRecord),
-        ...sanctuaryRecords.map(fromSanctuaryRecord),
+        ...coastRecords.map(record => normalizeArchiveRecord(record, "coast")),
+        ...sanctuaryRecords.map(record => normalizeArchiveRecord(record, "sanctuary")),
       ]);
     }
 
     export function renderRecordArchive(list, records) {
       const entries = orderedArchiveRecords(records);
-      list.replaceChildren(...(entries.length ? entries.map(record => {
-        const item = list.ownerDocument.createElement("li");
+      const documentRef = list.ownerDocument || document;
+      const nodes = entries.map(record => {
+        const item = documentRef.createElement("li");
+        const heading = documentRef.createElement("strong");
+        const source = documentRef.createElement("small");
+        const body = documentRef.createElement("p");
         item.className = "record-archive-entry";
         item.dataset.recordId = record.id;
-        item.append(recordHeading(record), recordBody(record), correctionLink(record, entries));
+        heading.textContent = record.title || record.speaker || "이름 없는 기록";
+        source.textContent = record.chapterId === "coast" ? "푸른 해안" : "픽셀 코어 성역";
+        body.textContent = record.pages.join(" ") || "기록을 복원할 수 없습니다.";
+        item.append(heading, source, body);
+        if (record.correctsRecordId) {
+          const link = documentRef.createElement("small");
+          link.className = "record-correction-link";
+          link.textContent = "보존된 원본 연결: " + record.correctsRecordId;
+          item.append(link);
+        }
         return item;
-      }) : [emptyRecord(list.ownerDocument)]));
+      });
+      if (nodes.length === 0) {
+        const empty = documentRef.createElement("li");
+        empty.className = "communication-log-empty";
+        empty.textContent = "아직 수집한 기록이 없습니다.";
+        nodes.push(empty);
+      }
+      list.replaceChildren(...nodes);
     }
 
 HTML의 보이는 문구를 “기록 보관함”과 “수집한 통신·기억·정정 기록을 다시 확인합니다.”로 바꾸고 기존 element ID는 회귀 호환을 위해 유지한다. 장문 기록은 overlay 안에서 스크롤하고 평상시 playfield 중앙을 가리지 않는다.
@@ -1362,7 +1437,6 @@ browser-smoke.yml의 timeout-minutes를 30으로 늘리고 기존 smoke 명령 �
 **Files:**
 - Create: tests/sanctuary-network-browser-smoke.cjs
 - Create: .github/workflows/sanctuary-network-smoke.yml
-- Modify: firebase.json when emulator host configuration requires an explicit singleProjectMode setting
 
 **Interfaces:**
 - Two isolated Playwright BrowserContext objects
@@ -1408,7 +1482,7 @@ sanctuary-network-smoke.yml은 checkout@v4, setup-node@v5, setup-java@v5, 고정
 
 - [ ] **Step 6: 커밋**
 
-    git add tests/sanctuary-network-browser-smoke.cjs .github/workflows/sanctuary-network-smoke.yml firebase.json
+    git add tests/sanctuary-network-browser-smoke.cjs .github/workflows/sanctuary-network-smoke.yml
     git commit -m "test: verify sanctuary with two Firebase clients"
 
 ---
