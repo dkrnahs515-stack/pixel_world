@@ -151,21 +151,53 @@ test("four of five opinions cannot unlock previews or a choice", () => {
 
 function relativeModuleSpecifiers(source) {
   const specifiers = [];
-  const isWord = value => /[A-Za-z0-9_$]/.test(value || "");
-  const readString = index => {
-    const quote = source[index];
-    if (!["'", '"'].includes(quote)) return null;
-    let value = "";
-    for (index += 1; index < source.length; index += 1) {
-      if (source[index] === "\\") { value += source[index + 1] || ""; index += 1; continue; }
-      if (source[index] === quote) return { value, end: index + 1 };
-      value += source[index];
-    }
-    return null;
-  };
+  const isIdentifierPart = value => /[A-Za-z0-9_$]/.test(value || "");
   const add = value => {
     if ((value.startsWith("./") || value.startsWith("../")) && value.endsWith(".js")) specifiers.push(value);
   };
+
+  // This deterministic lexer accepts ESM static, side-effect, and re-export
+  // declarations plus dynamic import() with quoted or constant-template paths.
+  // It scans interpolation expressions recursively, while treating comments,
+  // strings, regex literals, and raw template text as non-code.
+  function readEscape(index) {
+    const next = source[index + 1];
+    if (next === "u") {
+      if (source[index + 2] === "{") {
+        const close = source.indexOf("}", index + 3);
+        const digits = close < 0 ? "" : source.slice(index + 3, close);
+        if (/^[0-9A-Fa-f]{1,6}$/.test(digits)) return { value: String.fromCodePoint(Number.parseInt(digits, 16)), end: close + 1 };
+      }
+      const digits = source.slice(index + 2, index + 6);
+      if (/^[0-9A-Fa-f]{4}$/.test(digits)) return { value: String.fromCodePoint(Number.parseInt(digits, 16)), end: index + 6 };
+    }
+    if (next === "x") {
+      const digits = source.slice(index + 2, index + 4);
+      if (/^[0-9A-Fa-f]{2}$/.test(digits)) return { value: String.fromCharCode(Number.parseInt(digits, 16)), end: index + 4 };
+    }
+    const escaped = { n: "\n", r: "\r", t: "\t", b: "\b", f: "\f", v: "\v", 0: "\0" }[next];
+    return { value: escaped ?? (next || ""), end: Math.min(index + 2, source.length) };
+  }
+
+  function readString(start) {
+    const quote = source[start];
+    if (!["'", '"'].includes(quote)) return null;
+    let value = "";
+    for (let index = start + 1; index < source.length;) {
+      if (source[index] === "\\") {
+        const escaped = readEscape(index);
+        value += escaped.value;
+        index = escaped.end;
+        continue;
+      }
+      if (source[index] === quote) return { value, end: index + 1 };
+      if (/\r|\n/.test(source[index])) return null;
+      value += source[index];
+      index += 1;
+    }
+    return null;
+  }
+
   const skipTrivia = index => {
     while (index < source.length) {
       if (/\s/.test(source[index])) { index += 1; continue; }
@@ -183,81 +215,150 @@ function relativeModuleSpecifiers(source) {
     }
     return index;
   };
-  const skipRegex = index => {
-    for (index += 1; index < source.length; index += 1) {
+
+  function skipRegex(start) {
+    let inClass = false;
+    for (let index = start + 1; index < source.length; index += 1) {
       if (source[index] === "\\") { index += 1; continue; }
-      if (source[index] === "/") {
+      if (source[index] === "[") { inClass = true; continue; }
+      if (source[index] === "]") { inClass = false; continue; }
+      if (!inClass && source[index] === "/") {
         index += 1;
         while (/[A-Za-z]/.test(source[index] || "")) index += 1;
         return index;
       }
-      if (source[index] === "\n") return index;
-    }
-    return index;
-  };
-  const scan = (start, stopAtBrace = false) => {
-    let index = start;
-    while (index < source.length) {
-      if (stopAtBrace && source[index] === "}") return index + 1;
-    if (source.startsWith("//", index)) {
-      const lineEnd = source.indexOf("\n", index + 2);
-      index = lineEnd < 0 ? source.length : lineEnd + 1;
-      continue;
-    }
-    if (source.startsWith("/*", index)) {
-      const commentEnd = source.indexOf("*/", index + 2);
-      index = commentEnd < 0 ? source.length : commentEnd + 2;
-      continue;
-    }
-    if (["'", '"'].includes(source[index])) {
-      index = readString(index)?.end || source.length;
-      continue;
-    }
-    if (source[index] === "`") {
-      index = scanTemplate(index);
-      continue;
-    }
-    if (source[index] === "/") {
-      index = skipRegex(index);
-      continue;
-    }
-    const keyword = source.startsWith("import", index) ? "import" : source.startsWith("export", index) ? "export" : null;
-    if (!keyword || isWord(source[index - 1]) || isWord(source[index + keyword.length])) { index += 1; continue; }
-    let cursor = skipTrivia(index + keyword.length);
-    if (keyword === "import" && source[cursor] === ".") { index = cursor + 1; continue; }
-    if (keyword === "import" && source[cursor] === "(") {
-      cursor = skipTrivia(cursor + 1);
-      const module = readString(cursor);
-      if (module) add(module.value);
-      index = module ? module.end : source[cursor] === "`" ? scanTemplate(cursor) : cursor + 1;
-      continue;
-    }
-    let module = readString(cursor);
-    if (!module) {
-      while (cursor < source.length) {
-        if (source.startsWith("from", cursor) && !isWord(source[cursor - 1]) && !isWord(source[cursor + 4])) {
-          module = readString(skipTrivia(cursor + 4));
-          break;
-        }
-        if (source.startsWith("//", cursor) || source.startsWith("/*", cursor)) { cursor = skipTrivia(cursor); continue; }
-        if (["'", '"'].includes(source[cursor])) { cursor = readString(cursor)?.end || source.length; continue; }
-        cursor += 1;
-      }
-    }
-    if (module) add(module.value);
-    index = module?.end || cursor + 1;
-  }
-    return index;
-  };
-  const scanTemplate = start => {
-    for (let index = start + 1; index < source.length; index += 1) {
-      if (source[index] === "\\") { index += 1; continue; }
-      if (source[index] === "`") return index + 1;
-      if (source[index] === "$" && source[index + 1] === "{") index = scan(index + 2, true) - 1;
+      if (/\r|\n/.test(source[index])) return index;
     }
     return source.length;
-  };
-  scan(0);
+  }
+
+  function readTemplate(start) {
+    let value = "";
+    let constant = true;
+    for (let index = start + 1; index < source.length;) {
+      if (source[index] === "\\") {
+        const escaped = readEscape(index);
+        value += escaped.value;
+        index = escaped.end;
+        continue;
+      }
+      if (source[index] === "`") return { value, constant, end: index + 1 };
+      if (source[index] === "$" && source[index + 1] === "{") {
+        constant = false;
+        index = scanCode(index + 2, true);
+        continue;
+      }
+      value += source[index];
+      index += 1;
+    }
+    return null;
+  }
+
+  function consumeModuleKeyword(keyword, afterKeyword) {
+    let cursor = skipTrivia(afterKeyword);
+    if (keyword === "import" && source[cursor] === ".") return cursor + 1;
+    if (keyword === "import" && source[cursor] === "(") {
+      cursor = skipTrivia(cursor + 1);
+      const module = readString(cursor) || (source[cursor] === "`" ? readTemplate(cursor) : null);
+      if (module?.constant !== false) add(module?.value || "");
+      return module?.end || cursor + 1;
+    }
+
+    let module = readString(cursor);
+    if (module) {
+      add(module.value);
+      return module.end;
+    }
+
+    while (cursor < source.length) {
+      cursor = skipTrivia(cursor);
+      if (isIdentifierPart(source[cursor])) {
+        const start = cursor;
+        while (isIdentifierPart(source[cursor])) cursor += 1;
+        if (source.slice(start, cursor) === "from") {
+          module = readString(skipTrivia(cursor));
+          if (module) add(module.value);
+          return module?.end || cursor;
+        }
+        continue;
+      }
+      if (["'", '"'].includes(source[cursor])) {
+        cursor = readString(cursor)?.end || source.length;
+        continue;
+      }
+      if (source[cursor] === "`") {
+        cursor = readTemplate(cursor)?.end || source.length;
+        continue;
+      }
+      if (source[cursor] === ";" || source[cursor] === "\n") return cursor + 1;
+      cursor += 1;
+    }
+    return cursor;
+  }
+
+  function scanCode(start, stopAtInterpolation = false) {
+    let index = start;
+    let braceDepth = 0;
+    let expectsOperand = true;
+    while (index < source.length) {
+      const triviaEnd = skipTrivia(index);
+      if (triviaEnd !== index) { index = triviaEnd; continue; }
+      const token = source[index];
+      if (stopAtInterpolation && token === "}") {
+        if (braceDepth === 0) return index + 1;
+        braceDepth -= 1;
+        expectsOperand = false;
+        index += 1;
+        continue;
+      }
+      if (["'", '"'].includes(token)) {
+        index = readString(index)?.end || source.length;
+        expectsOperand = false;
+        continue;
+      }
+      if (token === "`") {
+        index = readTemplate(index)?.end || source.length;
+        expectsOperand = false;
+        continue;
+      }
+      if (token === "/") {
+        if (expectsOperand) {
+          index = skipRegex(index);
+          expectsOperand = false;
+        } else {
+          index += 1;
+          expectsOperand = true;
+        }
+        continue;
+      }
+      if (isIdentifierPart(token) && !/[0-9]/.test(token)) {
+        const wordStart = index;
+        while (isIdentifierPart(source[index])) index += 1;
+        const word = source.slice(wordStart, index);
+        if ((word === "import" || word === "export")
+          && !isIdentifierPart(source[wordStart - 1]) && !isIdentifierPart(source[index])) {
+          index = consumeModuleKeyword(word, index);
+          expectsOperand = false;
+          continue;
+        }
+        expectsOperand = ["case", "delete", "do", "else", "in", "instanceof", "new", "return", "throw", "typeof", "void", "yield"].includes(word);
+        continue;
+      }
+      if (/[0-9]/.test(token)) {
+        index += 1;
+        while (/[A-Za-z0-9_.]/.test(source[index] || "")) index += 1;
+        expectsOperand = false;
+        continue;
+      }
+      if (token === "{") { braceDepth += 1; expectsOperand = true; index += 1; continue; }
+      if (token === "}" || token === ")" || token === "]") { expectsOperand = false; index += 1; continue; }
+      expectsOperand = !["++", "--"].includes(source.slice(index, index + 2));
+      index += 1;
+    }
+    return index;
+  }
+
+  scanCode(0);
   return specifiers;
 }
 
@@ -298,6 +399,11 @@ test("cache scanner finds static, side-effect, dynamic, and parent-relative loca
     export /* note */ { value } from "../export-comment-20260905-upgrade.js";
     await import(\`raw import("../template-raw-20260905-upgrade.js") \${ import("../template-expression-20260905-upgrade.js") }\`);
     await import(\`outer \${ \`\${ import("./nested-expression-20260905-upgrade.js") }\` }\`);
+    const quotient = 18 / 3; await import("./after-division-20260905-upgrade.js");
+    await import(\`./constant-template-20260905-upgrade.js\`);
+    await import("./escaped-\\u0032\\u0030\\u0032\\u0036\\u0030\\u0039\\u0030\\u0035-upgrade.js");
+    await import(\`../template-escaped-\\u0032\\u0030\\u0032\\u0036\\u0030\\u0039\\u0030\\u0035-upgrade.js\`);
+    await import(\`outer \${ ({ nested: { value: true } }, import("../nested-brace-template-20260905-upgrade.js")) }\`);
     console.log(import.meta.url);
   `;
   assert.deepEqual(relativeModuleSpecifiers(source), [
@@ -310,5 +416,10 @@ test("cache scanner finds static, side-effect, dynamic, and parent-relative loca
     "../export-comment-20260905-upgrade.js",
     "../template-expression-20260905-upgrade.js",
     "./nested-expression-20260905-upgrade.js",
+    "./after-division-20260905-upgrade.js",
+    "./constant-template-20260905-upgrade.js",
+    "./escaped-20260905-upgrade.js",
+    "../template-escaped-20260905-upgrade.js",
+    "../nested-brace-template-20260905-upgrade.js",
   ]);
 });
