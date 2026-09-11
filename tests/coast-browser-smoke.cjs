@@ -131,6 +131,8 @@ async function assertOnlineRoomFullFallback(browser, errors) {
     status: 200, contentType: "text/javascript", headers: { "access-control-allow-origin": "*" }, body: roomFullDatabaseModule,
   }));
   await page.goto(BASE_URL, { waitUntil: "networkidle" });
+  await page.locator("#rpgExperienceButton").click();
+  await page.locator("#entryOverlay").waitFor({ state: "visible" });
   await page.locator("#nicknameInput").fill("온라인대체");
   await page.locator('[data-class-id="warrior"]').click();
   await page.locator('[data-play-mode="online"]').click();
@@ -156,6 +158,8 @@ async function assertOnlineRoomFullFallback(browser, errors) {
       if (message.type() === "error") errors.push(message.text());
     });
     await page.goto(`${BASE_URL}?qa=1`, { waitUntil: "networkidle" });
+    await page.locator("#rpgExperienceButton").click();
+    await page.locator("#entryOverlay").waitFor({ state: "visible" });
     await enterSolo(page);
 
     await page.locator("#communicationLogButton").click();

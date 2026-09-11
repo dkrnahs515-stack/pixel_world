@@ -300,6 +300,8 @@ async function runRoute(browser, { nickname, prepared }) {
   try {
     await installCombatObserver(page);
     await page.goto(`${BASE_URL}?qa=1`, { waitUntil: "networkidle" });
+    await page.locator("#rpgExperienceButton").click();
+    await page.locator("#entryOverlay").waitFor({ state: "visible" });
     await enterSolo(page, nickname);
     await seedObservatoryCheckpoint(page, prepared);
     await reloadCheckpoint(page, nickname);
