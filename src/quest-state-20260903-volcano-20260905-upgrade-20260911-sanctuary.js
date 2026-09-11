@@ -26,6 +26,8 @@ export function createInitialProgress() {
     inventory: createInitialInventory(),
     equipmentByClass: createInitialEquipmentByClass(),
     claimedBossRewardIds: [],
+    earnedTitleIds: [],
+    claimedNarrativeRewardIds: [],
     worldProgress: createInitialWorldProgress(),
     completedQuests: [],
     quests: {
@@ -51,6 +53,8 @@ function cloneProgress(progress) {
     )),
     completedQuests: [...progress.completedQuests],
     claimedBossRewardIds: [...(progress.claimedBossRewardIds || [])],
+    earnedTitleIds: [...(progress.earnedTitleIds || [])],
+    claimedNarrativeRewardIds: [...(progress.claimedNarrativeRewardIds || [])],
     worldProgress: normalizeWorldProgress(progress.worldProgress),
     quests: {
       ...progress.quests,

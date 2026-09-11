@@ -13,9 +13,15 @@ import {
   normalizeEquipmentByClass,
 } from "./equipment-state-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 import { normalizeWorldProgress } from "./chapter-progress-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import {
+  SANCTUARY_REWARD_COMPONENT_IDS,
+  SANCTUARY_TITLE_IDS,
+} from "./sanctuary-ending-20260911-sanctuary.js";
 
-const STORAGE_VERSION = 7;
-const STORAGE_PREFIX = "pixel-world.progress.v7:";
+const STORAGE_VERSION = 8;
+const STORAGE_PREFIX = "pixel-world.progress.v8:";
+const V7_STORAGE_PREFIX = "pixel-world.progress.v7:";
+const V7_STORAGE_VERSION = 7;
 const V6_STORAGE_PREFIX = "pixel-world.progress.v6:";
 const V6_STORAGE_VERSION = 6;
 const V5_STORAGE_PREFIX = "pixel-world.progress.v5:";
@@ -101,6 +107,11 @@ function normalizeClaimedBossRewardIds(value) {
   )].slice(-2_000);
 }
 
+function normalizeIdList(value, allowedIds) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter(id => allowedIds.includes(id)))];
+}
+
 function isValidClaimedBossRewardIds(value) {
   return Array.isArray(value)
     && value.length <= 2_000
@@ -139,6 +150,11 @@ function toBaseAndInventoryProgress(value) {
     ...(Object.hasOwn(value, "redeemedCodeIds") ? { redeemedCodeIds: normalizeRedeemedCodeIds(value.redeemedCodeIds) } : {}),
     ...(Array.isArray(value.questNotificationIds) ? { questNotificationIds: [...new Set(value.questNotificationIds.filter(id => typeof id === "string" && id.length < 120))].slice(0, 200) } : {}),
     claimedBossRewardIds: normalizeClaimedBossRewardIds(value.claimedBossRewardIds),
+    earnedTitleIds: normalizeIdList(value.earnedTitleIds, SANCTUARY_TITLE_IDS),
+    claimedNarrativeRewardIds: normalizeIdList(
+      value.claimedNarrativeRewardIds,
+      SANCTUARY_REWARD_COMPONENT_IDS,
+    ),
     worldProgress: normalizeWorldProgress(value.worldProgress),
     completedQuests: [...value.completedQuests],
     quests: {
@@ -214,6 +230,10 @@ export function progressStorageKey(nickname) {
   return versionedKey(STORAGE_PREFIX, nickname);
 }
 
+export function v7ProgressStorageKey(nickname) {
+  return versionedKey(V7_STORAGE_PREFIX, nickname);
+}
+
 export function v6ProgressStorageKey(nickname) {
   return versionedKey(V6_STORAGE_PREFIX, nickname);
 }
@@ -257,9 +277,14 @@ function migratedResult(storage, nickname, migrated) {
 
 export function loadProgressWithStatus(storage, nickname) {
   try {
-    const v7 = parseStoredValue(storage?.getItem(progressStorageKey(nickname)));
-    if (v7?.version === STORAGE_VERSION && isValidProgress(v7)) {
-      return { progress: toProgress(v7), migrationWriteFailed: false };
+    const v8 = parseStoredValue(storage?.getItem(progressStorageKey(nickname)));
+    if (v8?.version === STORAGE_VERSION && isValidProgress(v8)) {
+      return { progress: toProgress(v8), migrationWriteFailed: false };
+    }
+
+    const v7 = parseStoredValue(storage?.getItem(v7ProgressStorageKey(nickname)));
+    if (v7?.version === V7_STORAGE_VERSION && isValidProgress(v7)) {
+      return migratedResult(storage, nickname, toProgress(v7));
     }
 
     const v6 = parseStoredValue(storage?.getItem(v6ProgressStorageKey(nickname)));
