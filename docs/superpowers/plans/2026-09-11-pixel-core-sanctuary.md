@@ -54,7 +54,6 @@
 - src/volcano-world-data-20260903-volcano-20260905-upgrade-20260911-sanctuary.js
 - src/world-data-20260903-volcano-20260905-upgrade-20260911-sanctuary.js
 - src/world-20260903-volcano-20260905-upgrade-20260911-sanctuary.js
-- src/portal-transition-20260903-volcano-20260905-upgrade-20260911-sanctuary.js
 - src/chapter-progress-20260903-volcano-20260905-upgrade-20260911-sanctuary.js
 - src/progress-storage-20260903-volcano-20260905-upgrade-20260911-sanctuary.js
 - src/quest-state-20260903-volcano-20260905-upgrade-20260911-sanctuary.js
@@ -65,7 +64,6 @@
 - src/enemies-20260829-coast-20260905-upgrade-20260911-sanctuary.js
 - src/network-20260903-volcano-20260905-upgrade-20260911-sanctuary.js
 - src/firebase-config-20260905-upgrade-20260911-sanctuary.js
-- src/config-20260905-upgrade-20260911-sanctuary.js
 - src/game-20260903-volcano-20260905-upgrade-20260911-sanctuary.js
 - src/main-20260903-volcano-20260905-upgrade-20260911-sanctuary.js
 - src/quest-guidance-20260905-upgrade-20260911-sanctuary.js
@@ -152,8 +150,9 @@ Expected: FAIL with ERR_MODULE_NOT_FOUND for scripts/roll-physical-release.mjs.
 
     import { copyFile, readFile, writeFile } from "node:fs/promises";
     import { posix, resolve, sep } from "node:path";
+    import { fileURLToPath } from "node:url";
 
-    const LOCAL_IMPORT = /((?:import|export)\s+(?:[^"'\n]+?\s+from\s+)?["'])(\.[^"']+)(["'])/g;
+    const LOCAL_IMPORT = /((?:from|import)\s*["'])(\.[^"']+\.js)(["'])/g;
 
     export function localModuleSpecifiers(source) {
       return [...source.matchAll(LOCAL_IMPORT)].map(match => match[2]);
@@ -205,6 +204,22 @@ Expected: FAIL with ERR_MODULE_NOT_FOUND for scripts/roll-physical-release.mjs.
       return { sourceEntry, targetEntry: targetOf(sourceEntry), sourceCss, targetCss, files: [...visited].map(targetOf) };
     }
 
+    function cliValue(name) {
+      const index = process.argv.indexOf("--" + name);
+      if (index < 0 || !process.argv[index + 1]) throw new Error("missing --" + name);
+      return process.argv[index + 1];
+    }
+
+    if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+      const result = await rollPhysicalRelease({
+        rootDir: process.cwd(),
+        sourceEntry: cliValue("entry"),
+        sourceCss: cliValue("css"),
+        suffix: cliValue("suffix"),
+      });
+      console.log("modules=" + result.files.length + " target=" + result.targetEntry);
+    }
+
 localModuleSpecifiers는 import/export from과 side-effect import의 상대 .js URL만 추출한다. normalizeRelativeModule은 POSIX 경로로 정규화하고 rootDir 밖 이동을 거부한다. rewriteLocalImports는 visited 안의 상대 모듈만 targetOf 결과로 바꾸며 원격 Firebase URL과 비 JavaScript URL은 그대로 둔다.
 
 - [ ] **Step 4: 도구 테스트 통과 확인**
@@ -235,7 +250,6 @@ Expected: exit 0.
 - Modify: src/volcano-world-data-20260903-volcano-20260905-upgrade-20260911-sanctuary.js
 - Modify: src/world-data-20260903-volcano-20260905-upgrade-20260911-sanctuary.js
 - Modify: src/world-20260903-volcano-20260905-upgrade-20260911-sanctuary.js
-- Modify: src/portal-transition-20260903-volcano-20260905-upgrade-20260911-sanctuary.js
 - Test: tests/sanctuary-world-data.test.mjs
 - Test: tests/world-data.test.mjs
 - Test: tests/portal-transition.test.mjs
@@ -331,7 +345,7 @@ Expected: PASS; total world area increases by 3 × 2160 × 1800 and old portal a
 
 - [ ] **Step 6: 커밋**
 
-    git add src/sanctuary-world-data-20260911-sanctuary.js src/region-data-20260903-volcano-20260905-upgrade-20260911-sanctuary.js src/volcano-world-data-20260903-volcano-20260905-upgrade-20260911-sanctuary.js src/world-data-20260903-volcano-20260905-upgrade-20260911-sanctuary.js src/world-20260903-volcano-20260905-upgrade-20260911-sanctuary.js src/portal-transition-20260903-volcano-20260905-upgrade-20260911-sanctuary.js tests/sanctuary-world-data.test.mjs tests/world-data.test.mjs tests/portal-transition.test.mjs
+    git add src/sanctuary-world-data-20260911-sanctuary.js src/region-data-20260903-volcano-20260905-upgrade-20260911-sanctuary.js src/volcano-world-data-20260903-volcano-20260905-upgrade-20260911-sanctuary.js src/world-data-20260903-volcano-20260905-upgrade-20260911-sanctuary.js src/world-20260903-volcano-20260905-upgrade-20260911-sanctuary.js tests/sanctuary-world-data.test.mjs tests/world-data.test.mjs tests/portal-transition.test.mjs
     git commit -m "feat: add connected sanctuary maps"
 
 ---
@@ -451,7 +465,7 @@ Expected: PASS; coast와 volcano 기존 테스트 결과가 변하지 않는다.
 ### Task 4: v8 저장과 v1~v7 이전
 
 **Files:**
-- Modify: src/sanctuary-ending-20260911-sanctuary.js
+- Create: src/sanctuary-ending-20260911-sanctuary.js
 - Modify: src/quest-state-20260903-volcano-20260905-upgrade-20260911-sanctuary.js
 - Modify: src/progress-storage-20260903-volcano-20260905-upgrade-20260911-sanctuary.js
 - Test: tests/sanctuary-storage-v8.test.mjs
@@ -1211,7 +1225,7 @@ firebase-rules-test.yml path filter에 src/sanctuary-chorus-*.js와 tests/sanctu
 ### Task 13: 제14장 세 미래와 멱등 보상 복구
 
 **Files:**
-- Create: src/sanctuary-ending-20260911-sanctuary.js
+- Modify: src/sanctuary-ending-20260911-sanctuary.js
 - Modify: src/sanctuary-story-data-20260911-sanctuary.js
 - Modify: src/sanctuary-progress-20260911-sanctuary.js
 - Modify: src/story-interactions-20260903-volcano-20260905-upgrade-20260911-sanctuary.js
@@ -1315,6 +1329,7 @@ Expected: PASS for equal rewards, three titles, three Echo states, Garen invaria
 - Modify: tests/volcano-cache-contract.test.mjs
 - Test: tests/quest-guidance.test.mjs
 - Test: tests/quest-ui.static.test.cjs
+- Test: tests/qa-ui.static.test.cjs
 
 **Interfaces:**
 - Produces: getSanctuaryChapterObjective(worldProgress)
@@ -1349,7 +1364,9 @@ Expected: FAIL before index and objective routing use the new release.
 
 getVolcanoChapterObjective가 volcano 완료 뒤 getSanctuaryChapterObjective로 위임하게 한다. 목표는 세 봉인함, 네 소리 수집, 순서 제출, 세 원본, 환영 거부, 여섯 필드, 정정 연결, anchors/testimonies/onslaught, 다섯 의견, 세 preview, 결말 선택 순으로 mapId와 interactionIds를 반환한다.
 
-- [ ] **Step 4: index.html 물리 진입점 전환**
+- [ ] **Step 4: QA 이동 버튼과 index.html 물리 진입점 전환**
+
+QA 지역 그리드에 sanctuary, sanctuary-memory-archive, sanctuary-return-record, sanctuary-three-futures 버튼을 추가한다. 이 버튼은 배치·렌더링 점검용이며 실제 입력 완주 증거는 Task 15의 포털 경로로 별도 검증한다.
 
     <link rel="stylesheet" href="./styles-20260903-volcano-20260905-upgrade-20260911-sanctuary.css" />
     <script type="module" src="./src/main-20260903-volcano-20260905-upgrade-20260911-sanctuary.js"></script>
@@ -1358,7 +1375,7 @@ query parameter cache busting을 넣지 않는다. old suffix에 도달하는 �
 
 - [ ] **Step 5: import와 정적 UI 검사**
 
-Run: node --test tests/sanctuary-cache-contract.test.mjs tests/upgrade-cache-contract.test.mjs tests/volcano-cache-contract.test.mjs tests/quest-guidance.test.mjs tests/quest-ui.static.test.cjs  
+Run: node --test tests/sanctuary-cache-contract.test.mjs tests/upgrade-cache-contract.test.mjs tests/volcano-cache-contract.test.mjs tests/quest-guidance.test.mjs tests/quest-ui.static.test.cjs tests/qa-ui.static.test.cjs tests/qa-ui.static.test.cjs  
 Expected: PASS; active graph count is exactly 88 and index has query-free new CSS/JS URL.
 
 - [ ] **Step 6: 커밋**
