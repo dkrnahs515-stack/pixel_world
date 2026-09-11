@@ -29,6 +29,11 @@ export const ENEMY_DEFINITIONS = Object.freeze({
   "ancient-boar": define({ name: "고대 멧돼지", level: 11, hp: 55, speed: 105, damage: 45, radius: 23, color: "#704b32", accent: "#b58a4a", behavior: "burrow-charge", contactMode: "ability" }),
   "moss-troll": define({ name: "이끼 트롤", level: 18, hp: 100, speed: 58, damage: 50, radius: 28, color: "#704b32", accent: "#6f8f3d", behavior: "camouflage-regeneration", contactMode: "contact", contactCooldown: 1.2 }),
   "ancient-mushroom-bug": define({ name: "고대 버섯충", level: 13, hp: 45, speed: 82, damage: 35, radius: 18, color: "#234f32", accent: "#76508f", behavior: "spore-slow", contactMode: "contact", contactCooldown: 1 }),
+  "memory-noise": define({
+    name: "기억 잡음", level: 1, hp: 3, speed: 96, damage: 8, radius: 18,
+    color: "#64748b", accent: "#cffafe", behavior: "legacy-contact", contactMode: "contact", contactCooldown: 1,
+    localOnly: true, rewardExp: 0, rewardGold: 0, renderMode: "blurred-outline",
+  }),
 });
 
 export function getEnemyDefinition(kind) {

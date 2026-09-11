@@ -16,6 +16,7 @@ import { advanceHitEffects, createHitEffect, drawHitEffects, hitShakeOffset } fr
 import { DialogueController } from "./dialogue-controller-20260829-coast-20260905-upgrade-20260911-sanctuary.js";
 import {
   applyEnemyHitStun,
+  createEnemies,
   createEnemyInstance,
   createMagmaChildren,
   damageEnemy,
@@ -36,6 +37,10 @@ import { getRegionForMap } from "./region-data-20260903-volcano-20260905-upgrade
 import {
   getCollectedCoastRecords,
 } from "./coast-story-data-20260829-coast-20260905-upgrade-20260911-sanctuary.js";
+import {
+  getCollectedSanctuaryRecords,
+  getSanctuaryChapterObjective,
+} from "./sanctuary-story-data-20260911-sanctuary.js";
 import { collectRecordArchiveEntries } from "./record-archive-20260911-sanctuary.js";
 import { actorDialogueModel, storyDialogueModel } from "./story-dialogue-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 import {
@@ -129,17 +134,6 @@ import {
 const PLAYER_RADIUS = 14;
 const PROJECTILE_SPAWN_OFFSET = PLAYER_RADIUS + 18;
 const MINIMAP_FRAME_MS = 100;
-
-function createEnemies(mapId) {
-  return getWorldDefinition(mapId).enemySpawns
-    .map((spawn, index) => createEnemyInstance(
-      spawn.kind,
-      spawn,
-      `${mapId}-enemy-${index + 1}`,
-      { step: index * 1.7 },
-    ))
-    .filter(Boolean);
-}
 
 export { advanceHitEffects, createHitEffect, drawHitEffects, hitShakeOffset } from "./combat-effects-20260905-upgrade-20260911-sanctuary.js";
 
@@ -1415,7 +1409,8 @@ export class PixelRPG {
     this.player.moving = false;
     this.attackState = null;
     this.pendingStoryInteraction = interaction;
-    this.dialogue.open(storyDialogueModel(interaction, this.progress.worldProgress));
+    this.pendingMemorySequence = [];
+    this.dialogue.open(storyDialogueModel(interaction, this.progress.worldProgress, { sequence: this.pendingMemorySequence }));
     this.dialogue.actionButtons()[0]?.focus();
     this.updateNpcPrompt();
     return true;
@@ -1458,6 +1453,7 @@ export class PixelRPG {
     const wasOpen = this.isDialogueOpen();
     this.dialogue.close();
     this.pendingStoryInteraction = null;
+    this.pendingMemorySequence = [];
     if (wasOpen) this.canvas.focus();
     this.updateNpcPrompt();
   }
@@ -1565,6 +1561,18 @@ export class PixelRPG {
 
   handleDialogueAction(action) {
     if (this.pendingStoryInteraction && action.startsWith("story-")) {
+      if (action.startsWith("story-memory-add-")) {
+        const memoryId = action.slice("story-memory-add-".length);
+        this.pendingMemorySequence ||= [];
+        if (!this.pendingMemorySequence.includes(memoryId)) this.pendingMemorySequence.push(memoryId);
+        this.dialogue.open(storyDialogueModel(
+          this.pendingStoryInteraction,
+          this.progress.worldProgress,
+          { sequence: this.pendingMemorySequence },
+        ));
+        this.dialogue.actionButtons()[0]?.focus();
+        return;
+      }
       let response;
       if (action === "story-classify-current") response = { classification: "current" };
       else if (action === "story-classify-past") response = { classification: "past" };
@@ -1572,9 +1580,19 @@ export class PixelRPG {
       else if (action.startsWith("story-volcano-route-")) {
         response = { decision: action.slice("story-volcano-route-".length) };
       }
-      const completed = this.applyStoryInteraction(this.pendingStoryInteraction.id, response);
+      else if (action === "story-memory-submit") response = { sequence: [...(this.pendingMemorySequence || [])] };
+      const resolved = resolveStoryInteraction(this.progress.worldProgress, this.pendingStoryInteraction.id, response);
+      const completed = this.applyStoryInteraction(this.pendingStoryInteraction.id, response, resolved);
       if (completed) this.closeNpcDialogue();
-      else this.notify("신호를 다시 확인해 보세요.");
+      else if (resolved.retryable && this.pendingStoryInteraction.type === "sanctuary-memory-sequence") {
+        this.pendingMemorySequence = [];
+        this.dialogue.open(storyDialogueModel(
+          this.pendingStoryInteraction,
+          this.progress.worldProgress,
+          { sequence: this.pendingMemorySequence, retryError: "소리 순서가 맞지 않습니다. 배열을 다시 확인해 주세요." },
+        ));
+        this.dialogue.actionButtons()[0]?.focus();
+      } else this.notify("신호를 다시 확인해 보세요.");
       return;
     }
     if (action === "accept") {
@@ -1609,8 +1627,8 @@ export class PixelRPG {
     this.closeNpcDialogue();
   }
 
-  applyStoryInteraction(interactionId, response) {
-    const result = resolveStoryInteraction(this.progress.worldProgress, interactionId, response);
+  applyStoryInteraction(interactionId, response, resolvedResult = null) {
+    const result = resolvedResult || resolveStoryInteraction(this.progress.worldProgress, interactionId, response);
     if (["acknowledged", "returned"].includes(result.outcome)) return true;
     if (result.outcome !== "completed") return false;
     const previousProgress = this.progress;
@@ -1623,6 +1641,13 @@ export class PixelRPG {
       nextProgress = hiddenReward.progress;
     }
     this.progress = nextProgress;
+    const defenseWasActive = previousProgress.worldProgress?.chapters?.sanctuary?.coreTruthRevealed === true
+      && previousProgress.worldProgress?.chapters?.sanctuary?.falseReturnRejected !== true;
+    const defenseIsActive = result.progress?.chapters?.sanctuary?.coreTruthRevealed === true
+      && result.progress?.chapters?.sanctuary?.falseReturnRejected !== true;
+    if (this.mapId === "sanctuary-memory-archive" && defenseWasActive !== defenseIsActive) {
+      this.enemies = createEnemies(this.mapId, result.progress);
+    }
     this.npcs = getNpcsForWorld(this.mapId, this.progress.worldProgress);
     this.updateChapterUi?.();
     this.updateInventoryHud?.();
@@ -1630,6 +1655,9 @@ export class PixelRPG {
     if (this.ui?.npcPrompt) this.updateNpcPrompt();
     if (!this.persistProgress("스토리 진행을 브라우저에 저장할 수 없습니다.")) {
       this.progress = previousProgress;
+      if (this.mapId === "sanctuary-memory-archive" && defenseWasActive !== defenseIsActive) {
+        this.enemies = createEnemies(this.mapId, previousProgress.worldProgress);
+      }
       this.npcs = getNpcsForWorld(this.mapId, this.progress.worldProgress);
       this.updateChapterUi?.();
       this.updateInventoryHud?.();
@@ -1704,11 +1732,14 @@ export class PixelRPG {
     }
     this.ui.renderCommunicationLog?.(collectRecordArchiveEntries({
       coastRecords: getCollectedCoastRecords(worldProgress),
-      sanctuaryRecords: [],
+      sanctuaryRecords: getCollectedSanctuaryRecords(worldProgress),
     }));
   }
 
   currentChapterObjective() {
+    if (this.progress?.worldProgress?.unlockedRegionIds?.includes("sanctuary")) {
+      return getSanctuaryChapterObjective(this.progress.worldProgress);
+    }
     return getVolcanoChapterObjective(this.progress?.worldProgress);
   }
 
@@ -2085,7 +2116,7 @@ export class PixelRPG {
     this.mapId = world.id;
     this.npcs = getNpcsForWorld(this.mapId, this.progress?.worldProgress);
     this.worldLayer = createWorldLayer(this.mapId);
-    this.enemies = createEnemies(this.mapId);
+    this.enemies = createEnemies(this.mapId, this.progress?.worldProgress);
     this.processedEnemyAttackIds = new Set();
     this.processedEnemySpawnIds = new Set();
     this.dynamicEnemySequence = 0;
@@ -2469,7 +2500,7 @@ export class PixelRPG {
     respawnPlayer(this.player, world.spawn);
     clearPlayerCombatStatuses(this.player);
     this.player.moving = false;
-    this.enemies = createEnemies(this.mapId);
+    this.enemies = createEnemies(this.mapId, this.progress?.worldProgress);
     this.processedEnemyAttackIds = new Set();
     this.processedEnemySpawnIds = new Set();
     this.dynamicEnemySequence = 0;

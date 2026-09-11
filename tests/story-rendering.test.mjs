@@ -4,14 +4,16 @@ import {
   drawInvestigationZone,
   drawStorySignal,
   getStoryRenderablesForMap,
-} from "../src/world-20260829-coast-20260905-upgrade.js";
-import { appendStorySignalEntities, PixelRPG } from "../src/game-20260903-volcano-20260905-upgrade.js";
+} from "../src/world-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import { appendStorySignalEntities, PixelRPG } from "../src/game-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 import {
   collectChapterRecord,
   completeRegion,
   createInitialWorldProgress,
   repairChapterDevice,
-} from "../src/chapter-progress-20260829-coast-20260905-upgrade.js";
+  progressSanctuary,
+} from "../src/chapter-progress-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import { SANCTUARY_CORE_IDS } from "../src/sanctuary-progress-20260911-sanctuary.js";
 
 function commandContext() {
   const calls = [];
@@ -25,6 +27,7 @@ function commandContext() {
     beginPath() { calls.push({ type: "beginPath" }); },
     moveTo(x, y) { calls.push({ type: "moveTo", x, y }); },
     lineTo(x, y) { calls.push({ type: "lineTo", x, y }); },
+    closePath() { calls.push({ type: "closePath" }); },
     arc(x, y, radius, start, end) { calls.push({ type: "arc", x, y, radius, start, end }); },
     stroke() { calls.push({ type: "stroke", strokeStyle, lineWidth }); },
     fillRect(x, y, width, height) { calls.push({ type: "fillRect", fillStyle, x, y, width, height }); },
@@ -47,6 +50,22 @@ test("Echo signal uses a pixel face and a camera-relative waveform", () => {
   assert.ok(context.calls.some(call => call.type === "fillRect"
     && call.fillStyle === "#b8f8ff" && call.x === 68 && call.y === 142 && call.width === 24 && call.height === 20));
   assert.equal(context.calls.filter(call => call.type === "fillRect" && call.fillStyle === "#163e5e").length, 2);
+});
+
+test("sanctuary memory signals render as face-free archive silhouettes", () => {
+  let progress = createInitialWorldProgress();
+  for (const coreId of SANCTUARY_CORE_IDS) {
+    progress = progressSanctuary(progress, { type: "activate-core", coreId }).progress;
+  }
+  const renderables = getStoryRenderablesForMap("sanctuary-memory-archive", progress);
+  const signal = renderables.signals.find(value => value.id === "departure-bell");
+  assert.equal(signal.chapterId, "sanctuary");
+  assert.equal(signal.visualVariant, "architecture");
+
+  const context = commandContext();
+  drawStorySignal(context, signal, 0, 0);
+  assert.ok(context.calls.some(call => call.type === "stroke"));
+  assert.equal(context.calls.some(call => call.type === "fillRect" && call.fillStyle === "#163e5e"), false);
 });
 
 test("investigation guidance draws only broad concentric zone rings, not an exact target beacon", () => {

@@ -8,6 +8,10 @@ import {
 import { getCoastChapterObjective } from "./coast-story-data-20260829-coast-20260905-upgrade-20260911-sanctuary.js";
 import { isStoryInteractionEligible } from "./story-interactions-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 import { getVolcanoStoryContent } from "./volcano-story-data-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import {
+  getSanctuaryChapterObjective,
+  getSanctuaryStoryContent,
+} from "./sanctuary-story-data-20260911-sanctuary.js";
 import { WORLD_IDS, getWorldDefinition, normalizeWorldId } from "./world-data-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 import { SANCTUARY_MAP_IDS } from "./sanctuary-world-data-20260911-sanctuary.js";
 
@@ -208,6 +212,28 @@ export function drawWorldLayerViewport(context, layer, mapId, viewport) {
 }
 
 export function getStoryRenderablesForMap(mapId, worldProgress = null) {
+  const sanctuaryContent = getSanctuaryStoryContent(mapId);
+  if (sanctuaryContent) {
+    const activeObjective = getSanctuaryChapterObjective(worldProgress);
+    const objectiveTargets = activeObjective.mapId === mapId
+      ? sanctuaryContent.interactions.filter(value => activeObjective.interactionIds.includes(value.id))
+      : [];
+    const target = objectiveTargets.find(value => isStoryInteractionEligible(value, worldProgress));
+    return {
+      signals: sanctuaryContent.interactions.map(interaction => ({
+        id: interaction.id,
+        interactionId: interaction.id,
+        chapterId: "sanctuary",
+        signalKind: interaction.type,
+        visualVariant: interaction.visualVariant,
+        memoryVisual: interaction.memoryVisual === true,
+        x: interaction.x,
+        y: interaction.y,
+        active: isStoryInteractionEligible(interaction, worldProgress),
+      })),
+      objective: target ? { x: target.x, y: target.y, radius: Math.max(96, target.interactionRadius) } : null,
+    };
+  }
   const content = getVolcanoStoryContent(mapId);
   if (!content) return getCoastStoryRenderablesForMap(mapId, worldProgress);
   const activeObjective = getVolcanoChapterObjective(worldProgress);
@@ -230,6 +256,10 @@ export function getStoryRenderablesForMap(mapId, worldProgress = null) {
 }
 
 export function drawStorySignal(context, signal, cameraX = 0, cameraY = 0) {
+  if (signal?.chapterId === "sanctuary") {
+    drawSanctuaryStorySignal(context, signal, cameraX, cameraY);
+    return;
+  }
   if (signal?.chapterId !== "volcano") {
     drawCoastStorySignal(context, signal, cameraX, cameraY);
     return;
@@ -249,6 +279,49 @@ export function drawStorySignal(context, signal, cameraX = 0, cameraY = 0) {
   context.lineTo(x - 16, y);
   context.closePath();
   context.fill();
+  context.stroke();
+  context.restore();
+}
+
+function drawSanctuaryStorySignal(context, signal, cameraX, cameraY) {
+  if (!context || !Number.isFinite(signal.x) || !Number.isFinite(signal.y)) return;
+  const x = Math.round(signal.x - cameraX);
+  const y = Math.round(signal.y - cameraY);
+  context.save();
+  context.globalAlpha = signal.active ? 0.9 : 0.32;
+  context.strokeStyle = signal.visualVariant === "grave" ? "#64748b" : "#0e7490";
+  context.lineWidth = signal.visualVariant === "light" ? 5 : 3;
+  context.beginPath();
+  if (signal.visualVariant === "architecture") {
+    context.moveTo(x - 18, y + 18);
+    context.lineTo(x - 18, y - 14);
+    context.lineTo(x, y - 24);
+    context.lineTo(x + 18, y - 14);
+    context.lineTo(x + 18, y + 18);
+  } else if (signal.visualVariant === "hand") {
+    context.moveTo(x - 16, y + 18);
+    context.lineTo(x - 8, y - 14);
+    context.lineTo(x, y + 2);
+    context.lineTo(x + 7, y - 18);
+    context.lineTo(x + 16, y + 16);
+  } else if (signal.visualVariant === "grave") {
+    context.moveTo(x - 18, y + 20);
+    context.lineTo(x - 14, y - 12);
+    context.lineTo(x, y - 22);
+    context.lineTo(x + 14, y - 12);
+    context.lineTo(x + 18, y + 20);
+    context.closePath();
+  } else if (signal.visualVariant === "light") {
+    context.arc(x, y, 18, 0, Math.PI * 2);
+    context.moveTo(x, y - 30);
+    context.lineTo(x, y + 30);
+  } else {
+    context.moveTo(x - 18, y + 20);
+    context.lineTo(x - 10, y - 8);
+    context.lineTo(x, y - 20);
+    context.lineTo(x + 10, y - 8);
+    context.lineTo(x + 18, y + 20);
+  }
   context.stroke();
   context.restore();
 }

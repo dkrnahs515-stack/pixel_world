@@ -4,6 +4,14 @@ import {
 } from "./story-dialogue-20260829-coast-20260905-upgrade-20260911-sanctuary.js";
 import { VOLCANO_STORY_ACTORS } from "./volcano-story-data-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 import { chooseVolcanoRoute, normalizeWorldProgress } from "./chapter-progress-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import { MEMORY_SOUND_IDS } from "./sanctuary-progress-20260911-sanctuary.js";
+
+const MEMORY_SOUND_LABELS = Object.freeze({
+  "departure-bell": "출발 종",
+  "dawn-bird": "새벽 새",
+  "tide-bell": "조수 종",
+  "mine-shift-bell": "광산 교대 종",
+});
 
 function changed(before, after) {
   return JSON.stringify(before) !== JSON.stringify(after);
@@ -17,7 +25,26 @@ function titleForVolcanoInteraction(interaction) {
   return "활화산 조사";
 }
 
-export function storyDialogueModel(interaction, worldProgress) {
+export function storyDialogueModel(interaction, worldProgress, options = {}) {
+  if (interaction?.chapterId === "sanctuary") {
+    const pages = [...(interaction.pages || [])];
+    if (options.retryError) pages.push(options.retryError);
+    if (interaction.type === "sanctuary-memory-sequence") {
+      const sequence = Array.isArray(options.sequence)
+        ? options.sequence.filter((value, index, values) => MEMORY_SOUND_IDS.includes(value) && values.indexOf(value) === index)
+        : [];
+      const actions = MEMORY_SOUND_IDS
+        .filter(id => !sequence.includes(id))
+        .map(id => ({ id: `story-memory-add-${id}`, label: `${MEMORY_SOUND_LABELS[id]} 추가` }));
+      actions.push({ id: "story-memory-submit", label: "배열 제출" });
+      return { title: "기억 소리 배열 장치", pages, actions };
+    }
+    return {
+      title: interaction.speaker || "기억 회랑",
+      pages,
+      actions: [{ id: "story-complete", label: "계속" }],
+    };
+  }
   if (interaction?.chapterId !== "volcano") {
     return coastStoryDialogueModel(interaction, worldProgress);
   }

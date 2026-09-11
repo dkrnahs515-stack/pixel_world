@@ -6,6 +6,7 @@ import {
   storyInteractionPrompt,
 } from "./story-interactions-20260829-coast-20260905-upgrade-20260911-sanctuary.js";
 import { VOLCANO_STORY_INTERACTIONS } from "./volcano-story-data-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import { SANCTUARY_STORY_INTERACTIONS } from "./sanctuary-story-data-20260911-sanctuary.js";
 import {
   chooseVolcanoRoute,
   collectCoolantAnchor,
@@ -14,13 +15,16 @@ import {
   normalizeWorldProgress,
   repairVolcanoDevice,
   resolveVolcanoCaptain,
+  progressSanctuary,
 } from "./chapter-progress-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import { MEMORY_SOUND_IDS, SANCTUARY_CORE_IDS } from "./sanctuary-progress-20260911-sanctuary.js";
 
 export { storyInteractionPrompt };
 
 export const ALL_STORY_INTERACTIONS = Object.freeze([
   ...COAST_STORY_INTERACTIONS,
   ...VOLCANO_STORY_INTERACTIONS,
+  ...SANCTUARY_STORY_INTERACTIONS,
 ]);
 
 function changed(before, after) {
@@ -52,12 +56,63 @@ function routeAvailable(progress) {
 }
 
 export function isStoryInteractionEligible(interaction, worldProgress) {
+  if (interaction?.chapterId === "sanctuary") {
+    const sanctuary = normalizeWorldProgress(worldProgress).chapters.sanctuary;
+    switch (interaction.type) {
+      case "sanctuary-core-casket":
+        return !sanctuary.activatedCoreIds.includes(interaction.id);
+      case "sanctuary-memory-sound":
+        return SANCTUARY_CORE_IDS.every(id => sanctuary.activatedCoreIds.includes(id))
+          && !sanctuary.collectedMemoryIds.includes(interaction.memoryId);
+      case "sanctuary-memory-sequence":
+        return MEMORY_SOUND_IDS.every(id => sanctuary.collectedMemoryIds.includes(id))
+          && !sanctuary.memoryOrderSolved;
+      case "sanctuary-truth-record":
+        return sanctuary.memoryOrderSolved && !sanctuary.falseReturnRejected;
+      case "sanctuary-false-return":
+        return sanctuary.coreTruthRevealed && !sanctuary.falseReturnRejected;
+      default:
+        return false;
+    }
+  }
   if (interaction?.chapterId !== "volcano") {
     return isCoastStoryInteractionEligible(interaction, worldProgress);
   }
   const progress = normalizeWorldProgress(worldProgress);
   if (interaction.type === "volcano-route") return routeAvailable(progress);
   return changed(progress, transitionForVolcanoInteraction(progress, interaction).progress);
+}
+
+function resolveSanctuaryInteraction(progress, interaction, response) {
+  const initial = normalizeWorldProgress(progress);
+  if (!isStoryInteractionEligible(interaction, initial)) return result(initial, interaction.id, "unavailable");
+  let resolved;
+  switch (interaction.type) {
+    case "sanctuary-core-casket":
+      resolved = progressSanctuary(initial, { type: "activate-core", coreId: interaction.id });
+      break;
+    case "sanctuary-memory-sound":
+      resolved = progressSanctuary(initial, { type: "collect-memory", memoryId: interaction.memoryId });
+      break;
+    case "sanctuary-memory-sequence": {
+      const sequence = Array.isArray(response?.sequence) ? response.sequence : [];
+      resolved = progressSanctuary(initial, { type: "submit-memory-sequence", sequence });
+      if (!changed(initial, resolved.progress)) return result(initial, interaction.id, "retryable", true);
+      break;
+    }
+    case "sanctuary-truth-record":
+      if (!interaction.revealsCoreTruth) return result(initial, interaction.id, "acknowledged");
+      resolved = progressSanctuary(initial, { type: "reveal-truth" });
+      if (!changed(initial, resolved.progress)) return result(initial, interaction.id, "acknowledged");
+      break;
+    case "sanctuary-false-return":
+      if (!interaction.resolvesFalseReturn) return result(initial, interaction.id, "acknowledged");
+      resolved = progressSanctuary(initial, { type: "reject-false-return" });
+      break;
+    default:
+      return result(initial, interaction.id, "unavailable");
+  }
+  return result(resolved.progress, interaction.id, "completed", false, resolved.effects);
 }
 
 export function findNearbyStoryInteraction(interactions, player, worldProgress) {
@@ -123,6 +178,9 @@ function resolveVolcanoInteraction(progress, interaction, response) {
 
 export function resolveStoryInteraction(progress, interactionId, response) {
   const interaction = ALL_STORY_INTERACTIONS.find(value => value.id === interactionId);
+  if (interaction?.chapterId === "sanctuary") {
+    return resolveSanctuaryInteraction(progress, interaction, response);
+  }
   if (interaction?.chapterId === "volcano") {
     return resolveVolcanoInteraction(progress, interaction, response);
   }
@@ -147,6 +205,7 @@ export function resolveStoryInteraction(progress, interactionId, response) {
       chapters: {
         coast: coastResult.progress.chapters.coast,
         volcano: initial.chapters.volcano,
+        sanctuary: initial.chapters.sanctuary,
       },
     }),
   };

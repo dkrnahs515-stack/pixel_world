@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getEnemyDefinition } from "../src/enemy-definitions-20260905-upgrade.js";
-import { createEnemyInstance } from "../src/enemies-20260829-coast-20260905-upgrade.js";
+import { getEnemyDefinition } from "../src/enemy-definitions-20260905-upgrade-20260911-sanctuary.js";
+import { createEnemyInstance } from "../src/enemies-20260829-coast-20260905-upgrade-20260911-sanctuary.js";
 
 const expected = {
   "fang-shark": ["송곳니 상어", 25, 50, 100, 20, "fang-charge"],
@@ -68,4 +68,19 @@ test("인스턴스 팩터리는 정의 기반 전투 상태와 지정 재정의�
   });
   assert.equal(createEnemyInstance("unknown", { x: 0, y: 0 }, "none"), null);
   assert.equal(createEnemyInstance("toString", { x: 0, y: 0 }, "none"), null);
+});
+
+test("memory noise is explicitly local, rewardless, and face-free", () => {
+  const definition = getEnemyDefinition("memory-noise");
+  assert.deepEqual({
+    localOnly: definition.localOnly,
+    rewardExp: definition.rewardExp,
+    rewardGold: definition.rewardGold,
+    renderMode: definition.renderMode,
+  }, {
+    localOnly: true,
+    rewardExp: 0,
+    rewardGold: 0,
+    renderMode: "blurred-outline",
+  });
 });

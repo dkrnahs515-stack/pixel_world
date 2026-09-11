@@ -8,8 +8,19 @@ const DEATH_DURATION = 0.65;
 const INFO_DISPLAY_DISTANCE = 420;
 const INFO_DISPLAY_AFTER_HIT = 3;
 
-export function createEnemies(mapId) {
-  return getWorldDefinition(mapId).enemySpawns
+export function createEnemies(mapId, worldProgress = null) {
+  const spawns = [...getWorldDefinition(mapId).enemySpawns];
+  const sanctuary = worldProgress?.chapters?.sanctuary;
+  if (mapId === "sanctuary-memory-archive"
+    && sanctuary?.coreTruthRevealed === true
+    && sanctuary?.falseReturnRejected !== true) {
+    spawns.push(
+      { kind: "memory-noise", x: 760, y: 1030 },
+      { kind: "memory-noise", x: 1080, y: 1120 },
+      { kind: "memory-noise", x: 1400, y: 1030 },
+    );
+  }
+  return spawns
     .map((spawn, index) => createEnemyInstance(
       spawn.kind,
       spawn,
@@ -41,6 +52,10 @@ export function createEnemyInstance(kind, spawn, id, overrides = {}) {
     knockbackX: 0, knockbackY: 0, contactCooldown: 0,
     hitStunRemaining: 0,
     ...(overrides.isCoopBoss ? { isCoopBoss: true } : {}),
+    ...(type.localOnly ? { localOnly: true } : {}),
+    ...(type.renderMode ? { renderMode: type.renderMode } : {}),
+    ...(Number.isFinite(type.rewardExp) ? { rewardExp: type.rewardExp } : {}),
+    ...(Number.isFinite(type.rewardGold) ? { rewardGold: type.rewardGold } : {}),
   };
 }
 
@@ -327,7 +342,32 @@ const ENEMY_DRAWERS = Object.freeze({
   "ancient-boar": drawAncientBoar,
   "moss-troll": drawMossTroll,
   "ancient-mushroom-bug": drawMushroomBug,
+  "memory-noise": drawMemoryNoise,
 });
+
+function drawMemoryNoise(ctx, enemy) {
+  ctx.save();
+  ctx.globalAlpha *= 0.55;
+  ctx.strokeStyle = enemy.hitFlash > 0 ? "#ffffff" : enemy.color;
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(-16, 14);
+  ctx.lineTo(-12, -9);
+  ctx.lineTo(-3, -20);
+  ctx.lineTo(8, -15);
+  ctx.lineTo(16, 9);
+  ctx.lineTo(10, 18);
+  ctx.lineTo(-16, 14);
+  ctx.stroke();
+  ctx.globalAlpha *= 0.45;
+  ctx.strokeStyle = enemy.accent;
+  ctx.lineWidth = 9;
+  ctx.beginPath();
+  ctx.moveTo(-20, 4);
+  ctx.lineTo(20, -3);
+  ctx.stroke();
+  ctx.restore();
+}
 
 function drawEnemyTelegraph(ctx, enemy) {
   const direction = enemy.lockedDirection || { x: 0, y: 1 };

@@ -7,12 +7,54 @@ import {
   createBossEnemyView,
   createMagmaChildren,
   damageEnemy,
+  drawEnemy,
   formatHealthValue,
   updateEnemies,
-} from "../src/enemies-20260829-coast-20260905-upgrade.js";
+} from "../src/enemies-20260829-coast-20260905-upgrade-20260911-sanctuary.js";
+import { createInitialWorldProgress, progressSanctuary } from "../src/chapter-progress-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import { MEMORY_SOUND_IDS, SANCTUARY_CORE_IDS } from "../src/sanctuary-progress-20260911-sanctuary.js";
 
 test("the safe village never creates enemies", () => {
   assert.deepEqual(createEnemies("village"), []);
+});
+
+test("memory noise exists only during the local contradiction defense window", () => {
+  let progress = createInitialWorldProgress();
+  for (const coreId of SANCTUARY_CORE_IDS) progress = progressSanctuary(progress, { type: "activate-core", coreId }).progress;
+  for (const memoryId of MEMORY_SOUND_IDS) progress = progressSanctuary(progress, { type: "collect-memory", memoryId }).progress;
+  progress = progressSanctuary(progress, { type: "submit-memory-sequence", sequence: MEMORY_SOUND_IDS }).progress;
+  assert.deepEqual(createEnemies("sanctuary-memory-archive", progress), []);
+
+  progress = progressSanctuary(progress, { type: "reveal-truth" }).progress;
+  const defense = createEnemies("sanctuary-memory-archive", progress);
+  assert.equal(defense.length, 3);
+  assert.ok(defense.every(value => value.kind === "memory-noise" && value.localOnly === true));
+  assert.deepEqual(createEnemies("sanctuary", progress), []);
+  assert.deepEqual(createEnemies("sanctuary-return-record", progress), []);
+
+  progress = progressSanctuary(progress, { type: "reject-false-return" }).progress;
+  assert.deepEqual(createEnemies("sanctuary-memory-archive", progress), []);
+});
+
+test("memory noise renderer uses a blurred outline without facial pixels", () => {
+  const enemy = createEnemyInstance("memory-noise", { x: 100, y: 100 }, "noise");
+  const calls = [];
+  const context = new Proxy({
+    calls,
+    save() {}, restore() {}, translate() {}, scale() {}, beginPath() {}, closePath() {},
+    moveTo(x, y) { calls.push(["moveTo", x, y]); },
+    lineTo(x, y) { calls.push(["lineTo", x, y]); },
+    stroke() { calls.push(["stroke"]); },
+    fillRect(x, y, w, h) { calls.push(["fillRect", x, y, w, h]); },
+    fillText() {},
+  }, {
+    set(target, key, value) { target[key] = value; return true; },
+  });
+
+  drawEnemy(context, enemy, 0, 0, 1);
+
+  assert.ok(calls.some(call => call[0] === "stroke"));
+  assert.equal(calls.filter(call => call[0] === "fillRect").length, 1, "only the ground shadow may be filled");
 });
 
 test("each exterior region creates its approved enemy roster", () => {
