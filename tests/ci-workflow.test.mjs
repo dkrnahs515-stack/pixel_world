@@ -52,8 +52,12 @@ test("Firebase 규칙은 emulator allow/deny 검사를 PR에서 실행한다", a
     "utf8",
   );
   assert.match(workflow, /@firebase\/rules-unit-testing@5\.0\.0/);
+  assert.match(workflow, /firebase@12\.16\.0/);
   assert.match(workflow, /firebase emulators:exec --only database/);
   assert.match(workflow, /tests\/firebase-rules-emulator\.cjs/);
+  for (const path of ["index.html", "src/**", "tests/**"]) {
+    assert.equal(workflow.split(`- "${path}"`).length - 1, 2, `${path} must trigger authenticated checks for PR and push`);
+  }
 });
 
 test("브라우저 smoke는 기존 여정 뒤에 첫 플레이·성역·2브라우저 ORIGIN까지 실행한다", async () => {
@@ -70,6 +74,7 @@ test("브라우저 smoke는 기존 여정 뒤에 첫 플레이·성역·2브라�
     "tests/volcano-browser-smoke.cjs",
     "tests/sanctuary-browser-smoke.cjs",
     "tests/sanctuary-online-browser-smoke.cjs",
+    "tests/sanctuary-real-input-smoke.cjs",
   ];
   for (const journey of requiredJourneys) assert.match(workflow, new RegExp(journey.replace(".", "\\.")));
   assert.ok(
