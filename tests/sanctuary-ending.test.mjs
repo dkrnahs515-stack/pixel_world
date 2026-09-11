@@ -50,8 +50,32 @@ function fakeElement({ hidden = false, textContent = "" } = {}) {
     dataset: {},
     disabled: false,
     focusCount: 0,
+    clickCount: 0,
+    lastClickResult: undefined,
     focus() { this.focusCount += 1; },
+    click() {
+      if (this.hidden || this.disabled) return;
+      this.clickCount += 1;
+      this.lastClickResult = this.onClick?.();
+    },
   };
+}
+
+function endingKeyboardEvent(key, { repeat = false, shiftKey = false } = {}) {
+  const event = new Event("keydown", { bubbles: true, cancelable: true });
+  Object.defineProperties(event, {
+    key: { value: key },
+    code: { value: key === " " ? "Space" : key },
+    repeat: { value: repeat },
+    shiftKey: { value: shiftKey },
+  });
+  return event;
+}
+
+function deferredResult() {
+  let resolve;
+  const promise = new Promise(settle => { resolve = settle; });
+  return { promise, resolve };
 }
 
 function endingGame() {
@@ -113,6 +137,23 @@ function endingGame() {
   game.updateChapterUi = () => {};
   game.updateNpcPrompt = () => {};
   game.applyProgressionStats = () => {};
+  for (const button of game.ui.endingChoiceButtons) {
+    button.onClick = () => game.previewSanctuaryEnding(button.dataset.endingChoice);
+  }
+  game.ui.endingDeferButton.onClick = () => game.closeSanctuaryEnding();
+  game.ui.endingBackButton.onClick = () => game.showSanctuaryEndingView("first-confirmation");
+  game.ui.endingConfirmButton.onClick = () => game.confirmSanctuaryEnding(game.pendingSanctuaryEndingChoice);
+  game.ui.endingCloseButton.onClick = () => game.closeSanctuaryEnding();
+  game.ui.endingInsideText = fakeElement();
+  const endingContents = [
+    ...game.ui.endingChoiceButtons,
+    game.ui.endingDeferButton,
+    game.ui.endingBackButton,
+    game.ui.endingConfirmButton,
+    game.ui.endingCloseButton,
+    game.ui.endingInsideText,
+  ];
+  game.ui.endingOverlay.contains = element => endingContents.includes(element);
   return game;
 }
 
@@ -182,7 +223,7 @@ test("partial reward ledgers apply only missing components and reject another en
   assert.deepEqual(rejected.progress, recovered.progress);
 });
 
-test("the game persists the choice before opening the cutscene and persists reward separately", () => {
+test("the game persists the choice before opening the cutscene and persists reward separately", async () => {
   const game = endingGame();
   assert.equal(game.openSanctuaryEndingSelection(), true);
   assert.equal(game.ui.endingOverlay.dataset.view, "first-confirmation");
@@ -190,7 +231,7 @@ test("the game persists the choice before opening the cutscene and persists rewa
   assert.equal(game.progress.worldProgress.chapters.sanctuary.endingChoice, null);
   assert.equal(game.ui.endingOverlay.dataset.view, "second-confirmation");
 
-  assert.equal(game.confirmSanctuaryEnding("release"), true);
+  assert.equal(await game.confirmSanctuaryEnding("release"), true);
   assert.equal(game.persisted.length, 2);
   assert.equal(game.persisted[0].worldProgress.chapters.sanctuary.endingChoice, "release");
   assert.deepEqual(game.persisted[0].claimedNarrativeRewardIds, []);
@@ -203,13 +244,13 @@ test("the game persists the choice before opening the cutscene and persists rewa
   assert.equal(game.ui.endingLastLine.textContent, SANCTUARY_ENDINGS.release.lastLine);
 });
 
-test("a failed choice save starts neither choice, cutscene, nor reward", () => {
+test("a failed choice save starts neither choice, cutscene, nor reward", async () => {
   const game = endingGame();
   game.openSanctuaryEndingSelection();
   game.previewSanctuaryEnding("seal");
   game.persistOutcomes = [false];
 
-  assert.equal(game.confirmSanctuaryEnding("seal"), false);
+  assert.equal(await game.confirmSanctuaryEnding("seal"), false);
   assert.equal(game.persisted.length, 1);
   assert.equal(game.progress.worldProgress.chapters.sanctuary.endingChoice, null);
   assert.deepEqual(game.progress.claimedNarrativeRewardIds, []);
@@ -217,24 +258,24 @@ test("a failed choice save starts neither choice, cutscene, nor reward", () => {
   assert.equal(game.endingPresentationActive, false);
 });
 
-test("a failed reward save rolls memory back to the saved choice and leaves recoverable presentation", () => {
+test("a failed reward save rolls memory back to the saved choice and leaves recoverable presentation", async () => {
   const game = endingGame();
   game.openSanctuaryEndingSelection();
   game.previewSanctuaryEnding("restore");
   game.persistOutcomes = [true, false];
 
-  assert.equal(game.confirmSanctuaryEnding("restore"), true);
+  assert.equal(await game.confirmSanctuaryEnding("restore"), true);
   assert.equal(game.progress.worldProgress.chapters.sanctuary.endingChoice, "restore");
   assert.deepEqual(game.progress.claimedNarrativeRewardIds, []);
   assert.equal(game.pendingSanctuaryRewardChoice, "restore");
   assert.equal(game.ui.endingOverlay.dataset.view, "cutscene");
   assert.equal(game.ui.endingOverlay.hidden, false);
 
-  assert.equal(game.recoverSanctuaryEndingReward(), true);
+  assert.equal(await game.recoverSanctuaryEndingReward(), true);
   assert.equal(game.pendingSanctuaryRewardChoice, null);
   assert.deepEqual(missingSanctuaryRewardComponents(game.progress, "restore"), []);
   const afterRecovery = structuredClone(game.progress);
-  assert.equal(game.recoverSanctuaryEndingReward(), true);
+  assert.equal(await game.recoverSanctuaryEndingReward(), true);
   assert.deepEqual(game.progress, afterRecovery);
 });
 
@@ -255,7 +296,7 @@ test("first-step Escape defers without a write and reopening near the core works
   assert.equal(game.ui.endingOverlay.dataset.view, "first-confirmation");
 });
 
-test("ending overlay traps Tab and supports Enter confirmation without unsafe DOM", () => {
+test("ending overlay traps Tab and supports Enter confirmation without unsafe DOM", async () => {
   const game = endingGame();
   const previousDocument = globalThis.document;
   game.openSanctuaryEndingSelection();
@@ -271,17 +312,158 @@ test("ending overlay traps Tab and supports Enter confirmation without unsafe DO
     assert.equal(game.ui.endingChoiceButtons[0].focusCount, 2);
 
     game.previewSanctuaryEnding("seal");
-    const enter = {
-      code: "Enter", shiftKey: false,
-      preventDefault() { this.prevented = true; },
-      stopPropagation() { this.stopped = true; },
-    };
+    globalThis.document.activeElement = game.ui.endingConfirmButton;
+    const enter = endingKeyboardEvent("Enter");
     game.handleSanctuaryEndingKeyDown(enter);
+    await game.ui.endingConfirmButton.lastClickResult;
     assert.equal(game.progress.worldProgress.chapters.sanctuary.endingChoice, "seal");
-    assert.equal(enter.prevented, true);
+    assert.equal(enter.defaultPrevented, true);
   } finally {
     globalThis.document = previousDocument;
   }
+});
+
+test("focused defer and back buttons keep their pointer click meaning for Space and Enter", () => {
+  const game = endingGame();
+  const previousDocument = globalThis.document;
+  globalThis.document = { activeElement: null };
+  try {
+    game.openSanctuaryEndingSelection();
+    globalThis.document.activeElement = game.ui.endingDeferButton;
+    const defer = endingKeyboardEvent(" ");
+    assert.equal(game.handleSanctuaryEndingKeyDown(defer), true);
+    assert.equal(defer.defaultPrevented, true);
+    assert.equal(game.ui.endingDeferButton.clickCount, 1);
+    assert.equal(game.ui.endingOverlay.hidden, true);
+    assert.equal(game.progress.worldProgress.chapters.sanctuary.endingChoice, null);
+
+    game.openSanctuaryEndingSelection();
+    game.previewSanctuaryEnding("seal");
+    globalThis.document.activeElement = game.ui.endingBackButton;
+    const back = endingKeyboardEvent("Enter");
+    assert.equal(game.handleSanctuaryEndingKeyDown(back), true);
+    assert.equal(game.ui.endingBackButton.clickCount, 1);
+    assert.equal(game.ui.endingOverlay.dataset.view, "first-confirmation");
+    assert.equal(game.persisted.length, 0);
+  } finally {
+    globalThis.document = previousDocument;
+  }
+});
+
+test("focused confirm and cutscene close buttons keep their pointer click meaning", async () => {
+  const game = endingGame();
+  const previousDocument = globalThis.document;
+  globalThis.document = { activeElement: null };
+  try {
+    game.openSanctuaryEndingSelection();
+    game.previewSanctuaryEnding("restore");
+    globalThis.document.activeElement = game.ui.endingConfirmButton;
+    assert.equal(game.handleSanctuaryEndingKeyDown(endingKeyboardEvent("Enter")), true);
+    await game.ui.endingConfirmButton.lastClickResult;
+    assert.equal(game.ui.endingConfirmButton.clickCount, 1);
+    assert.equal(game.progress.worldProgress.chapters.sanctuary.endingChoice, "restore");
+    assert.equal(game.ui.endingOverlay.dataset.view, "cutscene");
+
+    game.pendingSanctuaryRewardChoice = "restore";
+    globalThis.document.activeElement = game.ui.endingCloseButton;
+    assert.equal(game.handleSanctuaryEndingKeyDown(endingKeyboardEvent("Enter")), true);
+    assert.equal(game.ui.endingCloseButton.clickCount, 1);
+    assert.equal(game.ui.endingOverlay.hidden, true);
+  } finally {
+    globalThis.document = previousDocument;
+  }
+});
+
+test("held Enter cannot cascade beyond one ending view transition", () => {
+  const game = endingGame();
+  const previousDocument = globalThis.document;
+  globalThis.document = { activeElement: null };
+  try {
+    game.openSanctuaryEndingSelection();
+    globalThis.document.activeElement = game.ui.endingChoiceButtons[0];
+    assert.equal(game.handleSanctuaryEndingKeyDown(endingKeyboardEvent("Enter")), true);
+    assert.equal(game.ui.endingOverlay.dataset.view, "second-confirmation");
+
+    globalThis.document.activeElement = game.ui.endingConfirmButton;
+    const repeated = endingKeyboardEvent("Enter", { repeat: true });
+    assert.equal(game.handleSanctuaryEndingKeyDown(repeated), true);
+    assert.equal(repeated.defaultPrevented, true);
+    assert.equal(game.ui.endingConfirmButton.clickCount, 0);
+    assert.equal(game.ui.endingOverlay.dataset.view, "second-confirmation");
+    assert.equal(game.progress.worldProgress.chapters.sanctuary.endingChoice, null);
+    assert.equal(game.persisted.length, 0);
+  } finally {
+    globalThis.document = previousDocument;
+  }
+});
+
+test("activation defaults run only when focus is outside the ending overlay", () => {
+  const game = endingGame();
+  const previousDocument = globalThis.document;
+  const outside = fakeElement();
+  globalThis.document = { activeElement: game.ui.endingInsideText };
+  try {
+    game.openSanctuaryEndingSelection();
+    assert.equal(game.handleSanctuaryEndingKeyDown(endingKeyboardEvent("Enter")), false);
+    assert.equal(game.ui.endingOverlay.dataset.view, "first-confirmation");
+
+    globalThis.document.activeElement = outside;
+    assert.equal(game.handleSanctuaryEndingKeyDown(endingKeyboardEvent("Enter")), true);
+    assert.equal(game.ui.endingOverlay.dataset.view, "second-confirmation");
+    assert.equal(game.pendingSanctuaryEndingChoice, "seal");
+  } finally {
+    globalThis.document = previousDocument;
+  }
+});
+
+test("async confirmation serializes choice and reward persistence and blocks reentry", async () => {
+  const game = endingGame();
+  game.openSanctuaryEndingSelection();
+  game.previewSanctuaryEnding("release");
+  const choiceSave = deferredResult();
+  let persistCalls = 0;
+  game.persistProgress = () => {
+    persistCalls += 1;
+    return persistCalls === 1 ? choiceSave.promise : true;
+  };
+
+  const first = game.confirmSanctuaryEnding("release");
+  const reentered = game.confirmSanctuaryEnding("release");
+  assert.equal(typeof first?.then, "function");
+  assert.equal(await reentered, false);
+  assert.equal(persistCalls, 1);
+  assert.deepEqual(game.progress.claimedNarrativeRewardIds, []);
+  assert.equal(game.ui.endingOverlay.dataset.view, "second-confirmation");
+
+  choiceSave.resolve(true);
+  assert.equal(await first, true);
+  assert.equal(persistCalls, 2);
+  assert.deepEqual(missingSanctuaryRewardComponents(game.progress, "release"), []);
+});
+
+test("async reward recovery rolls back a failed save and blocks reentry", async () => {
+  const game = endingGame();
+  game.progress = endingReadyProgress("seal");
+  game.pendingSanctuaryRewardChoice = "seal";
+  game.presentSanctuaryEnding("seal");
+  const before = structuredClone(game.progress);
+  const rewardSave = deferredResult();
+  let persistCalls = 0;
+  game.persistProgress = () => {
+    persistCalls += 1;
+    return rewardSave.promise;
+  };
+
+  const first = game.recoverSanctuaryEndingReward();
+  const reentered = game.recoverSanctuaryEndingReward();
+  assert.equal(typeof first?.then, "function");
+  assert.equal(await reentered, false);
+  assert.equal(persistCalls, 1);
+
+  rewardSave.resolve(false);
+  assert.equal(await first, false);
+  assert.deepEqual(game.progress, before);
+  assert.equal(game.pendingSanctuaryRewardChoice, "seal");
 });
 
 test("final presentation hides only local remote rendering and chat while receive state remains live", () => {
