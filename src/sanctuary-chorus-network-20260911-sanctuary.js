@@ -54,12 +54,17 @@ function membershipMap(values, predicate = () => true) {
   return Object.fromEntries(membershipValues(values, predicate).map(value => [value, true]));
 }
 
-function decodeWireEncounter(value) {
+function decodeWireEncounter(value, localProcessedActionIds = []) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   const decoded = { ...value };
   for (const field of OBJECTIVE_MEMBERSHIP_FIELDS) decoded[field] = membershipValues(value[field]);
-  decoded.processedActionIds = membershipValues(value.processedActionIds, validActionId)
-    .slice(-CHORUS_PROCESSED_ACTION_LIMIT);
+  decoded.processedActionIds = mergeProcessedActionIds(
+    localProcessedActionIds,
+    membershipValues(value.processedActionIds, validActionId),
+  );
+  delete decoded.processedSequenceByUid;
+  delete decoded.processedActionUid;
+  delete decoded.processedActionSequence;
   decoded.contributors = Object.fromEntries(Object.entries(value.contributors || {}).map(([contributorUid, contributor]) => [
     contributorUid,
     {
@@ -77,9 +82,10 @@ function encodeWireEncounter(value) {
     if (Object.keys(encoded).length > 0) wire[field] = encoded;
     else delete wire[field];
   }
-  const processed = membershipMap(value?.processedActionIds, validActionId);
-  if (Object.keys(processed).length > 0) wire.processedActionIds = processed;
-  else delete wire.processedActionIds;
+  delete wire.processedActionIds;
+  delete wire.processedSequenceByUid;
+  delete wire.processedActionUid;
+  delete wire.processedActionSequence;
   const contributors = Object.fromEntries(Object.entries(value?.contributors || {}).map(([contributorUid, contributor]) => [
     contributorUid,
     {
@@ -106,6 +112,15 @@ function mergeProcessedActionIds(current, incoming) {
   return [...new Set([...(current || []), ...(incoming || [])])].slice(-CHORUS_PROCESSED_ACTION_LIMIT);
 }
 
+function normalizeProcessedSequences(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).filter(([actionUid, sequence]) => (
+    validKey(actionUid, 128)
+    && Number.isSafeInteger(sequence)
+    && sequence >= 1
+  )));
+}
+
 function mergeContributors(current = {}, incoming = {}) {
   const merged = {};
   for (const contributorUid of new Set([...Object.keys(current), ...Object.keys(incoming)])) {
@@ -128,11 +143,12 @@ function mergeContributors(current = {}, incoming = {}) {
   return merged;
 }
 
-function filterProcessedActions(value, processedIds) {
+function filterProcessedActions(value, processedSequences) {
   const filtered = {};
   for (const [actionUid, actions] of Object.entries(value || {})) {
+    const confirmedSequence = processedSequences[actionUid] || 0;
     const pending = Object.fromEntries(Object.entries(actions || {})
-      .filter(([, action]) => !processedIds.has(action?.id)));
+      .filter(([sequence]) => Number(sequence) > confirmedSequence));
     if (Object.keys(pending).length > 0) filtered[actionUid] = pending;
   }
   return filtered;
@@ -142,7 +158,7 @@ function sameCombatState(left, right) {
   return COMBAT_STATE_FIELDS.every(field => JSON.stringify(left?.[field]) === JSON.stringify(right?.[field]));
 }
 
-function statePatch(current, next, processedReceiptIds) {
+function statePatch(current, next, processedAction = null) {
   const patch = {};
   for (const field of COMBAT_STATE_FIELDS) {
     if (OBJECTIVE_MEMBERSHIP_FIELDS.includes(field)) {
@@ -151,9 +167,7 @@ function statePatch(current, next, processedReceiptIds) {
         if (!currentIds.has(id)) patch[`${field}/${id}`] = true;
       }
     } else if (field === "processedActionIds") {
-      for (const id of next.processedActionIds || []) {
-        if (!processedReceiptIds.has(id)) patch[`processedActionIds/${id}`] = true;
-      }
+      continue;
     } else if (field === "contributors") {
       for (const [contributorUid, contributor] of Object.entries(next.contributors || {})) {
         const previous = current?.contributors?.[contributorUid];
@@ -174,6 +188,11 @@ function statePatch(current, next, processedReceiptIds) {
   }
   for (const field of ["combatRevision", "leaseUntil", "updatedAt"]) {
     if (current?.[field] !== next[field]) patch[field] = next[field];
+  }
+  if (processedAction) {
+    patch[`processedSequenceByUid/${processedAction.uid}`] = processedAction.sequence;
+    patch.processedActionUid = processedAction.uid;
+    patch.processedActionSequence = processedAction.sequence;
   }
   return withoutUndefined(patch);
 }
@@ -204,7 +223,7 @@ export function createChorusNetwork({
   let renewalTimer = null;
   let renewalEpoch = null;
   let latestState = null;
-  let processedReceiptIds = new Set();
+  let processedSequenceByUid = {};
   let stateSnapshotReady = false;
   let pendingActions = null;
   let stateMutationQueue = Promise.resolve();
@@ -215,7 +234,7 @@ export function createChorusNetwork({
     if (typeof dbModule.get !== "function") return null;
     const snapshot = await dbModule.get(pathRef("state"));
     const wire = snapshot.val();
-    processedReceiptIds = new Set(membershipValues(wire?.processedActionIds, validActionId));
+    processedSequenceByUid = normalizeProcessedSequences(wire?.processedSequenceByUid);
     return normalizeChorusEncounter(decodeWireEncounter(wire));
   };
 
@@ -288,8 +307,11 @@ export function createChorusNetwork({
   };
 
   const rememberState = value => {
-    processedReceiptIds = new Set(membershipValues(value?.processedActionIds, validActionId));
-    const encounter = normalizeChorusEncounter(decodeWireEncounter(value));
+    const localProcessedActionIds = latestState?.encounterId === value?.encounterId
+      ? latestState.processedActionIds
+      : [];
+    processedSequenceByUid = normalizeProcessedSequences(value?.processedSequenceByUid);
+    const encounter = normalizeChorusEncounter(decodeWireEncounter(value, localProcessedActionIds));
     latestState = encounter;
     stateSnapshotReady = true;
     subscribeToOwnClaim(encounter?.encounterId);
@@ -300,7 +322,7 @@ export function createChorusNetwork({
     }
     onStateChanged(encounter);
     if (pendingActions) {
-      onActionsChanged(filterProcessedActions(pendingActions, processedReceiptIds));
+      onActionsChanged(filterProcessedActions(pendingActions, processedSequenceByUid));
       pendingActions = null;
     }
   };
@@ -308,13 +330,14 @@ export function createChorusNetwork({
   const api = {
     get mapId() { return mapId; },
     get latestState() { return latestState ? structuredClone(latestState) : null; },
+    get processedSequenceByUid() { return structuredClone(processedSequenceByUid); },
     get isAuthority() { return isAuthority(); },
 
     async setMap(nextMapId) {
       clearSubscriptions();
       mapId = nextMapId === CHORUS_MAP_ID ? CHORUS_MAP_ID : null;
       latestState = null;
-      processedReceiptIds = new Set();
+      processedSequenceByUid = {};
       stateSnapshotReady = false;
       pendingActions = null;
       if (!active()) {
@@ -330,7 +353,7 @@ export function createChorusNetwork({
           pendingActions = actions;
           return;
         }
-        onActionsChanged(filterProcessedActions(actions, processedReceiptIds));
+        onActionsChanged(filterProcessedActions(actions, processedSequenceByUid));
       }));
       return true;
     },
@@ -393,7 +416,7 @@ export function createChorusNetwork({
       });
     },
 
-    async publishState(value) {
+    async publishState(value, { processedAction = null } = {}) {
       const incoming = normalizeChorusEncounter(value);
       if (!active() || !incoming || !isAuthority(latestState, now(), incoming?.authorityEpoch)
         || incoming.authorityUid !== uid
@@ -420,6 +443,25 @@ export function createChorusNetwork({
           || !containsAll(incoming.severedBondIds, current.severedBondIds)) {
           return { ok: false, reason: "stale_state" };
         }
+        const addedProcessedActionIds = incoming.processedActionIds
+          .filter(actionId => !current.processedActionIds.includes(actionId));
+        if (addedProcessedActionIds.length > 0 && !processedAction) {
+          return { ok: false, reason: "processed_action_required" };
+        }
+        if (processedAction && (
+          addedProcessedActionIds.length !== 1
+          || addedProcessedActionIds[0] !== processedAction.id
+          || !validActionId(processedAction.id)
+          || !validKey(processedAction.uid, 128)
+          || !Number.isSafeInteger(processedAction.sequence)
+          || processedAction.sequence < 1
+          || processedAction.sequence <= (processedSequenceByUid[processedAction.uid] || 0)
+          || processedAction.encounterId !== current.encounterId
+          || processedAction.authorityEpoch !== current.authorityEpoch
+          || processedAction.phase !== current.phase
+        )) {
+          return { ok: false, reason: "processed_action_mismatch" };
+        }
         const next = normalizeChorusEncounter(withoutUndefined({
           ...incoming,
           leaseUntil: Math.max(current.leaseUntil, incoming.leaseUntil),
@@ -429,11 +471,15 @@ export function createChorusNetwork({
           processedActionIds: mergeProcessedActionIds(current.processedActionIds, incoming.processedActionIds),
           contributors: mergeContributors(current.contributors, incoming.contributors),
         }));
-        const patch = statePatch(current, next, processedReceiptIds);
+        const patch = statePatch(current, next, processedAction);
         if (Object.keys(patch).length > 0) await dbModule.update(pathRef("state"), patch);
-        for (const id of next.processedActionIds) processedReceiptIds.add(id);
+        if (processedAction) processedSequenceByUid[processedAction.uid] = processedAction.sequence;
         latestState = next;
-        return { ok: true, encounter: latestState };
+        return {
+          ok: true,
+          encounter: latestState,
+          processedSequenceByUid: structuredClone(processedSequenceByUid),
+        };
       });
     },
 
@@ -458,6 +504,9 @@ export function createChorusNetwork({
       if (!active() || !isAuthority(latestState, now(), authorityEpoch) || !validKey(requestUid, 128)
         || !Number.isInteger(Number(sequence)) || Number(sequence) < 1) {
         return { ok: false, reason: "not_authority" };
+      }
+      if ((processedSequenceByUid[requestUid] || 0) < Number(sequence)) {
+        return { ok: false, reason: "not_processed" };
       }
       await dbModule.remove(pathRef(`actions/${requestUid}/${Number(sequence)}`));
       return { ok: true };

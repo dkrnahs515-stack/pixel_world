@@ -767,11 +767,15 @@ export class PixelRPG {
       if (localAction && result?.ok) {
         const sequence = Number(String(request.id).split(":").at(-2));
         if (Number.isInteger(sequence) && sequence > 0) {
-          Promise.resolve(controller.network.sendAction({ ...request, sequence })).catch(error => {
-            this.reportBossCallbackError("무명의 합창 행동 전송 실패", error);
-          });
+          const appliedSnapshot = structuredClone(controller.snapshot);
+          Promise.resolve(controller.network.sendAction({ ...request, sequence }))
+            .then(sent => {
+              if (sent?.ok && sent.action) this.publishChorusStateIfAuthority(sent.action, appliedSnapshot);
+            })
+            .catch(error => {
+              this.reportBossCallbackError("무명의 합창 행동 전송 실패", error);
+            });
         }
-        this.publishChorusStateIfAuthority();
       }
       return result;
     };
@@ -834,16 +838,21 @@ export class PixelRPG {
       return leftCreatedAt - rightCreatedAt || String(left.id).localeCompare(String(right.id));
     });
     controller.receivingNetworkActions = true;
-    let results;
+    let processedAction = null;
     try {
-      results = actions.map(action => controller.receiveActions?.([action])?.[0]);
+      for (const action of actions) {
+        const result = controller.receiveActions?.([action])?.[0];
+        if (result?.ok) {
+          processedAction = action;
+          break;
+        }
+      }
     } finally {
       controller.receivingNetworkActions = false;
     }
-    const hasAppliedAction = results.some(result => result?.ok);
-    const publishResult = hasAppliedAction
-      ? await network.publishState(controller.snapshot)
-      : { ok: true };
+    const publishResult = processedAction
+      ? await network.publishState(controller.snapshot, { processedAction })
+      : { ok: true, processedSequenceByUid: network.processedSequenceByUid || {} };
     const confirmedSnapshot = publishResult?.ok && publishResult.encounter
       ? structuredClone(publishResult.encounter)
       : this.latestChorusSnapshot;
@@ -852,8 +861,9 @@ export class PixelRPG {
       this.lastPublishedChorusSignature = JSON.stringify(confirmedSnapshot);
     }
     if (publishResult?.ok) await this.writeChorusCompletionClaimsIfAuthority();
-    await Promise.all(actions.map((action, index) => (
-      confirmedSnapshot?.processedActionIds?.includes(action.id)
+    const confirmedSequences = publishResult?.processedSequenceByUid || network.processedSequenceByUid || {};
+    await Promise.all(actions.map(action => (
+      Number(action.sequence) <= Number(confirmedSequences[action.uid] || 0)
         ? network.acknowledgeAction(action.uid, action.sequence, confirmedSnapshot.authorityEpoch)
         : Promise.resolve({ ok: false })
     )));
@@ -871,15 +881,16 @@ export class PixelRPG {
     return result?.ok === true;
   }
 
-  publishChorusStateIfAuthority() {
-    const snapshot = this.chorusController?.snapshot;
+  publishChorusStateIfAuthority(processedAction = null, snapshotOverride = null) {
+    const snapshot = snapshotOverride || this.chorusController?.snapshot;
     const network = this.network?.chorus;
     if (this.sessionMode !== "online" || !snapshot || !network
       || snapshot.authorityUid !== this.network?.uid) return false;
     const signature = JSON.stringify(snapshot);
     if (signature === this.lastPublishedChorusSignature) return false;
     this.lastPublishedChorusSignature = signature;
-    Promise.resolve(network.publishState(snapshot)).then(result => {
+    const publishOptions = processedAction ? { processedAction } : undefined;
+    Promise.resolve(network.publishState(snapshot, publishOptions)).then(result => {
       if (!result?.ok || !result.encounter) {
         this.lastPublishedChorusSignature = null;
         return;

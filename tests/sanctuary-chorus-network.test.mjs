@@ -175,10 +175,16 @@ test("leaving the return-record map unsubscribes state actions and the user's cl
 
 test("only the active authority publishes state and removes applied actions", async () => {
   const state = activeEncounter("a", 9_000);
-  const fake = firebaseModulesFake({ [`${BASE_PATH}/state`]: state });
+  const wireState = {
+    ...state,
+    processedSequenceByUid: { b: 7 },
+    processedActionUid: "b",
+    processedActionSequence: 7,
+  };
+  const fake = firebaseModulesFake({ [`${BASE_PATH}/state`]: wireState });
   const a = createChorusNetwork(networkOptions(fake, "a"));
   await a.setMap("sanctuary-return-record");
-  fake.emit(`${BASE_PATH}/state`, state);
+  fake.emit(`${BASE_PATH}/state`, wireState);
 
   assert.equal((await a.publishState({
     ...state,
@@ -442,6 +448,9 @@ test("raw receipt history filters ancient replays and publishes only additive hi
       ancientId,
       ...Array.from({ length: 300 }, (_, index) => `receipt-${String(index).padStart(3, "0")}`),
     ]),
+    processedSequenceByUid: { player: 1 },
+    processedActionUid: "player",
+    processedActionSequence: 1,
     contributors: {
       player: {
         firstContributedAt: 9_000,
@@ -480,13 +489,24 @@ test("raw receipt history filters ancient replays and publishes only additive hi
     },
     combatRevision: network.latestState.combatRevision + 1,
     updatedAt: 10_000,
+  }, {
+    processedAction: {
+      id: freshId,
+      encounterId: "e1",
+      authorityEpoch: 2,
+      phase: "anchors",
+      uid: "player",
+      sequence: 999,
+    },
   });
 
   assert.equal(result.ok, true);
-  assert.equal(fake.updates.at(-1).value[`processedActionIds/${freshId}`], true);
+  assert.equal(fake.updates.at(-1).value["processedSequenceByUid/player"], 999);
+  assert.equal(fake.updates.at(-1).value.processedActionUid, "player");
+  assert.equal(fake.updates.at(-1).value.processedActionSequence, 999);
   assert.equal(fake.updates.at(-1).value["contributors/player/actionTypes/anchor-stabilize"], true);
   assert.equal(fake.updates.at(-1).value["contributors/player/lastContributedAt"], 10_000);
-  assert.equal(Object.hasOwn(fake.updates.at(-1).value, "processedActionIds"), false);
+  assert.equal(Object.keys(fake.updates.at(-1).value).some(key => key.startsWith("processedActionIds")), false);
   assert.equal(Object.hasOwn(fake.updates.at(-1).value, "contributors/player"), false);
 });
 
@@ -553,4 +573,121 @@ test("an expired owner cannot publish combat state or remove an action before ta
   assert.equal(acknowledged.ok, false);
   assert.equal(fake.transactions.length, transactionCount);
   assert.deepEqual(fake.removes, []);
+});
+
+test("sequence watermarks bound replay history and filter lower late actions", async () => {
+  const receivedActions = [];
+  const state = {
+    ...activeEncounter("a", 9_000),
+    processedSequenceByUid: { player: 700 },
+    processedActionUid: "player",
+    processedActionSequence: 700,
+  };
+  const freshAction = {
+    id: "player-session:2:900:fragment-strike",
+    encounterId: "e1",
+    authorityEpoch: 2,
+    phase: "anchors",
+    uid: "player",
+    sequence: 900,
+    type: "fragment-strike",
+    fragmentId: "forest",
+    createdAt: 10_000,
+  };
+  const fake = firebaseModulesFake({ [`${BASE_PATH}/state`]: state });
+  const network = createChorusNetwork(networkOptions(fake, "a", 10_000, {
+    onActionsChanged: value => receivedActions.push(value),
+  }));
+  await network.setMap("sanctuary-return-record");
+  fake.emit(`${BASE_PATH}/actions`, {
+    player: {
+      12: { ...freshAction, id: "late-lower-action", sequence: 12 },
+      900: freshAction,
+    },
+  });
+  assert.deepEqual(receivedActions, []);
+  fake.emit(`${BASE_PATH}/state`, state);
+
+  assert.deepEqual(receivedActions.at(-1), { player: { 900: freshAction } });
+  assert.deepEqual(network.processedSequenceByUid, { player: 700 });
+  assert.equal(Array.isArray(network.latestState.processedActionIds), true);
+
+  const published = await network.publishState({
+    ...network.latestState,
+    processedActionIds: [freshAction.id],
+    contributors: {
+      player: {
+        firstContributedAt: 10_000,
+        lastContributedAt: 10_000,
+        actionTypes: ["fragment-strike"],
+      },
+    },
+    combatRevision: 1,
+    updatedAt: 10_000,
+  }, { processedAction: freshAction });
+
+  assert.equal(published.ok, true);
+  assert.deepEqual(fake.updates.at(-1), {
+    path: `${BASE_PATH}/state`,
+    value: {
+      "contributors/player/firstContributedAt": 10_000,
+      "contributors/player/lastContributedAt": 10_000,
+      "contributors/player/actionTypes/fragment-strike": true,
+      combatRevision: 1,
+      updatedAt: 10_000,
+      "processedSequenceByUid/player": 900,
+      processedActionUid: "player",
+      processedActionSequence: 900,
+    },
+  });
+  assert.deepEqual(published.processedSequenceByUid, { player: 900 });
+  assert.equal(Object.hasOwn(fake.updates.at(-1).value, "processedActionIds"), false);
+
+  fake.emit(`${BASE_PATH}/actions`, {
+    player: {
+      899: { ...freshAction, id: "late-after-confirmation", sequence: 899 },
+      901: { ...freshAction, id: "newer-action", sequence: 901 },
+    },
+  });
+  assert.deepEqual(receivedActions.at(-1), {
+    player: { 901: { ...freshAction, id: "newer-action", sequence: 901 } },
+  });
+  assert.equal((await network.acknowledgeAction("player", 899)).ok, true);
+  assert.equal((await network.acknowledgeAction("player", 901)).ok, false);
+});
+
+test("a new processed id requires matching pending action metadata", async () => {
+  const state = activeEncounter("a", 9_000);
+  const fake = firebaseModulesFake({ [`${BASE_PATH}/state`]: state });
+  const network = createChorusNetwork(networkOptions(fake, "a", 10_000));
+  await network.setMap("sanctuary-return-record");
+  fake.emit(`${BASE_PATH}/state`, state);
+  const incoming = {
+    ...state,
+    processedActionIds: ["player-session:2:50:fragment-strike"],
+    contributors: {
+      player: {
+        firstContributedAt: 10_000,
+        lastContributedAt: 10_000,
+        actionTypes: ["fragment-strike"],
+      },
+    },
+    combatRevision: 1,
+    updatedAt: 10_000,
+  };
+
+  const missing = await network.publishState(incoming);
+  const mismatched = await network.publishState(incoming, {
+    processedAction: {
+      id: incoming.processedActionIds[0],
+      encounterId: "wrong-encounter",
+      authorityEpoch: 2,
+      uid: "player",
+      sequence: 50,
+    },
+  });
+
+  assert.deepEqual(missing, { ok: false, reason: "processed_action_required" });
+  assert.deepEqual(mismatched, { ok: false, reason: "processed_action_mismatch" });
+  assert.equal(fake.updates.length, 0);
 });

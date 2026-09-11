@@ -294,7 +294,12 @@ test("a new authority applies actions that arrived before its transferred state 
   game.network = {
     uid: "new-host",
     chorus: {
-      publishState: async snapshot => ({ ok: true, encounter: structuredClone(snapshot) }),
+      processedSequenceByUid: {},
+      publishState: async snapshot => ({
+        ok: true,
+        encounter: structuredClone(snapshot),
+        processedSequenceByUid: { remote: 1 },
+      }),
       acknowledgeAction: async (...args) => { acknowledgements.push(args); return { ok: true }; },
     },
   };
@@ -353,7 +358,12 @@ test("authority writes completion claims when a remote contributor separates the
   game.network = {
     uid: "host",
     chorus: {
-      publishState: async snapshot => ({ ok: true, encounter: structuredClone(snapshot) }),
+      processedSequenceByUid: {},
+      publishState: async snapshot => ({
+        ok: true,
+        encounter: structuredClone(snapshot),
+        processedSequenceByUid: { remote: 9 },
+      }),
       acknowledgeAction: async () => ({ ok: true }),
       writeCompletionClaims: async (...args) => { writes.push(args); return { ok: true }; },
     },
@@ -428,12 +438,14 @@ test("a duplicate listener action is acknowledged only after its id exists in Fi
   const acknowledgements = [];
   game.sessionMode = "online";
   game.latestChorusSnapshot = confirmed;
+  const chorusNetwork = {
+    processedSequenceByUid: {},
+    publishState: async () => ({ ok: false, reason: "not_confirmed" }),
+    acknowledgeAction: async (...args) => { acknowledgements.push(args); return { ok: true }; },
+  };
   game.network = {
     uid: "host",
-    chorus: {
-      publishState: async () => ({ ok: false, reason: "not_confirmed" }),
-      acknowledgeAction: async (...args) => { acknowledgements.push(args); return { ok: true }; },
-    },
+    chorus: chorusNetwork,
   };
   game.chorusController = game.createChorusControllerForMode("online");
   game.chorusController.receiveSnapshot(optimistic);
@@ -456,7 +468,7 @@ test("a duplicate listener action is acknowledged only after its id exists in Fi
   await game.receiveChorusActions(requests);
   assert.deepEqual(acknowledgements, []);
 
-  game.latestChorusSnapshot = { ...confirmed, processedActionIds: [actionId] };
+  chorusNetwork.processedSequenceByUid = { host: 7 };
   await game.receiveChorusActions(requests);
   assert.deepEqual(acknowledgements, [["host", 7, 1]]);
 });
@@ -470,7 +482,12 @@ test("same-time action results remain paired by action id before acknowledgement
   game.network = {
     uid: "host",
     chorus: {
-      publishState: async snapshot => ({ ok: true, encounter: structuredClone(snapshot) }),
+      processedSequenceByUid: {},
+      publishState: async snapshot => ({
+        ok: true,
+        encounter: structuredClone(snapshot),
+        processedSequenceByUid: { b: 2 },
+      }),
       acknowledgeAction: async (...args) => { acknowledgements.push(args); return { ok: true }; },
     },
   };
@@ -508,4 +525,152 @@ test("same-time action results remain paired by action id before acknowledgement
   });
 
   assert.deepEqual(acknowledgements, [["b", 2, 1]]);
+});
+
+test("an authority publishes at most one applied action per combat revision", async () => {
+  const game = Object.create(SanctuaryPixelRPG.prototype);
+  const state = createChorusEncounter({ encounterId: "shared-e1", authorityUid: "host", now: 1_000 });
+  const publishCalls = [];
+  const acknowledgements = [];
+  game.sessionMode = "online";
+  game.latestChorusSnapshot = state;
+  game.network = {
+    uid: "host",
+    chorus: {
+      processedSequenceByUid: {},
+      publishState: async (...args) => {
+        publishCalls.push(args);
+        const processedAction = args[1].processedAction;
+        return {
+          ok: true,
+          encounter: structuredClone(args[0]),
+          processedSequenceByUid: { [processedAction.uid]: processedAction.sequence },
+        };
+      },
+      acknowledgeAction: async (...args) => { acknowledgements.push(args); return { ok: true }; },
+    },
+  };
+  game.chorusController = game.createChorusControllerForMode("online");
+  game.chorusController.receiveSnapshot(state);
+  game.chorusController.setMap("sanctuary-return-record", { correctionLinked: true });
+  const first = {
+    id: "a-session:1:1:fragment-strike",
+    encounterId: "shared-e1",
+    authorityEpoch: 1,
+    phase: "anchors",
+    uid: "a",
+    sequence: 1,
+    type: "fragment-strike",
+    fragmentId: "forest",
+    createdAt: 1_100,
+  };
+  const second = {
+    ...first,
+    id: "b-session:1:1:fragment-strike",
+    uid: "b",
+    fragmentId: "coast",
+    createdAt: 1_200,
+  };
+
+  await game.receiveChorusActions({ a: { 1: first }, b: { 1: second } });
+
+  assert.equal(publishCalls.length, 1);
+  assert.equal(publishCalls[0][0].combatRevision, 1);
+  assert.deepEqual(publishCalls[0][0].processedActionIds, [first.id]);
+  assert.deepEqual(publishCalls[0][1], { processedAction: first });
+  assert.deepEqual(acknowledgements, [["a", 1, 1]]);
+});
+
+test("authority couples the applied Firebase action sequence to its state publish", async () => {
+  const game = Object.create(SanctuaryPixelRPG.prototype);
+  const state = createChorusEncounter({ encounterId: "shared-e1", authorityUid: "host", now: 1_000 });
+  const publishCalls = [];
+  const acknowledgements = [];
+  game.sessionMode = "online";
+  game.latestChorusSnapshot = state;
+  game.network = {
+    uid: "host",
+    chorus: {
+      processedSequenceByUid: {},
+      publishState: async (...args) => {
+        publishCalls.push(args);
+        return {
+          ok: true,
+          encounter: structuredClone(args[0]),
+          processedSequenceByUid: { remote: 987 },
+        };
+      },
+      acknowledgeAction: async (...args) => { acknowledgements.push(args); return { ok: true }; },
+    },
+  };
+  game.chorusController = game.createChorusControllerForMode("online");
+  game.chorusController.receiveSnapshot(state);
+  game.chorusController.setMap("sanctuary-return-record", { correctionLinked: true });
+  const action = {
+    id: "remote-session:1:987:fragment-strike",
+    encounterId: "shared-e1",
+    authorityEpoch: 1,
+    phase: "anchors",
+    uid: "remote",
+    sequence: 987,
+    type: "fragment-strike",
+    fragmentId: "forest",
+    createdAt: 1_100,
+  };
+
+  await game.receiveChorusActions({ remote: { 987: action } });
+
+  assert.equal(publishCalls.length, 1);
+  assert.deepEqual(publishCalls[0][1], { processedAction: action });
+  assert.deepEqual(acknowledgements, [["remote", 987, 1]]);
+});
+
+test("local authority waits for the allocated Firebase sequence before publishing", async () => {
+  const game = Object.create(SanctuaryPixelRPG.prototype);
+  const state = createChorusEncounter({ encounterId: "shared-e1", authorityUid: "host", now: 1_000 });
+  const events = [];
+  const publishCalls = [];
+  game.sessionMode = "online";
+  game.latestChorusSnapshot = state;
+  game.lastPublishedChorusSignature = null;
+  game.reportBossCallbackError = error => { throw error; };
+  game.network = {
+    uid: "host",
+    chorus: {
+      processedSequenceByUid: {},
+      sendAction: async request => {
+        events.push("send");
+        return { ok: true, action: { ...request, sequence: 321 } };
+      },
+      publishState: async (...args) => {
+        events.push("publish");
+        publishCalls.push(args);
+        return {
+          ok: true,
+          encounter: structuredClone(args[0]),
+          processedSequenceByUid: { host: 321 },
+        };
+      },
+    },
+  };
+  game.chorusController = game.createChorusControllerForMode("online");
+  game.wireOnlineChorusController(game.chorusController);
+  game.chorusController.receiveSnapshot(state);
+  game.chorusController.setMap("sanctuary-return-record", { correctionLinked: true });
+
+  const result = await game.chorusController.requestAttack({
+    targetId: "unnamed-chorus",
+    attackKind: "basic",
+    fragmentId: "forest",
+  }, 1_100);
+  await new Promise(resolve => setImmediate(resolve));
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(events, ["send", "publish"]);
+  assert.equal(publishCalls.length, 1);
+  assert.equal(publishCalls[0][1].processedAction.sequence, 321);
+  assert.equal(publishCalls[0][1].processedAction.uid, "host");
+  assert.equal(publishCalls[0][0].processedActionIds.includes(
+    publishCalls[0][1].processedAction.id,
+  ), true);
 });
