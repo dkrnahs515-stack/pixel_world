@@ -3,12 +3,16 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { getVolcanoChapterObjective } from "../src/world-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 import { getSanctuaryChapterObjective } from "../src/sanctuary-story-data-20260911-sanctuary.js";
+import { createChorusEncounter } from "../src/sanctuary-chorus-state-20260911-sanctuary.js";
+import { TESTIMONY_IDS as CHORUS_TESTIMONY_IDS } from "../src/sanctuary-chorus-data-20260911-sanctuary.js";
+import { PixelRPG } from "../src/game-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 
 const CORE_IDS = ["forest-core-casket", "coast-core-casket", "volcano-core-casket"];
 const SOUND_IDS = ["departure-bell", "dawn-bird", "tide-bell", "mine-shift-bell"];
 const TRUTH_IDS = ["truth-resonance-time", "truth-first-archivist-log", "truth-core-self-division"];
 const FALSE_RETURN_IDS = ["false-return-garen-unscarred", "false-return-source-erased", "false-return-resonance-time"];
 const FIELD_IDS = ["vanguard-return-state", "core-division-cause", "delay-roan", "delay-sera", "delay-garen", "delay-lumen"];
+const OPINION_IDS = ["roan", "sera", "garen", "lumen", "echo"];
 
 function sanctuaryProgress(overrides = {}) {
   return {
@@ -26,8 +30,8 @@ function sanctuaryProgress(overrides = {}) {
   };
 }
 
-function assertObjective(progress, expected) {
-  assert.deepEqual(getSanctuaryChapterObjective(progress), expected);
+function assertObjective(progress, expected, chorus = null) {
+  assert.deepEqual(getSanctuaryChapterObjective(progress, chorus), expected);
 }
 
 test("sanctuary objective advances through the approved gates", () => {
@@ -59,19 +63,15 @@ test("sanctuary objective advances through the approved gates", () => {
     id: "link-correction", mapId: "sanctuary-return-record", interactionIds: ["correction-link-console"],
     label: "원본을 보존한 채 마지막 귀환 기록의 정정 링크를 만든다.",
   });
-  assertObjective(sanctuaryProgress({ activatedCoreIds: CORE_IDS, collectedMemoryIds: [...SOUND_IDS, ...FALSE_RETURN_IDS], memoryOrderSolved: true, coreTruthRevealed: true, falseReturnRejected: true, completedRecordFieldIds: FIELD_IDS, correctionLinked: true }), {
-    id: "separate-chorus", mapId: "sanctuary-return-record", interactionIds: [],
-    label: "무명의 합창에서 기억들을 분리한다.",
-  });
   assertObjective(sanctuaryProgress({ activatedCoreIds: CORE_IDS, collectedMemoryIds: [...SOUND_IDS, ...FALSE_RETURN_IDS], memoryOrderSolved: true, coreTruthRevealed: true, falseReturnRejected: true, completedRecordFieldIds: FIELD_IDS, correctionLinked: true, chorusSeparated: true }), {
-    id: "collect-three-testimonies", mapId: "sanctuary-three-futures", interactionIds: ["future-testimony-forest", "future-testimony-coast", "future-testimony-volcano"],
-    label: "세 지역에 남은 증언을 듣는다.",
+    id: "collect-five-opinions", mapId: "sanctuary-three-futures", interactionIds: OPINION_IDS.map(id => `future-testimony-${id}`),
+    label: "로안·세라·가렌·루멘·에코의 의견을 모두 듣는다.",
   });
-  assertObjective(sanctuaryProgress({ activatedCoreIds: CORE_IDS, collectedMemoryIds: [...SOUND_IDS, ...FALSE_RETURN_IDS], memoryOrderSolved: true, coreTruthRevealed: true, falseReturnRejected: true, completedRecordFieldIds: FIELD_IDS, correctionLinked: true, chorusSeparated: true, collectedTestimonyIds: ["forest", "coast", "volcano"] }), {
+  assertObjective(sanctuaryProgress({ activatedCoreIds: CORE_IDS, collectedMemoryIds: [...SOUND_IDS, ...FALSE_RETURN_IDS], memoryOrderSolved: true, coreTruthRevealed: true, falseReturnRejected: true, completedRecordFieldIds: FIELD_IDS, correctionLinked: true, chorusSeparated: true, collectedTestimonyIds: OPINION_IDS }), {
     id: "preview-three-futures", mapId: "sanctuary-three-futures", interactionIds: ["future-preview-seal", "future-preview-restore", "future-preview-release"],
     label: "봉인·복원·해방의 미래를 모두 확인한다.",
   });
-  assertObjective(sanctuaryProgress({ activatedCoreIds: CORE_IDS, collectedMemoryIds: [...SOUND_IDS, ...FALSE_RETURN_IDS], memoryOrderSolved: true, coreTruthRevealed: true, falseReturnRejected: true, completedRecordFieldIds: FIELD_IDS, correctionLinked: true, chorusSeparated: true, collectedTestimonyIds: ["forest", "coast", "volcano"], previewedFutureIds: ["seal", "restore", "release"] }), {
+  assertObjective(sanctuaryProgress({ activatedCoreIds: CORE_IDS, collectedMemoryIds: [...SOUND_IDS, ...FALSE_RETURN_IDS], memoryOrderSolved: true, coreTruthRevealed: true, falseReturnRejected: true, completedRecordFieldIds: FIELD_IDS, correctionLinked: true, chorusSeparated: true, collectedTestimonyIds: OPINION_IDS, previewedFutureIds: ["seal", "restore", "release"] }), {
     id: "choose-future", mapId: "sanctuary-three-futures", interactionIds: ["sanctuary-ending-console"],
     label: "남겨진 기억의 운명을 정한다.",
   });
@@ -81,8 +81,133 @@ test("volcano completion delegates to the sanctuary entrance objective", () => {
   assert.deepEqual(getVolcanoChapterObjective(sanctuaryProgress()), getSanctuaryChapterObjective(sanctuaryProgress()));
 });
 
+function chorusSnapshot(overrides = {}) {
+  return {
+    ...createChorusEncounter({ encounterId: "chorus-review-1", authorityUid: "reviewer", now: 1 }),
+    ...overrides,
+  };
+}
+
+function correctionReady() {
+  return sanctuaryProgress({
+    activatedCoreIds: CORE_IDS, collectedMemoryIds: [...SOUND_IDS, ...FALSE_RETURN_IDS],
+    memoryOrderSolved: true, coreTruthRevealed: true, falseReturnRejected: true,
+    completedRecordFieldIds: FIELD_IDS, correctionLinked: true,
+  });
+}
+
+test("shared chorus phase guides anchors, testimonies, and onslaught before a personal completion claim", () => {
+  assertObjective(correctionReady(), {
+    id: "separate-chorus", mapId: "sanctuary-return-record", interactionIds: ["unnamed-chorus"],
+    label: "무명의 합창에서 기억들을 분리한다.",
+  });
+  assertObjective(correctionReady(), {
+    id: "stabilize-chorus-anchors", mapId: "sanctuary-return-record",
+    interactionIds: ["unnamed-chorus", "chorus-anchor-forest", "chorus-anchor-coast", "chorus-anchor-volcano"],
+    label: "무명의 합창을 공격해 기억 파편을 모아 세 기록 닻에 F로 놓는다.",
+  }, chorusSnapshot());
+  assertObjective(correctionReady(), {
+    id: "resolve-chorus-testimonies", mapId: "sanctuary-return-record",
+    interactionIds: CHORUS_TESTIMONY_IDS.map(id => `chorus-testimony-${id}`),
+    label: "무명의 합창의 증언을 F로 판정한다.",
+  }, chorusSnapshot({ stabilizedAnchorIds: ["forest", "coast", "volcano"] }));
+  assertObjective(correctionReady(), {
+    id: "sever-chorus-bonds", mapId: "sanctuary-return-record",
+    interactionIds: ["chorus-record-roan", "chorus-bond-roan"],
+    label: "로안 기록을 F로 활성화한 뒤 드러난 결속선을 공격한다.",
+  }, chorusSnapshot({
+    stabilizedAnchorIds: ["forest", "coast", "volcano"], resolvedTestimonyIds: CHORUS_TESTIMONY_IDS,
+  }));
+});
+
+test("later flags and a shared separated snapshot cannot bypass the personal chorus completion claim", () => {
+  const beforeClaim = correctionReady();
+  beforeClaim.chapters.sanctuary.collectedTestimonyIds = [...OPINION_IDS];
+  beforeClaim.chapters.sanctuary.previewedFutureIds = ["seal", "restore", "release"];
+  assert.equal(getSanctuaryChapterObjective(beforeClaim, chorusSnapshot({
+    stabilizedAnchorIds: ["forest", "coast", "volcano"], resolvedTestimonyIds: CHORUS_TESTIMONY_IDS,
+    severedBondIds: ["roan", "sera", "garen", "lumen"],
+  })).id, "separate-chorus");
+  const game = Object.create(PixelRPG.prototype);
+  game.progress = { worldProgress: { ...beforeClaim, unlockedRegionIds: ["sanctuary"] } };
+  game.latestChorusSnapshot = chorusSnapshot({
+    stabilizedAnchorIds: ["forest", "coast", "volcano"], resolvedTestimonyIds: CHORUS_TESTIMONY_IDS,
+  });
+  const persistedBefore = structuredClone(game.progress);
+  assert.equal(game.currentChapterObjective().id, "sever-chorus-bonds");
+  assert.deepEqual(game.progress, persistedBefore);
+  assert.equal("chorusSnapshot" in game.progress.worldProgress, false);
+});
+
+test("four of five opinions cannot unlock previews or a choice", () => {
+  const progress = correctionReady();
+  progress.chapters.sanctuary.chorusSeparated = true;
+  progress.chapters.sanctuary.collectedTestimonyIds = OPINION_IDS.slice(0, 4);
+  progress.chapters.sanctuary.previewedFutureIds = ["seal", "restore", "release"];
+  assert.equal(getSanctuaryChapterObjective(progress).id, "collect-five-opinions");
+  progress.chapters.sanctuary.collectedTestimonyIds = [...OPINION_IDS];
+  assert.equal(getSanctuaryChapterObjective(progress).id, "choose-future");
+});
+
 function relativeModuleSpecifiers(source) {
-  return [...source.matchAll(/(?:import|export)\s+(?:[^"';]*?\s+from\s+)?["'](\.\/[^"']+\.js)["']/g)].map(match => match[1]);
+  const specifiers = [];
+  const isWord = value => /[A-Za-z0-9_$]/.test(value || "");
+  const skipSpace = index => {
+    while (/\s/.test(source[index] || "")) index += 1;
+    return index;
+  };
+  const readString = index => {
+    const quote = source[index];
+    if (!["'", '"', "`"].includes(quote)) return null;
+    let value = "";
+    for (index += 1; index < source.length; index += 1) {
+      if (source[index] === "\\") { value += source[index + 1] || ""; index += 1; continue; }
+      if (source[index] === quote) return { value, end: index + 1 };
+      value += source[index];
+    }
+    return null;
+  };
+  const add = value => {
+    if ((value.startsWith("./") || value.startsWith("../")) && value.endsWith(".js")) specifiers.push(value);
+  };
+  for (let index = 0; index < source.length;) {
+    if (source.startsWith("//", index)) {
+      const lineEnd = source.indexOf("\n", index + 2);
+      index = lineEnd < 0 ? source.length : lineEnd + 1;
+      continue;
+    }
+    if (source.startsWith("/*", index)) {
+      const commentEnd = source.indexOf("*/", index + 2);
+      index = commentEnd < 0 ? source.length : commentEnd + 2;
+      continue;
+    }
+    if (["'", '"', "`"].includes(source[index])) {
+      index = readString(index)?.end || source.length;
+      continue;
+    }
+    const keyword = source.startsWith("import", index) ? "import" : source.startsWith("export", index) ? "export" : null;
+    if (!keyword || isWord(source[index - 1]) || isWord(source[index + keyword.length])) { index += 1; continue; }
+    let cursor = skipSpace(index + keyword.length);
+    if (keyword === "import" && source[cursor] === "(") {
+      const module = readString(skipSpace(cursor + 1));
+      if (module) add(module.value);
+      index = module?.end || cursor + 1;
+      continue;
+    }
+    let module = readString(cursor);
+    if (!module) {
+      while (cursor < source.length) {
+        if (source.startsWith("from", cursor) && !isWord(source[cursor - 1]) && !isWord(source[cursor + 4])) {
+          module = readString(skipSpace(cursor + 4));
+          break;
+        }
+        cursor += 1;
+      }
+    }
+    if (module) add(module.value);
+    index = module?.end || cursor + 1;
+  }
+  return specifiers;
 }
 
 async function reachableLocalModules(entryUrl) {
@@ -104,4 +229,22 @@ test("every reachable local module uses the sanctuary physical suffix", async ()
   ));
   assert.equal(visited.size, 88);
   for (const url of visited) assert.match(new URL(url).pathname, /-20260911-sanctuary\.js$/);
+});
+
+test("cache scanner finds static, side-effect, dynamic, and parent-relative local modules without string decoys", () => {
+  const source = `
+    // import "./comment-20260905-upgrade.js";
+    /* export { stale } from "../block-20260905-upgrade.js"; */
+    const decoy = 'import("../decoy-20260905-upgrade.js")';
+    import "./side-effect-20260911-sanctuary.js";
+    import { value } from "../parent-20260911-sanctuary.js";
+    export { value as copied } from "./re-export-20260911-sanctuary.js";
+    await import("../dynamic-20260911-sanctuary.js");
+  `;
+  assert.deepEqual(relativeModuleSpecifiers(source), [
+    "./side-effect-20260911-sanctuary.js",
+    "../parent-20260911-sanctuary.js",
+    "./re-export-20260911-sanctuary.js",
+    "../dynamic-20260911-sanctuary.js",
+  ]);
 });

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   MEMORY_SOUND_IDS,
   RECORD_FIELD_IDS,
+  TESTIMONY_IDS,
   createInitialSanctuaryChapter,
   normalizeSanctuaryChapter,
   reduceSanctuaryChapter,
@@ -190,7 +191,7 @@ test("a confirmed sanctuary ending cannot be replaced by another choice", () => 
     completedRecordFieldIds: [...RECORD_FIELD_IDS],
     correctionLinked: true,
     chorusSeparated: true,
-    collectedTestimonyIds: ["forest", "coast", "volcano"],
+    collectedTestimonyIds: [...TESTIMONY_IDS],
     previewedFutureIds: ["seal", "restore", "release"],
   };
   const chosen = reduceSanctuaryChapter(ready, { type: "choose-ending", endingChoice: "seal" }).chapter;

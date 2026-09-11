@@ -34,7 +34,7 @@ export const RECORD_FIELD_ANSWER_IDS = Object.freeze({
   "delay-garen": "garen-delayed-volcano-collapse-scarred",
   "delay-lumen": "lumen-touched-seal-to-delay-division",
 });
-export const TESTIMONY_IDS = Object.freeze(["forest", "coast", "volcano"]);
+export const TESTIMONY_IDS = Object.freeze(["roan", "sera", "garen", "lumen", "echo"]);
 export const FUTURE_IDS = Object.freeze(["seal", "restore", "release"]);
 const ENDING_CHOICES = Object.freeze(["seal", "restore", "release"]);
 

@@ -2383,7 +2383,7 @@ export class PixelRPG {
 
   currentChapterObjective() {
     if (this.progress?.worldProgress?.unlockedRegionIds?.includes("sanctuary")) {
-      return getSanctuaryChapterObjective(this.progress.worldProgress);
+      return getSanctuaryChapterObjective(this.progress.worldProgress, this.latestChorusSnapshot);
     }
     return getVolcanoChapterObjective(this.progress?.worldProgress);
   }

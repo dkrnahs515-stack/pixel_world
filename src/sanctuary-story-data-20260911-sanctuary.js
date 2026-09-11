@@ -9,6 +9,13 @@ import {
   normalizeSanctuaryChapter,
 } from "./sanctuary-progress-20260911-sanctuary.js";
 import { SANCTUARY_ENDINGS } from "./sanctuary-ending-20260911-sanctuary.js";
+import {
+  ANCHOR_IDS,
+  BOND_IDS,
+  CHORUS_BOSS_ID,
+  TESTIMONY_IDS as CHORUS_TESTIMONY_IDS,
+} from "./sanctuary-chorus-data-20260911-sanctuary.js";
+import { normalizeChorusEncounter } from "./sanctuary-chorus-state-20260911-sanctuary.js";
 
 function freeze(value) {
   if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
@@ -344,17 +351,25 @@ function correctionConsoleTarget() {
 }
 function futureOpinionTargets() {
   const definitions = freeze({
-    forest: {
+    roan: {
       x: 520, y: 1080, prompt: "F · 숲의 증언 듣기",
       pages: ["로안의 기록은 기억을 가두는 일과 지키는 일 사이에 남을 책임을 묻는다."],
     },
-    coast: {
+    sera: {
       x: 1080, y: 880, prompt: "F · 해안의 증언 듣기",
       pages: ["세라의 신호는 이름을 돌려주는 일이 과거를 되풀이하는 일은 아니라고 증언한다."],
     },
-    volcano: {
+    garen: {
       x: 1640, y: 1080, prompt: "F · 화산의 증언 듣기",
       pages: ["가렌의 기록은 흉터와 후유증까지 남긴 진실만이 해방을 감당할 수 있다고 증언한다."],
+    },
+    lumen: {
+      x: 700, y: 1450, prompt: "F · 루멘의 의견 듣기",
+      pages: ["루멘의 기록은 어떤 선택도 지워진 이름을 대신할 수 없으며, 함께 책임져야 한다고 말한다."],
+    },
+    echo: {
+      x: 1460, y: 1450, prompt: "F · 에코의 의견 듣기",
+      pages: ["에코는 기억을 돌려주는 선택이 과거를 되풀이하지 않도록 현재의 목소리를 남기자고 말한다."],
     },
   });
   return TESTIMONY_IDS.map(testimonyId => target(
@@ -451,7 +466,37 @@ function objective(id, label, mapId, interactionIds = []) {
   return freeze({ id, label, mapId, interactionIds });
 }
 
-export function getSanctuaryChapterObjective(worldProgress) {
+function chorusObjective(snapshot) {
+  const chorus = normalizeChorusEncounter(snapshot);
+  if (!chorus || chorus.phase === "separated") {
+    return objective("separate-chorus", "무명의 합창에서 기억들을 분리한다.", "sanctuary-return-record", [CHORUS_BOSS_ID]);
+  }
+  if (chorus.phase === "anchors") {
+    return objective(
+      "stabilize-chorus-anchors",
+      "무명의 합창을 공격해 기억 파편을 모아 세 기록 닻에 F로 놓는다.",
+      "sanctuary-return-record",
+      [CHORUS_BOSS_ID, ...ANCHOR_IDS.map(id => `chorus-anchor-${id}`)],
+    );
+  }
+  if (chorus.phase === "testimonies") {
+    return objective(
+      "resolve-chorus-testimonies",
+      "무명의 합창의 증언을 F로 판정한다.",
+      "sanctuary-return-record",
+      CHORUS_TESTIMONY_IDS.map(id => `chorus-testimony-${id}`),
+    );
+  }
+  const nextBondId = BOND_IDS.find(id => !chorus.severedBondIds.includes(id));
+  return objective(
+    "sever-chorus-bonds",
+    `${nextBondId === "roan" ? "로안" : nextBondId} 기록을 F로 활성화한 뒤 드러난 결속선을 공격한다.`,
+    "sanctuary-return-record",
+    [`chorus-record-${nextBondId}`, `chorus-bond-${nextBondId}`],
+  );
+}
+
+export function getSanctuaryChapterObjective(worldProgress, chorusSnapshot = null) {
   const sanctuary = worldProgress?.chapters?.sanctuary || {};
   const activated = sanctuary.activatedCoreIds || [];
   const memories = sanctuary.collectedMemoryIds || [];
@@ -495,13 +540,13 @@ export function getSanctuaryChapterObjective(worldProgress) {
     );
   }
   if (!sanctuary.chorusSeparated) {
-    return objective("separate-chorus", "무명의 합창에서 기억들을 분리한다.", "sanctuary-return-record");
+    return chorusObjective(chorusSnapshot);
   }
   const testimonies = sanctuary.collectedTestimonyIds || [];
   if (!TESTIMONY_IDS.every(id => testimonies.includes(id))) {
     return objective(
-      "collect-three-testimonies",
-      "세 지역에 남은 증언을 듣는다.",
+      "collect-five-opinions",
+      "로안·세라·가렌·루멘·에코의 의견을 모두 듣는다.",
       "sanctuary-three-futures",
       TESTIMONY_IDS.map(id => `future-testimony-${id}`),
     );

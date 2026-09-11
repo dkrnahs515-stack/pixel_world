@@ -758,7 +758,7 @@ test("sanctuary ending choice and a partial component ledger round-trip independ
     ],
     correctionLinked: true,
     chorusSeparated: true,
-    collectedTestimonyIds: ["forest", "coast", "volcano"],
+    collectedTestimonyIds: ["roan", "sera", "garen", "lumen", "echo"],
     previewedFutureIds: ["seal", "restore", "release"],
     endingChoice: "restore",
     completed: true,
