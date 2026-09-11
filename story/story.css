@@ -168,8 +168,12 @@ a:focus-visible {
   align-items: start;
 }
 
+.story-art-panel,
 .story-figure {
   min-width: 0;
+}
+
+.story-figure {
   margin: 0;
 }
 
@@ -194,9 +198,12 @@ a:focus-visible {
 
 .story-art-fallback {
   max-width: 32rem;
-  padding: 1.5rem;
+  padding: 1rem 1.25rem;
+  margin-top: 1rem;
   color: #fff7df;
   text-align: center;
+  background: rgb(7 25 26 / 88%);
+  border: 1px solid var(--story-brass);
 }
 
 .story-art-fallback button {

@@ -33,23 +33,26 @@
       </header>
 
       <div class="story-layout">
-        <figure class="story-figure" aria-labelledby="storySceneTitle storyArtCaption">
-          <div class="story-art-stage">
-            <img
-              id="storyArt"
-              class="story-art"
-              alt="테오가 고대 숲을 배경으로 활을 든 공식 삽화"
-              width="1024"
-              height="1536"
-              decoding="async"
-            />
-            <div id="storyArtFallback" class="story-art-fallback" hidden>
-              <p>삽화를 불러오지 못했습니다. 조사 기록은 계속 열람할 수 있습니다.</p>
-              <button id="storyArtRetryButton" type="button" hidden>삽화 다시 불러오기</button>
+        <div class="story-art-panel">
+          <figure class="story-figure" aria-labelledby="storySceneTitle storyArtCaption">
+            <div class="story-art-stage">
+              <img
+                id="storyArt"
+                class="story-art"
+                alt="테오가 고대 숲을 배경으로 활을 든 공식 삽화"
+                width="1024"
+                height="1536"
+                decoding="async"
+                aria-describedby="storyArtFallback"
+              />
             </div>
-          </div>
-          <figcaption id="storyArtCaption">공식 기록 삽화 · 장면에 맞춰 열람됩니다.</figcaption>
-        </figure>
+            <figcaption id="storyArtCaption">공식 기록 삽화 · 장면에 맞춰 열람됩니다.</figcaption>
+          </figure>
+          <section id="storyArtFallback" class="story-art-fallback" role="status" aria-live="polite" hidden>
+            <p>삽화를 불러오지 못했습니다. 조사 기록은 계속 열람할 수 있습니다.</p>
+            <button id="storyArtRetryButton" type="button" hidden>삽화 다시 불러오기</button>
+          </section>
+        </div>
 
         <section class="story-investigation" aria-label="현재 조사 기록">
           <p id="storyNarrative" class="story-narrative">기록 보관실의 봉인을 열어 첫 장을 시작하세요.</p>
