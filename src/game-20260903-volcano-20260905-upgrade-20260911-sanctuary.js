@@ -570,7 +570,7 @@ export class PixelRPG {
     this.closeInventory();
     this.closeQaPanel();
     this.closeCommunicationLog();
-    this.closeSanctuaryEnding();
+    this.closeSanctuaryEnding(true);
     this.updateQuestHud();
     this.updateChapterUi();
     this.updateProgressHud();
@@ -651,7 +651,7 @@ export class PixelRPG {
     this.closeInventory();
     this.closeQaPanel();
     this.closeCommunicationLog();
-    this.closeSanctuaryEnding();
+    this.closeSanctuaryEnding(true);
     this.nearbyNpc = null;
     this.updateNpcPrompt();
 
@@ -1565,7 +1565,8 @@ export class PixelRPG {
     return [this.ui.endingCloseButton].filter(control => control && !control.disabled && !control.hidden);
   }
 
-  showSanctuaryEndingView(view) {
+  showSanctuaryEndingView(view, allowInFlight = false) {
+    if (this.endingActionInFlight && !allowInFlight) return false;
     if (!this.ui.endingOverlay || !["first-confirmation", "second-confirmation", "cutscene"].includes(view)) {
       return false;
     }
@@ -1580,6 +1581,7 @@ export class PixelRPG {
   }
 
   openSanctuaryEndingSelection() {
+    if (this.endingActionInFlight) return false;
     if (!this.ui.endingOverlay) return false;
     const selected = this.progress?.worldProgress?.chapters?.sanctuary?.endingChoice;
     if (selected) {
@@ -1596,6 +1598,7 @@ export class PixelRPG {
   }
 
   previewSanctuaryEnding(choice) {
+    if (this.endingActionInFlight) return false;
     if (this.progress?.worldProgress?.chapters?.sanctuary?.endingChoice) return false;
     const captainOutcome = this.progress?.worldProgress?.chapters?.volcano?.captainOutcome;
     const preview = getEndingPreview(choice, captainOutcome);
@@ -1620,9 +1623,30 @@ export class PixelRPG {
         ? "결말은 기록되었습니다. 보상 저장을 다시 시도할 수 있습니다."
         : "EXP 300 · Gold 200 · 칭호가 이 기록에 보존되었습니다.";
     }
-    this.showSanctuaryEndingView("cutscene");
+    this.showSanctuaryEndingView("cutscene", true);
     this.setEndingPresentationActive(true);
     return true;
+  }
+
+  async persistSanctuaryEndingCandidate(candidate, failureMessage) {
+    try {
+      const saved = await this.persistProgress(failureMessage, candidate, {
+        publish: false,
+        notifyOnFailure: false,
+      });
+      if (saved === true) return { ok: true, progress: candidate, notifications: [] };
+      if (saved?.ok === true) {
+        return {
+          ok: true,
+          progress: saved.progress || candidate,
+          notifications: Array.isArray(saved.notifications) ? saved.notifications : [],
+        };
+      }
+    } catch {
+      // Promise rejection follows the same user-visible failure path as a false result.
+    }
+    this.notify?.(failureMessage);
+    return { ok: false, progress: null, notifications: [] };
   }
 
   async confirmSanctuaryEnding(choice = this.pendingSanctuaryEndingChoice) {
@@ -1631,27 +1655,33 @@ export class PixelRPG {
     if (this.progress?.worldProgress?.chapters?.sanctuary?.endingChoice) return false;
     this.endingActionInFlight = true;
     try {
-      const previousProgress = this.progress;
-      const transition = progressSanctuary(this.progress.worldProgress, {
+      const liveProgress = this.progress;
+      const transition = progressSanctuary(liveProgress.worldProgress, {
         type: "choose-ending",
         endingChoice: choice,
       });
       if (transition.progress.chapters.sanctuary.endingChoice !== choice) return false;
-      this.progress = { ...this.progress, worldProgress: transition.progress };
-      if (!await this.persistProgress("결말 선택을 브라우저에 저장할 수 없습니다.")) {
-        this.progress = previousProgress;
+      const choiceCandidate = { ...liveProgress, worldProgress: transition.progress };
+      const choiceSave = await this.persistSanctuaryEndingCandidate(
+        choiceCandidate,
+        "결말 선택을 브라우저에 저장할 수 없습니다.",
+      );
+      if (!choiceSave.ok) {
         this.pendingSanctuaryRewardChoice = null;
         return false;
       }
 
-      const choiceSnapshot = structuredClone(this.progress);
+      this.publishPersistedProgress(choiceSave.progress, choiceSave.notifications);
+      const choiceSnapshot = this.progress;
       this.pendingSanctuaryRewardChoice = choice;
       this.updateChapterUi?.();
       this.presentSanctuaryEnding(choice);
-      const reward = grantSanctuaryEndingReward(this.progress, choice);
-      this.progress = reward.progress;
-      if (!await this.persistProgress("결말은 기록했지만 보상을 저장하지 못했습니다. 다시 시도해 주세요.")) {
-        this.progress = choiceSnapshot;
+      const reward = grantSanctuaryEndingReward(choiceSnapshot, choice);
+      const rewardSave = await this.persistSanctuaryEndingCandidate(
+        reward.progress,
+        "결말은 기록했지만 보상을 저장하지 못했습니다. 다시 시도해 주세요.",
+      );
+      if (!rewardSave.ok) {
         this.pendingSanctuaryRewardChoice = choice;
         if (this.ui.endingRewardStatus) {
           this.ui.endingRewardStatus.textContent = "결말은 기록되었습니다. Enter 또는 코어 근처 F로 보상 저장을 다시 시도하세요.";
@@ -1659,6 +1689,7 @@ export class PixelRPG {
         return true;
       }
 
+      this.publishPersistedProgress(rewardSave.progress, rewardSave.notifications);
       this.pendingSanctuaryRewardChoice = null;
       this.applyProgressionStats?.(reward.levelsGained > 0);
       this.updateProgressHud?.();
@@ -1685,15 +1716,17 @@ export class PixelRPG {
     }
     this.endingActionInFlight = true;
     try {
-      const previousProgress = this.progress;
       const reward = grantSanctuaryEndingReward(this.progress, choice, { componentIds: missing });
-      this.progress = reward.progress;
-      if (!await this.persistProgress("결말 보상을 저장하지 못했습니다. 다시 시도해 주세요.")) {
-        this.progress = previousProgress;
+      const rewardSave = await this.persistSanctuaryEndingCandidate(
+        reward.progress,
+        "결말 보상을 저장하지 못했습니다. 다시 시도해 주세요.",
+      );
+      if (!rewardSave.ok) {
         this.pendingSanctuaryRewardChoice = choice;
         if (this.ui.endingRewardStatus) this.ui.endingRewardStatus.textContent = "보상 저장 대기 중 · Enter 또는 코어 근처 F로 재시도";
         return false;
       }
+      this.publishPersistedProgress(rewardSave.progress, rewardSave.notifications);
       this.pendingSanctuaryRewardChoice = null;
       this.applyProgressionStats?.(reward.levelsGained > 0);
       this.updateProgressHud?.();
@@ -1715,7 +1748,8 @@ export class PixelRPG {
     return this.endingPresentationActive;
   }
 
-  closeSanctuaryEnding() {
+  closeSanctuaryEnding(force = false) {
+    if (this.endingActionInFlight && !force) return false;
     if (!this.ui?.endingOverlay) return false;
     const wasOpen = !this.ui.endingOverlay.hidden;
     this.ui.endingOverlay.hidden = true;
@@ -1735,6 +1769,13 @@ export class PixelRPG {
       nextDialogueFocus(controls, globalThis.document?.activeElement, event.shiftKey)?.focus?.();
       return true;
     }
+    const activationKey = event.key === "Enter" || event.key === " "
+      || event.code === "Enter" || event.code === "Space";
+    if (this.endingActionInFlight && (event.code === "Escape" || activationKey)) {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      return true;
+    }
     if (event.code === "Escape") {
       event.preventDefault?.();
       event.stopPropagation?.();
@@ -1743,8 +1784,6 @@ export class PixelRPG {
       else this.closeSanctuaryEnding();
       return true;
     }
-    const activationKey = event.key === "Enter" || event.key === " "
-      || event.code === "Enter" || event.code === "Space";
     if (!activationKey) return false;
     if (event.repeat || this.endingActionInFlight) {
       event.preventDefault?.();
@@ -2294,14 +2333,29 @@ export class PixelRPG {
     this.persistProgress();
   }
 
-  persistProgress(failureMessage = "진행 상황을 브라우저에 저장할 수 없습니다.") {
-    const events = questNotifications(this.savedQuestProgress ?? null, this.progress, { saved: true });
-    const candidate = { ...this.progress, questNotificationIds: events.ids };
+  publishPersistedProgress(progress, notifications = []) {
+    this.progress = progress;
+    this.savedQuestProgress = structuredClone(progress);
+    this.questBanner?.enqueue(notifications);
+    return true;
+  }
+
+  persistProgress(
+    failureMessage = "진행 상황을 브라우저에 저장할 수 없습니다.",
+    sourceProgress = this.progress,
+    options = {},
+  ) {
+    const events = questNotifications(this.savedQuestProgress ?? null, sourceProgress, { saved: true });
+    const candidate = { ...sourceProgress, questNotificationIds: events.ids };
     const result = saveProgress(browserStorage(), this.player.name, candidate);
-    if (!result.ok) { this.notify(failureMessage); return false; }
-    this.progress = candidate;
-    this.savedQuestProgress = structuredClone(candidate);
-    this.questBanner?.enqueue(events.notifications);
+    if (!result.ok) {
+      if (options.notifyOnFailure !== false) this.notify(failureMessage);
+      return false;
+    }
+    if (options.publish === false) {
+      return { ok: true, progress: candidate, notifications: events.notifications };
+    }
+    this.publishPersistedProgress(candidate, events.notifications);
     return true;
   }
 

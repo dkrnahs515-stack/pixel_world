@@ -51,12 +51,14 @@ function fakeElement({ hidden = false, textContent = "" } = {}) {
     disabled: false,
     focusCount: 0,
     clickCount: 0,
+    clickResults: [],
     lastClickResult: undefined,
     focus() { this.focusCount += 1; },
     click() {
       if (this.hidden || this.disabled) return;
       this.clickCount += 1;
       this.lastClickResult = this.onClick?.();
+      this.clickResults.push(this.lastClickResult);
     },
   };
 }
@@ -74,8 +76,17 @@ function endingKeyboardEvent(key, { repeat = false, shiftKey = false } = {}) {
 
 function deferredResult() {
   let resolve;
-  const promise = new Promise(settle => { resolve = settle; });
-  return { promise, resolve };
+  let reject;
+  const promise = new Promise((settle, fail) => {
+    resolve = settle;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
+async function advanceUntil(predicate) {
+  for (let attempt = 0; attempt < 20 && !predicate(); attempt += 1) await Promise.resolve();
+  assert.equal(predicate(), true);
 }
 
 function endingGame() {
@@ -121,10 +132,11 @@ function endingGame() {
   game.nearbyNpc = null;
   game.nearbyStoryInteraction = null;
   game.pendingStoryInteraction = null;
+  game.endingActionInFlight = false;
   game.persistOutcomes = [];
   game.persisted = [];
-  game.persistProgress = () => {
-    game.persisted.push(structuredClone(game.progress));
+  game.persistProgress = (_failureMessage, candidate = game.progress) => {
+    game.persisted.push(structuredClone(candidate));
     return game.persistOutcomes.length ? game.persistOutcomes.shift() : true;
   };
   game.notifyMessages = [];
@@ -420,20 +432,27 @@ test("async confirmation serializes choice and reward persistence and blocks ree
   const game = endingGame();
   game.openSanctuaryEndingSelection();
   game.previewSanctuaryEnding("release");
+  const liveBefore = game.progress;
   const choiceSave = deferredResult();
   let persistCalls = 0;
-  game.persistProgress = () => {
+  game.persistProgress = (_failureMessage, candidate = game.progress) => {
     persistCalls += 1;
+    game.persisted.push(structuredClone(candidate));
     return persistCalls === 1 ? choiceSave.promise : true;
   };
 
-  const first = game.confirmSanctuaryEnding("release");
-  const reentered = game.confirmSanctuaryEnding("release");
+  game.ui.endingConfirmButton.click();
+  game.ui.endingConfirmButton.click();
+  const [first, reentered] = game.ui.endingConfirmButton.clickResults;
   assert.equal(typeof first?.then, "function");
   assert.equal(await reentered, false);
   assert.equal(persistCalls, 1);
+  assert.strictEqual(game.progress, liveBefore);
+  assert.equal(game.progress.worldProgress.chapters.sanctuary.endingChoice, null);
   assert.deepEqual(game.progress.claimedNarrativeRewardIds, []);
   assert.equal(game.ui.endingOverlay.dataset.view, "second-confirmation");
+  assert.equal(game.endingPresentationActive, false);
+  assert.equal(game.persisted[0].worldProgress.chapters.sanctuary.endingChoice, "release");
 
   choiceSave.resolve(true);
   assert.equal(await first, true);
@@ -464,6 +483,160 @@ test("async reward recovery rolls back a failed save and blocks reentry", async 
   assert.equal(await first, false);
   assert.deepEqual(game.progress, before);
   assert.equal(game.pendingSanctuaryRewardChoice, "seal");
+});
+
+test("a deferred false choice save keeps live progress isolated and blocks every ending navigation race", async () => {
+  const game = endingGame();
+  const previousDocument = globalThis.document;
+  game.nearbyStoryInteraction = { type: "sanctuary-ending-console" };
+  game.openSanctuaryEndingSelection();
+  game.previewSanctuaryEnding("seal");
+  const liveBefore = game.progress;
+  const choiceSave = deferredResult();
+  let persistedCandidate;
+  game.persistProgress = (_failureMessage, candidate = game.progress) => {
+    persistedCandidate = structuredClone(candidate);
+    return choiceSave.promise;
+  };
+  globalThis.document = { activeElement: game.ui.endingConfirmButton };
+  try {
+    game.ui.endingConfirmButton.click();
+    const confirmation = game.ui.endingConfirmButton.lastClickResult;
+    assert.strictEqual(game.progress, liveBefore);
+    assert.equal(game.progress.worldProgress.chapters.sanctuary.endingChoice, null);
+    assert.equal(persistedCandidate.worldProgress.chapters.sanctuary.endingChoice, "seal");
+
+    assert.equal(game.handleSanctuaryEndingKeyDown(endingKeyboardEvent("Escape")), true);
+    assert.equal(game.handleSanctuaryEndingKeyDown(endingKeyboardEvent("Enter")), true);
+    game.ui.endingBackButton.click();
+    game.ui.endingDeferButton.click();
+    game.ui.endingCloseButton.click();
+    assert.equal(game.openSanctuaryEndingSelection(), false);
+    assert.equal(await game.recoverSanctuaryEndingReward(), false);
+    assert.equal(game.ui.endingOverlay.hidden, false);
+    assert.equal(game.ui.endingOverlay.dataset.view, "second-confirmation");
+    assert.equal(game.endingPresentationActive, false);
+
+    choiceSave.resolve(false);
+    assert.equal(await confirmation, false);
+    assert.strictEqual(game.progress, liveBefore);
+    assert.equal(game.progress.worldProgress.chapters.sanctuary.endingChoice, null);
+    assert.deepEqual(game.progress.claimedNarrativeRewardIds, []);
+    assert.equal(game.ui.endingOverlay.dataset.view, "second-confirmation");
+    assert.equal(game.notifyMessages.length, 1);
+
+    game.ui.endingBackButton.click();
+    assert.equal(game.ui.endingOverlay.dataset.view, "first-confirmation");
+  } finally {
+    globalThis.document = previousDocument;
+  }
+});
+
+test("a rejected choice save resolves safely for pointer and keyboard activation", async () => {
+  for (const activation of ["pointer", "keyboard"]) {
+    const game = endingGame();
+    const previousDocument = globalThis.document;
+    game.openSanctuaryEndingSelection();
+    game.previewSanctuaryEnding("restore");
+    const liveBefore = game.progress;
+    const choiceSave = deferredResult();
+    game.persistProgress = () => choiceSave.promise;
+    globalThis.document = { activeElement: game.ui.endingConfirmButton };
+    try {
+      if (activation === "pointer") game.ui.endingConfirmButton.click();
+      else game.handleSanctuaryEndingKeyDown(endingKeyboardEvent("Enter"));
+      const confirmation = game.ui.endingConfirmButton.lastClickResult;
+      choiceSave.reject(new Error(`${activation} choice storage rejected`));
+
+      assert.equal(await confirmation, false);
+      assert.strictEqual(game.progress, liveBefore);
+      assert.equal(game.progress.worldProgress.chapters.sanctuary.endingChoice, null);
+      assert.deepEqual(game.progress.claimedNarrativeRewardIds, []);
+      assert.equal(game.ui.endingOverlay.dataset.view, "second-confirmation");
+      assert.equal(game.endingPresentationActive, false);
+      assert.equal(game.pendingSanctuaryRewardChoice, null);
+      assert.equal(game.notifyMessages.length, 1);
+    } finally {
+      globalThis.document = previousDocument;
+    }
+  }
+});
+
+test("a rejected reward save exposes only the persisted choice and keeps recovery pending", async () => {
+  const game = endingGame();
+  game.openSanctuaryEndingSelection();
+  game.previewSanctuaryEnding("release");
+  const rewardSave = deferredResult();
+  let persistCalls = 0;
+  game.persistProgress = () => {
+    persistCalls += 1;
+    return persistCalls === 1 ? true : rewardSave.promise;
+  };
+  const before = structuredClone(game.progress);
+
+  const confirmation = game.confirmSanctuaryEnding("release");
+  await advanceUntil(() => persistCalls === 2);
+  assert.equal(game.progress.worldProgress.chapters.sanctuary.endingChoice, "release");
+  assert.equal(game.progress.exp, before.exp);
+  assert.equal(game.progress.gold, before.gold);
+  assert.deepEqual(game.progress.earnedTitleIds, []);
+  assert.deepEqual(game.progress.claimedNarrativeRewardIds, []);
+  assert.equal(game.ui.endingOverlay.dataset.view, "cutscene");
+  assert.equal(game.pendingSanctuaryRewardChoice, "release");
+
+  rewardSave.reject(new Error("reward storage rejected"));
+  assert.equal(await confirmation, true);
+  assert.equal(game.progress.worldProgress.chapters.sanctuary.endingChoice, "release");
+  assert.equal(game.progress.exp, before.exp);
+  assert.equal(game.progress.gold, before.gold);
+  assert.deepEqual(game.progress.earnedTitleIds, []);
+  assert.deepEqual(game.progress.claimedNarrativeRewardIds, []);
+  assert.equal(game.ui.endingOverlay.hidden, false);
+  assert.equal(game.endingPresentationActive, true);
+  assert.equal(game.pendingSanctuaryRewardChoice, "release");
+  assert.equal(game.notifyMessages.length, 1);
+});
+
+test("a rejected partial reward candidate stays hidden and retry grants only missing components", async () => {
+  const game = endingGame();
+  const partial = grantSanctuaryEndingReward(endingReadyProgress("restore"), "restore", {
+    componentIds: ["sanctuary-ending-restore-exp"],
+  }).progress;
+  game.progress = partial;
+  game.pendingSanctuaryRewardChoice = "restore";
+  game.presentSanctuaryEnding("restore");
+  const liveBefore = game.progress;
+  const expBefore = game.progress.exp;
+  const goldBefore = game.progress.gold;
+  const rewardSave = deferredResult();
+  let persistCalls = 0;
+  game.persistProgress = () => {
+    persistCalls += 1;
+    return persistCalls === 1 ? rewardSave.promise : true;
+  };
+
+  const recovery = game.recoverSanctuaryEndingReward();
+  assert.strictEqual(game.progress, liveBefore);
+  assert.deepEqual(missingSanctuaryRewardComponents(game.progress, "restore"), [
+    "sanctuary-ending-restore-gold",
+    "sanctuary-ending-restore-title",
+  ]);
+  rewardSave.reject(new Error("partial reward storage rejected"));
+  assert.equal(await recovery, false);
+  assert.strictEqual(game.progress, liveBefore);
+  assert.equal(game.progress.exp, expBefore);
+  assert.equal(game.progress.gold, goldBefore);
+  assert.equal(game.pendingSanctuaryRewardChoice, "restore");
+
+  assert.equal(await game.recoverSanctuaryEndingReward(), true);
+  assert.equal(game.progress.exp, expBefore);
+  assert.equal(game.progress.gold, goldBefore + 200);
+  assert.deepEqual(game.progress.claimedNarrativeRewardIds, [
+    "sanctuary-ending-restore-exp",
+    "sanctuary-ending-restore-gold",
+    "sanctuary-ending-restore-title",
+  ]);
+  assert.equal(new Set(game.progress.claimedNarrativeRewardIds).size, 3);
 });
 
 test("final presentation hides only local remote rendering and chat while receive state remains live", () => {
