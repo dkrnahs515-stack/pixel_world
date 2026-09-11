@@ -77,6 +77,8 @@ async function seedCheckpoint(page, worldProgress, extra = {}) {
 
 async function reloadCheckpoint(page) {
   await page.reload({ waitUntil: "networkidle" });
+  await page.locator("#rpgExperienceButton").click();
+  await page.locator("#entryOverlay").waitFor({ state: "visible" });
   await enterSolo(page);
 }
 

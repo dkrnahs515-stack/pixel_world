@@ -135,6 +135,8 @@ async function seedObservatoryCheckpoint(page, prepared) {
 
 async function reloadCheckpoint(page, nickname) {
   await page.reload({ waitUntil: "networkidle" });
+  await page.locator("#rpgExperienceButton").click();
+  await page.locator("#entryOverlay").waitFor({ state: "visible" });
   await enterSolo(page, nickname);
 }
 
@@ -231,7 +233,9 @@ async function fightCaptain(page, label) {
 }
 
 async function installCombatObserver(page) {
-  await page.route("**/src/main-20260903-volcano-20260905-upgrade.js", async route => {
+  let intercepted = false;
+  await page.route("**/src/main-20260911-story.js", async route => {
+    intercepted = true;
     const response = await route.fetch();
     const source = await response.text();
     await route.fulfill({ response, body: source + `
@@ -253,6 +257,7 @@ window.__volcanoSmokeRead = () => ({
 });
 ` });
   });
+  return () => intercepted;
 }
 
 async function completeNearbyInteraction(page) {
@@ -298,8 +303,13 @@ async function runRoute(browser, { nickname, prepared }) {
     if (message.type() === "error") errors.push(message.text());
   });
   try {
-    await installCombatObserver(page);
+    const wasCombatObserverIntercepted = await installCombatObserver(page);
     await page.goto(`${BASE_URL}?qa=1`, { waitUntil: "networkidle" });
+    assert.equal(
+      wasCombatObserverIntercepted(),
+      true,
+      "volcano combat observer must intercept the root page's active main module",
+    );
     await page.locator("#rpgExperienceButton").click();
     await page.locator("#entryOverlay").waitFor({ state: "visible" });
     await enterSolo(page, nickname);
