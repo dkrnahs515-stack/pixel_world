@@ -110,7 +110,7 @@ function resourceAttributes(markup) {
 
 function wholeDocumentResourceAssignments(markup) {
   const entries = [];
-  const assignmentPattern = /\b(src|href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi;
+  const assignmentPattern = /(?<![\w-])(srcset|imagesrcset|poster|src|href|data)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi;
   let assignmentMatch;
 
   while ((assignmentMatch = assignmentPattern.exec(markup))) {
@@ -121,6 +121,23 @@ function wholeDocumentResourceAssignments(markup) {
   }
 
   return entries;
+}
+
+const permittedInitialResourceAssignments = [
+  { name: "href", value: "./story.css" },
+  { name: "href", value: "../" },
+  { name: "href", value: "../" },
+  { name: "href", value: "../" },
+  { name: "src", value: "../src/story-controller.js" },
+];
+
+function hasExactInitialResourceAllowlist(markup) {
+  const actual = wholeDocumentResourceAssignments(markup);
+  return actual.length === permittedInitialResourceAssignments.length
+    && actual.every((assignment, index) => (
+      assignment.name === permittedInitialResourceAssignments[index].name
+      && assignment.value === permittedInitialResourceAssignments[index].value
+    ));
 }
 
 function linkRelTokens(tag) {
@@ -183,6 +200,15 @@ function hasUnsafeResourceScheme(value) {
   return /\b(?:data|blob):/i.test(normalizedDocument(value));
 }
 
+function hasInlineStylePath(markup) {
+  const normalizedMarkup = normalizedDocument(markup);
+  return /\bstyle\s*=/i.test(normalizedMarkup) || /<\s*style\b/i.test(normalizedMarkup);
+}
+
+function hasMetaRefresh(markup) {
+  return /\bhttp-equiv\s*=\s*(?:"\s*refresh\s*"|'\s*refresh\s*'|refresh\b)/i.test(normalizedDocument(markup));
+}
+
 function cssEscapeEveryCharacter(value) {
   return [...value].map(character => `\\${character.codePointAt(0).toString(16)} `).join("");
 }
@@ -241,6 +267,34 @@ test("문서 전체 스캔은 인용된 태그 경계와 엔터티 우회를 넘
     "numeric HTML character references must not hide preload tokens",
   );
   assert.equal(hasPreloadToken(entityPreload), true, "whole-document preload detection must decode numeric references");
+});
+
+test("초기 로드 계약은 모든 브라우저 리소스 속성과 인라인 경로를 거부한다", () => {
+  const benignLookingResources = [
+    '<img data-note=">" srcset="https://example.test/hero.png 1x" imagesrcset="../hero.png 1x">',
+    '<video data-note=">" poster="/poster.png"></video>',
+    '<object data="../guide.html"></object>',
+  ].join("");
+  assert.deepEqual(
+    wholeDocumentResourceAssignments(benignLookingResources),
+    [
+      { name: "srcset", value: "https://example.test/hero.png 1x" },
+      { name: "imagesrcset", value: "../hero.png 1x" },
+      { name: "poster", value: "/poster.png" },
+      { name: "data", value: "../guide.html" },
+    ],
+    "quoted > must not hide non-src initial-load attributes or benign-looking URLs",
+  );
+  assert.equal(hasExactInitialResourceAllowlist(benignLookingResources), false, "only the shell's exact resource list is allowed");
+  assert.deepEqual(
+    wholeDocumentResourceAssignments('<div data-story-next="duty" data-note="safe" data-srcset="safe.png" data-href="../safe"></div>'),
+    [],
+    "data-* hooks must not be treated as initial-load resources",
+  );
+
+  const inlinePaths = '<div style="background: url(safe.png)"></div><style>.x { color: teal; }</style><meta http-equiv="refresh" content="0;url=/safe">';
+  assert.equal(hasInlineStylePath(inlinePaths), true, "inline style attributes and blocks are forbidden initial-load paths");
+  assert.equal(hasMetaRefresh(inlinePaths), true, "http-equiv refresh is forbidden even for local URLs");
 });
 
 test("제1장 스토리 셸은 독립된 조사 화면의 시맨틱 훅을 제공한다", () => {
@@ -316,15 +370,10 @@ test("제1장 스토리 셸은 독립된 조사 화면의 시맨틱 훅을 제�
 
   assert.deepEqual(
     wholeDocumentResourceAssignments(html),
-    [
-      { name: "href", value: "./story.css" },
-      { name: "href", value: "../" },
-      { name: "href", value: "../" },
-      { name: "href", value: "../" },
-      { name: "src", value: "../src/story-controller.js" },
-    ],
+    permittedInitialResourceAssignments,
     "the independent shell has exactly one controller src, one stylesheet href, and three root-back href values",
   );
+  assert.equal(hasExactInitialResourceAllowlist(html), true, "only the exact initial stylesheet and controller resources are allowed");
   assert.deepEqual(cssUrls(css), [], "story CSS must not request assets before Task 6 chooses current artwork");
   assert.deepEqual(
     cssForbiddenSyntax(css),
@@ -334,6 +383,8 @@ test("제1장 스토리 셸은 독립된 조사 화면의 시맨틱 훅을 제�
   assert.equal(hasPreloadToken(html), false, "preload and modulepreload tokens are forbidden anywhere in decoded HTML");
   assert.equal(hasUnsafeResourceScheme(`${html}\n${css}`), false, "data and blob resource schemes are forbidden anywhere in decoded shell files");
   assert.equal(referencesLateArtwork(`${html}\n${css}`), false, "the normalized late-art filename, stem, and path are forbidden anywhere in shell files");
+  assert.equal(hasInlineStylePath(html), false, "story HTML must not contain inline style attributes or style blocks");
+  assert.equal(hasMetaRefresh(html), false, "story HTML must not contain an http-equiv refresh");
 
   const scriptTags = [...html.matchAll(/<script\b[^>]*>/gi)];
   assert.equal(scriptTags.length, 1, "the story shell has exactly one script");
