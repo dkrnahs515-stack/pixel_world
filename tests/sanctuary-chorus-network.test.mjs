@@ -116,7 +116,8 @@ test("expired authority transfers without replaying acknowledged actions", async
 
 test("leaving the return-record map unsubscribes state actions and the user's claims", async () => {
   const received = [];
-  const fake = firebaseModulesFake();
+  const state = activeEncounter("a", 9_000);
+  const fake = firebaseModulesFake({ [`${BASE_PATH}/state`]: state });
   const network = createChorusNetwork(networkOptions(fake, "a", 10_000, {
     onStateChanged: value => received.push(["state", value]),
     onActionsChanged: value => received.push(["actions", value]),
@@ -124,9 +125,10 @@ test("leaving the return-record map unsubscribes state actions and the user's cl
   }));
 
   assert.equal(await network.setMap("sanctuary-return-record"), true);
+  fake.emit(`${BASE_PATH}/state`, state);
   assert.deepEqual([...fake.listeners.keys()].sort(), [
     `${BASE_PATH}/actions`,
-    `${BASE_PATH}/completionClaims/a`,
+    `${BASE_PATH}/completionClaims/e1/a`,
     `${BASE_PATH}/state`,
   ]);
   assert.equal(await network.setMap("sanctuary-memory-archive"), false);
@@ -181,20 +183,20 @@ test("authority creates immutable contributor claims and each user acknowledges 
 
   assert.equal((await a.writeCompletionClaims("e1", claims)).ok, true);
   assert.deepEqual(fake.transactions.slice(-2).map(value => value.path), [
-    `${BASE_PATH}/completionClaims/a`,
-    `${BASE_PATH}/completionClaims/b`,
+    `${BASE_PATH}/completionClaims/e1/a`,
+    `${BASE_PATH}/completionClaims/e1/b`,
   ]);
 
   const bFake = firebaseModulesFake({
     [`${BASE_PATH}/state`]: separated,
-    [`${BASE_PATH}/completionClaims/b`]: claims.b,
+    [`${BASE_PATH}/completionClaims/e1/b`]: claims.b,
   });
   const b = createChorusNetwork(networkOptions(bFake, "b"));
   await b.setMap("sanctuary-return-record");
   const acknowledged = await b.acknowledgeCompletionClaim("e1");
   assert.equal(acknowledged.ok, true);
   assert.deepEqual(bFake.transactions.at(-1).next, { ...claims.b, acknowledgedAt: 12_345 });
-  assert.equal(bFake.transactions.at(-1).path, `${BASE_PATH}/completionClaims/b`);
+  assert.equal(bFake.transactions.at(-1).path, `${BASE_PATH}/completionClaims/e1/b`);
 });
 
 test("a solo-completed snapshot is never uploaded as a shared encounter", async () => {

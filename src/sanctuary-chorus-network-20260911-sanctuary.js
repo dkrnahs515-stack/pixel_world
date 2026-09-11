@@ -70,6 +70,8 @@ export function createChorusNetwork({
   let mapId = null;
   let stopped = false;
   let unsubscribers = [];
+  let claimUnsubscriber = null;
+  let claimEncounterId = null;
   let renewalTimer = null;
   let renewalEpoch = null;
   let latestState = null;
@@ -86,7 +88,29 @@ export function createChorusNetwork({
   const clearSubscriptions = () => {
     for (const unsubscribe of unsubscribers) unsubscribe();
     unsubscribers = [];
+    if (claimUnsubscriber) claimUnsubscriber();
+    claimUnsubscriber = null;
+    claimEncounterId = null;
     clearRenewal();
+  };
+
+  const subscribeToOwnClaim = encounterId => {
+    const nextEncounterId = validKey(encounterId) ? encounterId : null;
+    if (nextEncounterId === claimEncounterId) return;
+    if (claimUnsubscriber) claimUnsubscriber();
+    claimUnsubscriber = null;
+    claimEncounterId = nextEncounterId;
+    if (!active() || !nextEncounterId) {
+      onCompletionClaimsChanged({});
+      return;
+    }
+    claimUnsubscriber = dbModule.onValue(
+      pathRef(`completionClaims/${nextEncounterId}/${uid}`),
+      snapshot => {
+        const claim = snapshot.val();
+        onCompletionClaimsChanged(claim ? { [uid]: claim } : {});
+      },
+    );
   };
 
   const active = () => !stopped && mapId === CHORUS_MAP_ID;
@@ -126,6 +150,7 @@ export function createChorusNetwork({
   const rememberState = value => {
     const encounter = normalizeChorusEncounter(value);
     latestState = encounter;
+    subscribeToOwnClaim(encounter?.encounterId);
     if (isAuthority(encounter) && renewalEpoch !== encounter.authorityEpoch) {
       scheduleRenewal(encounter.authorityEpoch);
     } else if (!isAuthority(encounter)) {
@@ -151,10 +176,6 @@ export function createChorusNetwork({
       }
       unsubscribers.push(dbModule.onValue(pathRef("state"), snapshot => rememberState(snapshot.val() ?? null)));
       unsubscribers.push(dbModule.onValue(pathRef("actions"), snapshot => onActionsChanged(snapshot.val() || {})));
-      unsubscribers.push(dbModule.onValue(pathRef(`completionClaims/${uid}`), snapshot => {
-        const claim = snapshot.val();
-        onCompletionClaimsChanged(claim ? { [uid]: claim } : {});
-      }));
       return true;
     },
 
@@ -294,7 +315,7 @@ export function createChorusNetwork({
           return { uid: claimUid, ok: false, reason: "invalid_claim" };
         }
         let outcome = { ok: false, reason: "transaction_aborted" };
-        const transaction = await dbModule.runTransaction(pathRef(`completionClaims/${claimUid}`), current => {
+        const transaction = await dbModule.runTransaction(pathRef(`completionClaims/${encounterId}/${claimUid}`), current => {
           if (current != null) {
             outcome = sameClaim(current, claim)
               ? { ok: true, reason: "already_exists" }
@@ -316,7 +337,7 @@ export function createChorusNetwork({
     async acknowledgeCompletionClaim(encounterId) {
       if (!active()) return { ok: false, reason: "inactive" };
       let outcome = { ok: false, reason: "claim_missing" };
-      const transaction = await dbModule.runTransaction(pathRef(`completionClaims/${uid}`), current => {
+      const transaction = await dbModule.runTransaction(pathRef(`completionClaims/${encounterId}/${uid}`), current => {
         if (!current || current.uid !== uid || current.encounterId !== encounterId || current.eligible !== true) {
           return undefined;
         }
