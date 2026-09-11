@@ -2,6 +2,7 @@ const SANCTUARY_WIDTH = 2160;
 const SANCTUARY_HEIGHT = 1800;
 
 function freeze(value) {
+  if (value && typeof value === "object" && Object.isFrozen(value)) return value;
   if (Array.isArray(value)) return Object.freeze(value.map(freeze));
   if (value && typeof value === "object") {
     return Object.freeze(Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, freeze(entry)])));
@@ -17,7 +18,7 @@ function portal(id, x, y, label, color, mapId, destinationX, destinationY, requi
   });
 }
 
-function world(id, name, safe, portals, obstacles) {
+function world(id, name, safe, portals, obstacles, caskets = []) {
   return freeze({
     id,
     name,
@@ -28,6 +29,7 @@ function world(id, name, safe, portals, obstacles) {
     portals,
     enemySpawns: [],
     obstacles,
+    caskets,
   });
 }
 
@@ -57,7 +59,7 @@ export const SANCTUARY_WORLD_DEFINITIONS = freeze({
   sanctuary: world("sanctuary", "픽셀 코어 성역 입구", true, [
     portal("to-core-caldera", 1032, 1600, "화구 코어 제단", "#ef4444", "volcano-core-caldera", 1080, 300),
     portal("to-memory-archive", 1032, 100, "기억 회랑", "#67e8f9", "sanctuary-memory-archive", 1080, 1500),
-  ], sanctuaryWalls),
+  ], sanctuaryWalls, SANCTUARY_CASKETS),
   "sanctuary-memory-archive": world("sanctuary-memory-archive", "기억 회랑", false, [
     portal("to-sanctuary", 1032, 1600, "픽셀 코어 성역 입구", "#67e8f9", "sanctuary", 1080, 300),
     portal("to-return-record", 1032, 100, "마지막 귀환 기록실", "#67e8f9", "sanctuary-return-record", 1080, 1500),

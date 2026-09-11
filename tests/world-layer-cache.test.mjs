@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { WORLD_IDS } from "../src/world-data-20260829-coast-20260905-upgrade.js";
 import * as worldModule from "../src/world-20260829-coast-20260905-upgrade.js";
+import * as sanctuaryWorldModule from "../src/world-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import { SANCTUARY_CASKETS } from "../src/sanctuary-world-data-20260911-sanctuary.js";
 
 test("일곱 물리 맵 배경은 절반 해상도로 한 번씩 사전 렌더링하고 이후 같은 객체를 재사용한다", async () => {
   const { createWorldLayer, prewarmWorldLayers } = worldModule;
@@ -70,6 +72,28 @@ test("대장간 시설은 모루·화로·세 자루 무기 진열대를 정적 
   assert.ok(calls.every(call => call.x >= 2340 && call.x <= 2570));
 });
 
+test("성역 입구 정적 레이어는 세 코어 봉인함과 청록 벽을 실제로 그린다", () => {
+  const harness = canvasHarness();
+  const previousDocument = globalThis.document;
+  globalThis.document = harness.document;
+
+  try {
+    sanctuaryWorldModule.createWorldLayer("sanctuary");
+    const context = harness.canvases[0].context;
+    const casketAccents = context.fillCalls.filter(call => SANCTUARY_CASKETS.some(casket => (
+      call.fillStyle === casket.color && call.x === casket.x - 24 && call.y === casket.y - 14
+    )));
+    assert.deepEqual(
+      casketAccents.map(call => call.fillStyle),
+      ["#4ade80", "#38bdf8", "#fb923c"],
+    );
+    assert.equal(context.fillCalls.some(call => call.fillStyle === "#273454"), false);
+    assert.ok(context.fillCalls.some(call => call.fillStyle === "#67e8f9"));
+  } finally {
+    globalThis.document = previousDocument;
+  }
+});
+
 function canvasHarness() {
   const canvases = [];
   return {
@@ -96,11 +120,20 @@ function canvasHarness() {
 }
 
 function drawingContext() {
+  let fillStyle = "";
+  let strokeStyle = "";
   return {
     imageSmoothingEnabled: true,
     scaleCalls: [],
+    fillCalls: [],
+    strokeCalls: [],
     scale(x, y) { this.scaleCalls.push([x, y]); },
-    fillRect() {},
+    set fillStyle(value) { fillStyle = value; },
+    get fillStyle() { return fillStyle; },
+    set strokeStyle(value) { strokeStyle = value; },
+    get strokeStyle() { return strokeStyle; },
+    fillRect(x, y, width, height) { this.fillCalls.push({ fillStyle, x, y, width, height }); },
+    strokeRect(x, y, width, height) { this.strokeCalls.push({ strokeStyle, x, y, width, height }); },
     beginPath() {},
     moveTo() {},
     lineTo() {},

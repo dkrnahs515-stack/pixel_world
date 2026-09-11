@@ -28,6 +28,16 @@ test("sanctuary contains four 2160x1800 maps and exactly three core caskets", ()
   assert.deepEqual(SANCTUARY_CASKETS.map(value => value.id), [
     "forest-core-casket", "coast-core-casket", "volcano-core-casket",
   ]);
+  assert.deepEqual(
+    SANCTUARY_OVERLAY_ANCHORS.caskets.map(({ mapId, id }) => [mapId, id]),
+    [
+      ["sanctuary", "forest-core-casket"],
+      ["sanctuary", "coast-core-casket"],
+      ["sanctuary", "volcano-core-casket"],
+    ],
+  );
+  assert.strictEqual(SANCTUARY_WORLD_DEFINITIONS.sanctuary.caskets, SANCTUARY_CASKETS);
+  assert.deepEqual(SANCTUARY_WORLD_DEFINITIONS["sanctuary-memory-archive"].caskets, []);
   assert.equal(Object.isFrozen(SANCTUARY_OVERLAY_ANCHORS), true);
 });
 

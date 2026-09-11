@@ -80,7 +80,7 @@ function obstacleColor(type) {
   if (type === "coreCrater") return "#3b1720";
   if (type === "observatory") return "#4b464c";
   if (type === "sanctuaryGate") return "#75682e";
-  if (type === "sanctuaryWall") return "#273454";
+  if (type === "sanctuaryWall") return "#67e8f9";
   return "#4a3030";
 }
 
@@ -110,9 +110,23 @@ function drawObstacles(context, world) {
   for (const obstacle of world.obstacles) {
     context.fillStyle = obstacleColor(obstacle.type);
     context.fillRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h);
-    context.strokeStyle = obstacle.type === "lava" ? "#fb923c" : "#81746f";
+    context.strokeStyle = obstacle.type === "lava"
+      ? "#fb923c"
+      : (obstacle.type === "sanctuaryWall" ? "#f8fafc" : "#81746f");
     context.lineWidth = 8;
     context.strokeRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h);
+  }
+}
+
+function drawSanctuaryCaskets(context, world) {
+  for (const casket of world.caskets || []) {
+    context.fillStyle = "#f8fafc";
+    context.fillRect(casket.x - 30, casket.y - 20, 60, 40);
+    context.strokeStyle = "#0f766e";
+    context.lineWidth = 4;
+    context.strokeRect(casket.x - 30, casket.y - 20, 60, 40);
+    context.fillStyle = casket.color;
+    context.fillRect(casket.x - 24, casket.y - 14, 48, 28);
   }
 }
 
@@ -138,6 +152,7 @@ function drawWorldTitle(context, world) {
 function drawVolcanoWorldLayer(context, world) {
   drawGround(context, world);
   drawObstacles(context, world);
+  drawSanctuaryCaskets(context, world);
   drawPortals(context, world.portals);
   drawWorldTitle(context, world);
 }
