@@ -4,8 +4,11 @@ import {
   RECORD_FIELD_ANSWER_IDS,
   RECORD_FIELD_IDS,
   SANCTUARY_CORE_IDS,
+  TESTIMONY_IDS,
+  FUTURE_IDS,
   normalizeSanctuaryChapter,
 } from "./sanctuary-progress-20260911-sanctuary.js";
+import { SANCTUARY_ENDINGS } from "./sanctuary-ending-20260911-sanctuary.js";
 
 function freeze(value) {
   if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
@@ -339,10 +342,63 @@ function correctionConsoleTarget() {
     { visualVariant: "architecture" },
   )];
 }
-// Chorus, future previews, and ending resolution are added by later tasks.
-function futureOpinionTargets() { return []; }
-function futurePreviewTargets() { return []; }
-function endingConsoleTarget() { return []; }
+function futureOpinionTargets() {
+  const definitions = freeze({
+    forest: {
+      x: 520, y: 1080, prompt: "F · 숲의 증언 듣기",
+      pages: ["로안의 기록은 기억을 가두는 일과 지키는 일 사이에 남을 책임을 묻는다."],
+    },
+    coast: {
+      x: 1080, y: 880, prompt: "F · 해안의 증언 듣기",
+      pages: ["세라의 신호는 이름을 돌려주는 일이 과거를 되풀이하는 일은 아니라고 증언한다."],
+    },
+    volcano: {
+      x: 1640, y: 1080, prompt: "F · 화산의 증언 듣기",
+      pages: ["가렌의 기록은 흉터와 후유증까지 남긴 진실만이 해방을 감당할 수 있다고 증언한다."],
+    },
+  });
+  return TESTIMONY_IDS.map(testimonyId => target(
+    "sanctuary-testimony",
+    `future-testimony-${testimonyId}`,
+    "sanctuary-three-futures",
+    definitions[testimonyId].x,
+    definitions[testimonyId].y,
+    definitions[testimonyId].prompt,
+    definitions[testimonyId].pages,
+    { testimonyId, visualVariant: "silhouette" },
+  ));
+}
+
+function futurePreviewTargets() {
+  const positions = freeze({
+    seal: { x: 520, y: 560, label: "봉인" },
+    restore: { x: 1080, y: 420, label: "복원" },
+    release: { x: 1640, y: 560, label: "해방" },
+  });
+  return FUTURE_IDS.map(futureId => target(
+    "sanctuary-future-preview",
+    `future-preview-${futureId}`,
+    "sanctuary-three-futures",
+    positions[futureId].x,
+    positions[futureId].y,
+    `F · ${positions[futureId].label}의 미래 보기`,
+    [...SANCTUARY_ENDINGS[futureId].pages],
+    { futureId, visualVariant: "light" },
+  ));
+}
+
+function endingConsoleTarget() {
+  return [target(
+    "sanctuary-ending-console",
+    "sanctuary-ending-console",
+    "sanctuary-three-futures",
+    1080,
+    1280,
+    "F · 남겨진 기억의 운명 정하기",
+    ["세 미래를 모두 확인했다. 선택은 한 번 기록되면 다른 미래로 덮어쓸 수 없다."],
+    { visualVariant: "architecture" },
+  )];
+}
 
 export const SANCTUARY_STORY_INTERACTIONS = freeze([
   ...coreCasketTargets(),
@@ -438,5 +494,39 @@ export function getSanctuaryChapterObjective(worldProgress) {
       ["correction-link-console"],
     );
   }
-  return objective("chapter-13-complete", "마지막 귀환 기록을 보존 후 정정했다.", "sanctuary-return-record");
+  if (!sanctuary.chorusSeparated) {
+    return objective("separate-nameless-chorus", "무명의 합창에서 기억들을 분리한다.", "sanctuary-return-record");
+  }
+  const testimonies = sanctuary.collectedTestimonyIds || [];
+  if (!TESTIMONY_IDS.every(id => testimonies.includes(id))) {
+    return objective(
+      "collect-future-testimonies",
+      "세 지역에 남은 증언을 듣는다.",
+      "sanctuary-three-futures",
+      TESTIMONY_IDS.map(id => `future-testimony-${id}`),
+    );
+  }
+  const previews = sanctuary.previewedFutureIds || [];
+  if (!FUTURE_IDS.every(id => previews.includes(id))) {
+    return objective(
+      "preview-three-futures",
+      "봉인·복원·해방의 미래를 모두 확인한다.",
+      "sanctuary-three-futures",
+      FUTURE_IDS.map(id => `future-preview-${id}`),
+    );
+  }
+  if (!sanctuary.endingChoice) {
+    return objective(
+      "choose-sanctuary-ending",
+      "남겨진 기억의 운명을 정한다.",
+      "sanctuary-three-futures",
+      ["sanctuary-ending-console"],
+    );
+  }
+  return objective(
+    "sanctuary-ending-recorded",
+    "선택한 미래가 기록되었다.",
+    "sanctuary-three-futures",
+    ["sanctuary-ending-console"],
+  );
 }

@@ -6,6 +6,7 @@ import { VOLCANO_STORY_ACTORS } from "./volcano-story-data-20260903-volcano-2026
 import { chooseVolcanoRoute, normalizeWorldProgress } from "./chapter-progress-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 import { MEMORY_SOUND_IDS } from "./sanctuary-progress-20260911-sanctuary.js";
 import { chorusBranchPresentation } from "./sanctuary-story-data-20260911-sanctuary.js";
+import { getEndingPreview } from "./sanctuary-ending-20260911-sanctuary.js";
 
 const MEMORY_SOUND_LABELS = Object.freeze({
   "departure-bell": "출발 종",
@@ -67,6 +68,15 @@ export function storyDialogueModel(interaction, worldProgress, options = {}) {
           id: `story-record-answer-${answer.id}`,
           label: answer.label,
         })),
+      };
+    }
+    if (interaction.type === "sanctuary-future-preview") {
+      const outcome = progress.chapters.volcano.captainOutcome === "rescued" ? "rescued" : "lost";
+      const preview = getEndingPreview(interaction.futureId, outcome);
+      return {
+        title: preview?.title || "미래의 기록",
+        pages: preview ? [...preview.pages, preview.lastLine] : pages,
+        actions: [{ id: "story-complete", label: "확인" }],
       };
     }
     return {

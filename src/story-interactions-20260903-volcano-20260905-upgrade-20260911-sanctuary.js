@@ -22,6 +22,8 @@ import {
   MEMORY_SOUND_IDS,
   RECORD_FIELD_IDS,
   SANCTUARY_CORE_IDS,
+  TESTIMONY_IDS,
+  FUTURE_IDS,
 } from "./sanctuary-progress-20260911-sanctuary.js";
 
 export { storyInteractionPrompt };
@@ -85,6 +87,17 @@ export function isStoryInteractionEligible(interaction, worldProgress) {
         return sanctuary.falseReturnRejected
           && RECORD_FIELD_IDS.every(id => sanctuary.completedRecordFieldIds.includes(id))
           && !sanctuary.correctionLinked;
+      case "sanctuary-testimony":
+        return sanctuary.chorusSeparated
+          && !sanctuary.collectedTestimonyIds.includes(interaction.testimonyId);
+      case "sanctuary-future-preview":
+        return sanctuary.chorusSeparated
+          && TESTIMONY_IDS.every(id => sanctuary.collectedTestimonyIds.includes(id))
+          && !sanctuary.previewedFutureIds.includes(interaction.futureId);
+      case "sanctuary-ending-console":
+        return sanctuary.chorusSeparated
+          && TESTIMONY_IDS.every(id => sanctuary.collectedTestimonyIds.includes(id))
+          && FUTURE_IDS.every(id => sanctuary.previewedFutureIds.includes(id));
       default:
         return false;
     }
@@ -142,6 +155,20 @@ function resolveSanctuaryInteraction(progress, interaction, response) {
     case "sanctuary-correction-link":
       resolved = progressSanctuary(initial, { type: "link-correction" });
       break;
+    case "sanctuary-testimony":
+      resolved = progressSanctuary(initial, {
+        type: "collect-testimony",
+        testimonyId: interaction.testimonyId,
+      });
+      break;
+    case "sanctuary-future-preview":
+      resolved = progressSanctuary(initial, {
+        type: "preview-future",
+        futureId: interaction.futureId,
+      });
+      break;
+    case "sanctuary-ending-console":
+      return result(initial, interaction.id, "acknowledged");
     default:
       return result(initial, interaction.id, "unavailable");
   }

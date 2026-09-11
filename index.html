@@ -195,6 +195,41 @@
       </div>
     </section>
 
+    <section id="endingOverlay" class="ending-overlay" role="dialog" aria-modal="true" aria-label="성역 결말 선택과 기록" hidden>
+      <div class="modal-card ending-card">
+        <div id="endingFirstConfirmation" class="ending-view">
+          <p class="eyebrow">THREE FUTURES</p>
+          <h2 id="endingOverlayTitle">남겨진 기억의 운명</h2>
+          <p class="modal-description">세 미래는 서로 덮어쓸 수 없습니다. 먼저 살펴볼 선택을 고르세요.</p>
+          <div class="ending-choice-grid" aria-label="기억의 운명 선택">
+            <button type="button" data-ending-choice="seal">봉인</button>
+            <button type="button" data-ending-choice="restore">복원</button>
+            <button type="button" data-ending-choice="release">해방</button>
+          </div>
+          <button id="endingDeferButton" class="secondary-button" type="button">보류</button>
+        </div>
+
+        <div id="endingSecondConfirmation" class="ending-view" hidden>
+          <p class="eyebrow">FINAL CONFIRMATION</p>
+          <h2 id="endingPreviewTitle">선택 확인</h2>
+          <p id="endingPreviewBody" class="ending-preview-body"></p>
+          <div class="confirm-actions">
+            <button id="endingBackButton" class="secondary-button" type="button">다시 살펴보기</button>
+            <button id="endingConfirmButton" class="primary-button" type="button">이 선택을 기록한다</button>
+          </div>
+        </div>
+
+        <div id="endingCutscene" class="ending-view ending-cutscene" aria-live="polite" hidden>
+          <p class="eyebrow">SANCTUARY RECORD</p>
+          <h2 id="endingCutsceneTitle">성역의 기록</h2>
+          <p id="endingCutsceneBody" class="ending-cutscene-body"></p>
+          <blockquote id="endingLastLine" class="ending-last-line"></blockquote>
+          <p id="endingRewardStatus" class="ending-reward-status" role="status"></p>
+          <button id="endingCloseButton" class="primary-button" type="button">기록을 닫는다</button>
+        </div>
+      </div>
+    </section>
+
     <section id="shopOverlay" class="shop-overlay" hidden>
       <div class="modal-card shop-card" role="dialog" aria-modal="true" aria-labelledby="shopTitle">
         <button id="shopCloseButton" class="dialogue-close" type="button" aria-label="상점 닫기">×</button>

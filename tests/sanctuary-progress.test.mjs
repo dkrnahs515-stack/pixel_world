@@ -177,3 +177,26 @@ test("chorus separation only accepts the matching eligible contributor claim", (
   assert.equal(wrongEncounter.chapter.chorusSeparated, false);
   assert.equal(accepted.chapter.chorusSeparated, true);
 });
+
+test("a confirmed sanctuary ending cannot be replaced by another choice", () => {
+  const ready = {
+    ...createInitialSanctuaryChapter(),
+    activatedCoreIds: ["forest-core-casket", "coast-core-casket", "volcano-core-casket"],
+    collectedMemoryIds: [...MEMORY_SOUND_IDS, ...CONTRADICTION_IDS],
+    memorySequence: [...MEMORY_SOUND_IDS],
+    memoryOrderSolved: true,
+    coreTruthRevealed: true,
+    falseReturnRejected: true,
+    completedRecordFieldIds: [...RECORD_FIELD_IDS],
+    correctionLinked: true,
+    chorusSeparated: true,
+    collectedTestimonyIds: ["forest", "coast", "volcano"],
+    previewedFutureIds: ["seal", "restore", "release"],
+  };
+  const chosen = reduceSanctuaryChapter(ready, { type: "choose-ending", endingChoice: "seal" }).chapter;
+  const replacement = reduceSanctuaryChapter(chosen, { type: "choose-ending", endingChoice: "release" }).chapter;
+
+  assert.equal(chosen.endingChoice, "seal");
+  assert.equal(replacement.endingChoice, "seal");
+  assert.equal(replacement.completed, true);
+});

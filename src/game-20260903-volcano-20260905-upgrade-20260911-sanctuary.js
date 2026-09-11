@@ -36,6 +36,7 @@ import {
 import { validateBossPlayerDamageEvent } from "./coop-boss-state-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 import {
   completeRegion,
+  progressSanctuary,
   recordChapterBossDefeat,
 } from "./chapter-progress-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 import { getRegionForMap } from "./region-data-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
@@ -47,6 +48,11 @@ import {
   getSanctuaryChapterObjective,
 } from "./sanctuary-story-data-20260911-sanctuary.js";
 import { collectRecordArchiveEntries } from "./record-archive-20260911-sanctuary.js";
+import {
+  getEndingPreview,
+  grantSanctuaryEndingReward,
+  missingSanctuaryRewardComponents,
+} from "./sanctuary-ending-20260911-sanctuary.js";
 import {
   actorDialogueModel,
   chorusBranchDialogueModel,
@@ -156,6 +162,14 @@ export function appendStorySignalEntities(entities, storyRenderables) {
     if (!Number.isFinite(signal?.x) || !Number.isFinite(signal?.y)) continue;
     entities.push({ entityType: "story-signal", signal, x: signal.x, y: signal.y });
   }
+  return entities;
+}
+
+export function appendRemotePlayerEntities(entities, remotePlayers, endingPresentationActive = false) {
+  if (!Array.isArray(entities) || endingPresentationActive || typeof remotePlayers?.forEach !== "function") {
+    return entities;
+  }
+  remotePlayers.forEach(remote => entities.push({ ...remote, entityType: "player", remote: true }));
   return entities;
 }
 
@@ -385,6 +399,9 @@ export class PixelRPG {
     this.nearbyNpc = null;
     this.nearbyStoryInteraction = null;
     this.pendingStoryInteraction = null;
+    this.pendingSanctuaryEndingChoice = null;
+    this.pendingSanctuaryRewardChoice = null;
+    this.endingPresentationActive = false;
     this.blacksmithTab = "buy";
     this.pendingWeaponSaleId = null;
     this.dialogue = new DialogueController({
@@ -402,6 +419,14 @@ export class PixelRPG {
       event.preventDefault();
       nextDialogueFocus(controls, document.activeElement, event.shiftKey)?.focus();
     });
+    for (const button of elements.endingChoiceButtons || []) {
+      button.addEventListener("click", () => this.previewSanctuaryEnding(button.dataset.endingChoice));
+    }
+    elements.endingDeferButton?.addEventListener("click", () => this.closeSanctuaryEnding());
+    elements.endingBackButton?.addEventListener("click", () => this.showSanctuaryEndingView("first-confirmation"));
+    elements.endingConfirmButton?.addEventListener("click", () => this.confirmSanctuaryEnding(this.pendingSanctuaryEndingChoice));
+    elements.endingCloseButton?.addEventListener("click", () => this.closeSanctuaryEnding());
+    elements.endingOverlay?.addEventListener("keydown", event => this.handleSanctuaryEndingKeyDown(event));
     elements.shopCloseButton?.addEventListener("click", () => this.closeShop());
     elements.shopDoneButton?.addEventListener("click", () => this.closeShop());
     elements.buyHpPotionButton?.addEventListener("click", () => this.buyItem("hpPotion"));
@@ -520,6 +545,11 @@ export class PixelRPG {
     const progressStorage = browserStorage();
     const loadedProgress = loadPlayerProgress(progressStorage, this.player.name);
     this.progress = loadedProgress.progress;
+    const storedEndingChoice = this.progress?.worldProgress?.chapters?.sanctuary?.endingChoice;
+    this.pendingSanctuaryRewardChoice = storedEndingChoice
+      && missingSanctuaryRewardComponents(this.progress, storedEndingChoice).length > 0
+      ? storedEndingChoice
+      : null;
     this.savedQuestProgress = null;
     this.questBanner ||= new QuestBanner(document.body);
     this.questBanner.reset();
@@ -539,6 +569,7 @@ export class PixelRPG {
     this.closeInventory();
     this.closeQaPanel();
     this.closeCommunicationLog();
+    this.closeSanctuaryEnding();
     this.updateQuestHud();
     this.updateChapterUi();
     this.updateProgressHud();
@@ -619,6 +650,7 @@ export class PixelRPG {
     this.closeInventory();
     this.closeQaPanel();
     this.closeCommunicationLog();
+    this.closeSanctuaryEnding();
     this.nearbyNpc = null;
     this.updateNpcPrompt();
 
@@ -641,7 +673,7 @@ export class PixelRPG {
     this.sessionMode = mode === "online" ? "online" : "solo";
     if (this.player) applyRewardModifiers(this.player, this.progress, this.sessionMode);
     const online = this.sessionMode === "online";
-    if (this.ui.chatPanel) this.ui.chatPanel.hidden = !online;
+    if (this.ui.chatPanel) this.ui.chatPanel.hidden = !online || this.endingPresentationActive === true;
     if (this.ui.onlinePresence) this.ui.onlinePresence.hidden = !online;
     if (this.ui.networkBadge) this.ui.networkBadge.hidden = !online;
     if (!online) {
@@ -928,7 +960,7 @@ export class PixelRPG {
       onChorusCompletionClaimsChanged: claims => this.runBossNetworkCallback(
         generation,
         "무명의 합창 완료 claim 처리 실패",
-        () => this.chorusController?.receiveCompletionClaims?.(claims),
+        () => this.receiveSanctuaryChorusCompletionClaims(claims),
       ),
     };
   }
@@ -1307,6 +1339,7 @@ export class PixelRPG {
         this.damagePlayer(event.amount ?? event.damage, event.source || this.player);
       } else if (event?.type === "chorus-completion-claim" && event.claimId) {
         if (this.processedChorusCompletionIds.has(event.claimId)) continue;
+        if (!this.applySanctuaryChorusCompletionClaim(event)) continue;
         this.processedChorusCompletionIds.add(event.claimId);
         if (this.sessionMode === "online"
           && this.chorusController?.snapshot?.authorityUid === this.network?.uid) {
@@ -1333,6 +1366,43 @@ export class PixelRPG {
         } else if (this.ui?.message) this.notify(model.pages[0]);
       }
     }
+  }
+
+  applySanctuaryChorusCompletionClaim(claim) {
+    if (!claim || claim.eligible !== true || typeof claim.uid !== "string"
+      || typeof claim.encounterId !== "string") return false;
+    const current = this.progress?.worldProgress?.chapters?.sanctuary;
+    if (current?.chorusSeparated === true) return true;
+    if (!this.progress?.worldProgress) return false;
+    const previousProgress = this.progress;
+    const transition = progressSanctuary(this.progress.worldProgress, {
+      type: "separate-chorus",
+      uid: claim.uid,
+      encounterId: claim.encounterId,
+      claim,
+    });
+    if (transition.progress.chapters.sanctuary.chorusSeparated !== true) return false;
+    this.progress = { ...this.progress, worldProgress: transition.progress };
+    if (!this.persistProgress?.("기억 분리 완료 기록을 저장할 수 없습니다.")) {
+      this.progress = previousProgress;
+      return false;
+    }
+    this.updateChapterUi?.();
+    this.updateNpcPrompt?.();
+    return true;
+  }
+
+  receiveSanctuaryChorusCompletionClaims(claims) {
+    const uid = this.network?.uid;
+    const claim = typeof uid === "string" ? claims?.[uid] : null;
+    if (!claim || claim.uid !== uid || claim.eligible !== true
+      || !this.chorusController?.receiveCompletionClaims?.(claims)) return false;
+    const claimId = `${claim.encounterId}:${claim.uid}`;
+    this.processedChorusCompletionIds ||= new Set();
+    if (this.processedChorusCompletionIds.has(claimId)) return true;
+    if (!this.applySanctuaryChorusCompletionClaim(claim)) return false;
+    this.processedChorusCompletionIds.add(claimId);
+    return true;
   }
 
   updateChorusHud(model = this.chorusController?.renderModel?.(), now = Date.now()) {
@@ -1471,10 +1541,206 @@ export class PixelRPG {
     return Boolean(this.ui.isCommunicationLogOpen?.());
   }
 
+  isSanctuaryEndingOpen() {
+    return Boolean(this.ui.endingOverlay && !this.ui.endingOverlay.hidden);
+  }
+
   isInteractionOpen() {
     return this.isSaleConfirmOpen() || this.isBlacksmithOpen()
       || this.isQaOpen() || this.isDialogueOpen() || this.isShopOpen() || this.isInventoryOpen()
-      || this.isCommunicationLogOpen();
+      || this.isCommunicationLogOpen() || this.isSanctuaryEndingOpen();
+  }
+
+  activeSanctuaryEndingFocusControls() {
+    const view = this.ui.endingOverlay?.dataset?.view;
+    if (view === "first-confirmation") {
+      return [...(this.ui.endingChoiceButtons || []), this.ui.endingDeferButton]
+        .filter(control => control && !control.disabled && !control.hidden);
+    }
+    if (view === "second-confirmation") {
+      return [this.ui.endingBackButton, this.ui.endingConfirmButton]
+        .filter(control => control && !control.disabled && !control.hidden);
+    }
+    return [this.ui.endingCloseButton].filter(control => control && !control.disabled && !control.hidden);
+  }
+
+  showSanctuaryEndingView(view) {
+    if (!this.ui.endingOverlay || !["first-confirmation", "second-confirmation", "cutscene"].includes(view)) {
+      return false;
+    }
+    this.ui.endingOverlay.hidden = false;
+    this.ui.endingOverlay.dataset.view = view;
+    if (this.ui.endingFirstConfirmation) this.ui.endingFirstConfirmation.hidden = view !== "first-confirmation";
+    if (this.ui.endingSecondConfirmation) this.ui.endingSecondConfirmation.hidden = view !== "second-confirmation";
+    if (this.ui.endingCutscene) this.ui.endingCutscene.hidden = view !== "cutscene";
+    this.activeSanctuaryEndingFocusControls()[0]?.focus?.();
+    this.updateNpcPrompt?.();
+    return true;
+  }
+
+  openSanctuaryEndingSelection() {
+    if (!this.ui.endingOverlay) return false;
+    const selected = this.progress?.worldProgress?.chapters?.sanctuary?.endingChoice;
+    if (selected) {
+      this.pendingSanctuaryEndingChoice = selected;
+      this.presentSanctuaryEnding(selected);
+      if (missingSanctuaryRewardComponents(this.progress, selected).length > 0) {
+        return this.recoverSanctuaryEndingReward();
+      }
+      return true;
+    }
+    this.pendingSanctuaryEndingChoice = null;
+    this.setEndingPresentationActive(false);
+    return this.showSanctuaryEndingView("first-confirmation");
+  }
+
+  previewSanctuaryEnding(choice) {
+    if (this.progress?.worldProgress?.chapters?.sanctuary?.endingChoice) return false;
+    const captainOutcome = this.progress?.worldProgress?.chapters?.volcano?.captainOutcome;
+    const preview = getEndingPreview(choice, captainOutcome);
+    if (!preview || !this.ui.endingOverlay) return false;
+    this.pendingSanctuaryEndingChoice = choice;
+    if (this.ui.endingPreviewTitle) this.ui.endingPreviewTitle.textContent = preview.title;
+    if (this.ui.endingPreviewBody) {
+      this.ui.endingPreviewBody.textContent = [...preview.pages, preview.lastLine].join("\n\n");
+    }
+    return this.showSanctuaryEndingView("second-confirmation");
+  }
+
+  presentSanctuaryEnding(choice) {
+    const captainOutcome = this.progress?.worldProgress?.chapters?.volcano?.captainOutcome;
+    const preview = getEndingPreview(choice, captainOutcome);
+    if (!preview || !this.ui.endingOverlay) return false;
+    if (this.ui.endingCutsceneTitle) this.ui.endingCutsceneTitle.textContent = preview.title;
+    if (this.ui.endingCutsceneBody) this.ui.endingCutsceneBody.textContent = preview.pages.join("\n\n");
+    if (this.ui.endingLastLine) this.ui.endingLastLine.textContent = preview.lastLine;
+    if (this.ui.endingRewardStatus) {
+      this.ui.endingRewardStatus.textContent = missingSanctuaryRewardComponents(this.progress, choice).length > 0
+        ? "결말은 기록되었습니다. 보상 저장을 다시 시도할 수 있습니다."
+        : "EXP 300 · Gold 200 · 칭호가 이 기록에 보존되었습니다.";
+    }
+    this.showSanctuaryEndingView("cutscene");
+    this.setEndingPresentationActive(true);
+    return true;
+  }
+
+  confirmSanctuaryEnding(choice = this.pendingSanctuaryEndingChoice) {
+    if (choice !== this.pendingSanctuaryEndingChoice || !getEndingPreview(choice, "lost")) return false;
+    if (this.progress?.worldProgress?.chapters?.sanctuary?.endingChoice) return false;
+    const previousProgress = this.progress;
+    const transition = progressSanctuary(this.progress.worldProgress, {
+      type: "choose-ending",
+      endingChoice: choice,
+    });
+    if (transition.progress.chapters.sanctuary.endingChoice !== choice) return false;
+    this.progress = { ...this.progress, worldProgress: transition.progress };
+    if (!this.persistProgress("결말 선택을 브라우저에 저장할 수 없습니다.")) {
+      this.progress = previousProgress;
+      this.pendingSanctuaryRewardChoice = null;
+      return false;
+    }
+
+    const choiceSnapshot = structuredClone(this.progress);
+    this.pendingSanctuaryRewardChoice = choice;
+    this.updateChapterUi?.();
+    this.presentSanctuaryEnding(choice);
+    const reward = grantSanctuaryEndingReward(this.progress, choice);
+    this.progress = reward.progress;
+    if (!this.persistProgress("결말은 기록했지만 보상을 저장하지 못했습니다. 다시 시도해 주세요.")) {
+      this.progress = choiceSnapshot;
+      this.pendingSanctuaryRewardChoice = choice;
+      if (this.ui.endingRewardStatus) {
+        this.ui.endingRewardStatus.textContent = "결말은 기록되었습니다. Enter 또는 코어 근처 F로 보상 저장을 다시 시도하세요.";
+      }
+      return true;
+    }
+
+    this.pendingSanctuaryRewardChoice = null;
+    this.applyProgressionStats?.(reward.levelsGained > 0);
+    this.updateProgressHud?.();
+    this.updateHud?.();
+    this.updateChapterUi?.();
+    if (this.ui.endingRewardStatus) {
+      this.ui.endingRewardStatus.textContent = `EXP 300 · Gold 200 · 칭호 ‘${reward.title}’ 획득`;
+    }
+    return true;
+  }
+
+  recoverSanctuaryEndingReward() {
+    const choice = this.progress?.worldProgress?.chapters?.sanctuary?.endingChoice;
+    if (!choice) return false;
+    if (!this.isSanctuaryEndingOpen()) this.presentSanctuaryEnding(choice);
+    const missing = missingSanctuaryRewardComponents(this.progress, choice);
+    if (missing.length === 0) {
+      this.pendingSanctuaryRewardChoice = null;
+      return true;
+    }
+    const previousProgress = this.progress;
+    const reward = grantSanctuaryEndingReward(this.progress, choice, { componentIds: missing });
+    this.progress = reward.progress;
+    if (!this.persistProgress("결말 보상을 저장하지 못했습니다. 다시 시도해 주세요.")) {
+      this.progress = previousProgress;
+      this.pendingSanctuaryRewardChoice = choice;
+      if (this.ui.endingRewardStatus) this.ui.endingRewardStatus.textContent = "보상 저장 대기 중 · Enter 또는 코어 근처 F로 재시도";
+      return false;
+    }
+    this.pendingSanctuaryRewardChoice = null;
+    this.applyProgressionStats?.(reward.levelsGained > 0);
+    this.updateProgressHud?.();
+    this.updateHud?.();
+    if (this.ui.endingRewardStatus) {
+      this.ui.endingRewardStatus.textContent = `누락 보상 복구 완료 · 칭호 ‘${reward.title}’`;
+    }
+    return true;
+  }
+
+  setEndingPresentationActive(active) {
+    this.endingPresentationActive = Boolean(active);
+    if (this.ui?.chatPanel) {
+      this.ui.chatPanel.hidden = this.endingPresentationActive || this.sessionMode !== "online";
+    }
+    return this.endingPresentationActive;
+  }
+
+  closeSanctuaryEnding() {
+    if (!this.ui?.endingOverlay) return false;
+    const wasOpen = !this.ui.endingOverlay.hidden;
+    this.ui.endingOverlay.hidden = true;
+    this.pendingSanctuaryEndingChoice = null;
+    this.setEndingPresentationActive(false);
+    if (wasOpen) this.canvas?.focus?.();
+    this.updateNpcPrompt?.();
+    return wasOpen;
+  }
+
+  handleSanctuaryEndingKeyDown(event) {
+    if (!this.isSanctuaryEndingOpen()) return false;
+    if (event.code === "Tab") {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      const controls = this.activeSanctuaryEndingFocusControls();
+      nextDialogueFocus(controls, globalThis.document?.activeElement, event.shiftKey)?.focus?.();
+      return true;
+    }
+    if (event.code === "Escape") {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      const view = this.ui.endingOverlay.dataset.view;
+      if (view === "second-confirmation") this.showSanctuaryEndingView("first-confirmation");
+      else this.closeSanctuaryEnding();
+      return true;
+    }
+    if (event.code !== "Enter") return false;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    const view = this.ui.endingOverlay.dataset.view;
+    if (view === "first-confirmation") {
+      const focusedChoice = globalThis.document?.activeElement?.dataset?.endingChoice;
+      return this.previewSanctuaryEnding(focusedChoice || this.ui.endingChoiceButtons?.[0]?.dataset?.endingChoice);
+    }
+    if (view === "second-confirmation") return this.confirmSanctuaryEnding(this.pendingSanctuaryEndingChoice);
+    if (this.pendingSanctuaryRewardChoice) return this.recoverSanctuaryEndingReward();
+    return this.closeSanctuaryEnding();
   }
 
   openCommunicationLog() {
@@ -1689,6 +1955,9 @@ export class PixelRPG {
 
   openStoryInteraction(interaction = this.nearbyStoryInteraction) {
     if (!interaction) return false;
+    if (interaction.type === "sanctuary-ending-console") {
+      return this.openSanctuaryEndingSelection();
+    }
     this.keys.clear();
     this.player.moving = false;
     this.attackState = null;
@@ -2983,7 +3252,7 @@ export class PixelRPG {
     }
 
     const entities = [];
-    this.remotePlayers.forEach(remote => entities.push({ ...remote, entityType: "player", remote: true }));
+    appendRemotePlayerEntities(entities, this.remotePlayers, this.endingPresentationActive);
     this.enemies.forEach(enemy => entities.push({ entityType: "enemy", enemy, x: enemy.x, y: enemy.y }));
     for (const cast of this.skillCasts || []) {
       if (!cast.definition.radius || cast.elapsed >= cast.definition.windup) continue;
@@ -3265,7 +3534,9 @@ export class PixelRPG {
     }
     for (const marker of this.getStoryGuidance().markers) drawDot(marker.x, marker.y, marker.completed ? "#647a72" : "#ffe090", marker.completed ? 3 : 5);
     this.enemies.forEach(enemy => drawDot(enemy.x, enemy.y, enemy.color, 4));
-    this.remotePlayers.forEach(player => drawDot(player.x, player.y, "#f8fafc", 3));
+    if (!this.endingPresentationActive) {
+      this.remotePlayers.forEach(player => drawDot(player.x, player.y, "#f8fafc", 3));
+    }
     drawDot(this.player.x, this.player.y, "#ff4d6d", 5);
   }
 }

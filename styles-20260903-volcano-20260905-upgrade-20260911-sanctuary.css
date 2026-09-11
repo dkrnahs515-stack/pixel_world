@@ -70,6 +70,17 @@ button, input { font: inherit; }
 .npc-prompt { position: absolute; left: 50%; bottom: 112px; z-index: 12; display: flex; align-items: center; gap: 8px; transform: translateX(-50%); padding: 9px 13px; border: 1px solid rgba(253,230,138,.42); border-radius: 999px; background: rgba(15,23,42,.92); color: #fef3c7; font-size: 12px; font-weight: 900; }
 .npc-prompt kbd { border-color: rgba(253,230,138,.55); background: #78350f; }
 .dialogue-overlay { pointer-events: auto; position: absolute; inset: 0; z-index: 35; display: grid; place-items: center; padding: 20px; background: rgba(5,9,17,.78); backdrop-filter: blur(5px); }
+.ending-overlay { pointer-events: auto; position: absolute; inset: 0; z-index: 41; display: grid; place-items: center; padding: 20px; background: radial-gradient(circle at 50% 35%,rgba(103,232,249,.18),transparent 38%),rgba(3,8,18,.9); backdrop-filter: blur(8px); }
+.ending-card { width: min(720px,100%); border-color: rgba(103,232,249,.38); box-shadow: 0 24px 80px rgba(0,0,0,.58),inset 0 0 42px rgba(103,232,249,.06); }
+.ending-view { display: grid; gap: 18px; }
+.ending-choice-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; }
+.ending-choice-grid button { min-height: 74px; border: 1px solid rgba(165,243,252,.38); border-radius: 12px; color: #ecfeff; background: linear-gradient(145deg,rgba(14,116,144,.28),rgba(15,23,42,.76)); font: 800 17px/1.2 sans-serif; cursor: pointer; transition: transform .18s ease,border-color .18s ease,background .18s ease; }
+.ending-choice-grid button:hover,.ending-choice-grid button:focus-visible { transform: translateY(-2px); border-color: #a5f3fc; background: linear-gradient(145deg,rgba(8,145,178,.4),rgba(15,23,42,.82)); }
+.ending-preview-body,.ending-cutscene-body { margin: 0; color: #d8f5f7; line-height: 1.75; white-space: pre-line; }
+.ending-cutscene { animation: ending-scene-enter .9s ease both; }
+.ending-last-line { margin: 4px 0; padding: 18px 20px; border-left: 3px solid #67e8f9; color: #fff; background: rgba(8,145,178,.12); font-size: 18px; line-height: 1.65; }
+.ending-reward-status { min-height: 1.5em; margin: 0; color: #fde68a; font-weight: 700; }
+@keyframes ending-scene-enter { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 .dialogue-card { position: relative; }
 .dialogue-card .modal-description { min-height: 44px; white-space: pre-line; }
 .dialogue-actions { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; margin-top: 16px; }
@@ -320,6 +331,8 @@ kbd { min-width: 23px; padding: 2px 5px; border: 1px solid rgba(255,255,255,.35)
   .play-mode-card { transition: none; }
   .bar.boss i { transition: none; }
   .chorus-hud, .chorus-meter .bar i { animation: none; transition: none; }
+  .ending-choice-grid button { transition-duration: .01ms; }
+  .ending-cutscene { animation-duration: .01ms; }
 }
 @media (max-width: 520px) {
   .play-mode-grid { grid-template-columns: 1fr; }
@@ -333,6 +346,7 @@ kbd { min-width: 23px; padding: 2px 5px; border: 1px solid rgba(255,255,255,.35)
   .slot .empty { display: none; }
   .slot .item-name, .slot .item-effect { display: none; }
   .modal-card { padding: 23px 20px; }
+  .ending-choice-grid { grid-template-columns: 1fr; }
   .shop-card { max-height: calc(100vh - 24px); overflow: auto; }
   .shop-item { grid-template-columns: 1fr; }
   .shop-item button { width: 100%; }

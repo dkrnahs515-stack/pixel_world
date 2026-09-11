@@ -184,7 +184,7 @@ function applySanctuaryAction(chapter, action) {
       }
       break;
     case "choose-ending":
-      if (chapter.chorusSeparated && hasAll(chapter.collectedTestimonyIds, TESTIMONY_IDS) && hasAll(chapter.previewedFutureIds, FUTURE_IDS) && ENDING_CHOICES.includes(action.endingChoice)) {
+      if (!chapter.endingChoice && chapter.chorusSeparated && hasAll(chapter.collectedTestimonyIds, TESTIMONY_IDS) && hasAll(chapter.previewedFutureIds, FUTURE_IDS) && ENDING_CHOICES.includes(action.endingChoice)) {
         chapter.endingChoice = action.endingChoice;
         chapter.completed = true;
       }
