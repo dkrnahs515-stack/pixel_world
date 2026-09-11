@@ -62,7 +62,7 @@ export const CHAPTER_01 = deepFreeze({
       width: 1024,
       height: 1536,
       alt: "고대 숲을 배경으로 선 테오의 공식 삽화",
-      description: "테오의 인물 소개를 위한 공식 삽화입니다. 현재 장소는 길드 기록실입니다.",
+      description: "테오의 인물 소개를 위한 공식 삽화입니다. 숲은 인물 소개 배경입니다.",
     },
     returnedSignal: {
       path: "./assets/chapter-01/02_제01장_지워질 네 이름, 돌아온 신호.png",
@@ -187,7 +187,7 @@ export const CHAPTER_01 = deepFreeze({
     },
     "article-18-4": {
       title: "현장기록 규정",
-      document: "길드 현장기록 규정 제18조 4항: 새 신호와 대응 기록이 있으면 폐기를 보류하고 재조사한다.",
+      document: "“길드 현장기록 규정 제18조 4항. 실종자의 현재 생존 가능성을 나타내는 신호가 확인되면 폐기 절차를 중단하고, 최소 인원의 확인대를 편성한다.”",
     },
   },
   comparisons: {

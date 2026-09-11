@@ -60,7 +60,10 @@ test("chapter data preserves the source-backed evidence and limited conclusion",
   assert.equal(CHAPTER_01.claims["investigate-survival"].correct, true);
   assert.equal(CHAPTER_01.claims["all-alive"].correct, false);
   assert.match(CHAPTER_01.clues["signal-warning"].document, /우리가 남긴 길을 그대로 따라오지 마/);
-  assert.match(CHAPTER_01.clues["article-18-4"].document, /제18조 4항/);
+  assert.equal(
+    CHAPTER_01.clues["article-18-4"].document,
+    "“길드 현장기록 규정 제18조 4항. 실종자의 현재 생존 가능성을 나타내는 신호가 확인되면 폐기 절차를 중단하고, 최소 인원의 확인대를 편성한다.”",
+  );
   assert.equal(CHAPTER_01.evidence["new-received-at"].source, "clue");
   assert.equal(CHAPTER_01.evidence["metal-to-compass"].source, "comparison");
   assert.match(CHAPTER_01.feedback["all-alive"], /확정하지 않습니다/);
@@ -72,7 +75,7 @@ test("artwork metadata keeps the returned signal out of earlier scenes", () => {
     width: 1024,
     height: 1536,
     alt: "고대 숲을 배경으로 선 테오의 공식 삽화",
-    description: "테오의 인물 소개를 위한 공식 삽화입니다. 현재 장소는 길드 기록실입니다.",
+    description: "테오의 인물 소개를 위한 공식 삽화입니다. 숲은 인물 소개 배경입니다.",
   });
   assert.equal(CHAPTER_01.art.returnedSignal.width, 1536);
   assert.equal(CHAPTER_01.art.returnedSignal.height, 1024);
