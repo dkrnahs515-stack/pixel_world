@@ -17,7 +17,11 @@ import {
   resolveVolcanoCaptain,
   progressSanctuary,
 } from "./chapter-progress-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
-import { MEMORY_SOUND_IDS, SANCTUARY_CORE_IDS } from "./sanctuary-progress-20260911-sanctuary.js";
+import {
+  FALSE_RETURN_CONTRADICTION_IDS,
+  MEMORY_SOUND_IDS,
+  SANCTUARY_CORE_IDS,
+} from "./sanctuary-progress-20260911-sanctuary.js";
 
 export { storyInteractionPrompt };
 
@@ -70,7 +74,9 @@ export function isStoryInteractionEligible(interaction, worldProgress) {
       case "sanctuary-truth-record":
         return sanctuary.memoryOrderSolved && !sanctuary.falseReturnRejected;
       case "sanctuary-false-return":
-        return sanctuary.coreTruthRevealed && !sanctuary.falseReturnRejected;
+        return sanctuary.coreTruthRevealed
+          && !sanctuary.falseReturnRejected
+          && !sanctuary.collectedMemoryIds.includes(interaction.id);
       default:
         return false;
     }
@@ -106,8 +112,14 @@ function resolveSanctuaryInteraction(progress, interaction, response) {
       if (!changed(initial, resolved.progress)) return result(initial, interaction.id, "acknowledged");
       break;
     case "sanctuary-false-return":
-      if (!interaction.resolvesFalseReturn) return result(initial, interaction.id, "acknowledged");
-      resolved = progressSanctuary(initial, { type: "reject-false-return" });
+      resolved = progressSanctuary(initial, { type: "collect-memory", memoryId: interaction.id });
+      if (FALSE_RETURN_CONTRADICTION_IDS.every(id => resolved.progress.chapters.sanctuary.collectedMemoryIds.includes(id))) {
+        const rejected = progressSanctuary(resolved.progress, { type: "reject-false-return" });
+        resolved = {
+          progress: rejected.progress,
+          effects: [...resolved.effects, ...rejected.effects],
+        };
+      }
       break;
     default:
       return result(initial, interaction.id, "unavailable");

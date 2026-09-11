@@ -47,13 +47,6 @@ function revealAllTruths(progress) {
   return progress;
 }
 
-function rejectAllFalseReturnContradictions(progress) {
-  for (const id of ["false-return-garen-unscarred", "false-return-source-erased", "false-return-resonance-time"]) {
-    progress = resolveStoryInteraction(progress, id).progress;
-  }
-  return progress;
-}
-
 test("chapter 12 requires input order and all contradictions", () => {
   const progress = collectAllSounds(chapter12ReadyProgress());
   const wrong = resolveStoryInteraction(progress, "memory-sequence-console", {
@@ -69,9 +62,25 @@ test("chapter 12 requires input order and all contradictions", () => {
   assert.equal(solved.progress.chapters.sanctuary.memoryOrderSolved, true);
   const revealed = revealAllTruths(solved.progress);
   assert.equal(revealed.chapters.sanctuary.coreTruthRevealed, true);
-  const rejected = rejectAllFalseReturnContradictions(revealed);
+  const resonanceFirst = resolveStoryInteraction(revealed, "false-return-resonance-time");
+  assert.equal(resonanceFirst.progress.chapters.sanctuary.falseReturnRejected, false);
+  assert.equal(resonanceFirst.progress.unlockedMapIds.includes("sanctuary-return-record"), false);
+  assert.equal(resonanceFirst.progress.chapters.sanctuary.collectedMemoryIds.includes("false-return-resonance-time"), true);
+
+  const duplicate = resolveStoryInteraction(resonanceFirst.progress, "false-return-resonance-time");
+  assert.equal(duplicate.outcome, "unavailable");
+  assert.deepEqual(duplicate.progress, resonanceFirst.progress);
+
+  const second = resolveStoryInteraction(resonanceFirst.progress, "false-return-source-erased");
+  assert.equal(second.progress.chapters.sanctuary.falseReturnRejected, false);
+  const rejected = resolveStoryInteraction(second.progress, "false-return-garen-unscarred").progress;
   assert.equal(rejected.chapters.sanctuary.falseReturnRejected, true);
   assert.equal(rejected.unlockedMapIds.includes("sanctuary-return-record"), true);
+  assert.deepEqual(rejected.chapters.sanctuary.collectedMemoryIds.slice(-3), [
+    "false-return-resonance-time",
+    "false-return-source-erased",
+    "false-return-garen-unscarred",
+  ]);
 });
 
 test("the resonance timestamp is never labeled as incident time", () => {
@@ -222,6 +231,10 @@ test("revealing and rejecting the false return refreshes the local defense immed
   assert.equal(game.enemies.length, 3);
   assert.ok(game.enemies.every(value => value.kind === "memory-noise"));
   assert.equal(game.applyStoryInteraction("false-return-resonance-time"), true);
+  assert.equal(game.enemies.length, 3);
+  assert.equal(game.applyStoryInteraction("false-return-garen-unscarred"), true);
+  assert.equal(game.enemies.length, 3);
+  assert.equal(game.applyStoryInteraction("false-return-source-erased"), true);
   assert.deepEqual(game.enemies, []);
 });
 

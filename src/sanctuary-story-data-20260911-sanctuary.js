@@ -1,4 +1,5 @@
 import {
+  FALSE_RETURN_CONTRADICTION_IDS,
   MEMORY_SOUND_IDS,
   SANCTUARY_CORE_IDS,
 } from "./sanctuary-progress-20260911-sanctuary.js";
@@ -155,17 +156,30 @@ function truthRecordTargets() {
 }
 
 function falseReturnContradictionTargets() {
-  return [
-    target("sanctuary-false-return", "false-return-garen-unscarred", "sanctuary-memory-archive", 560, 1120, "F · 가렌 환영의 모순 확인", [
-      "환영 속 가렌에게는 화산의 흉터가 없다. 보존 기록과 맞지 않는다.",
-    ], { memoryVisual: true, visualVariant: "silhouette", resolvesFalseReturn: false }),
-    target("sanctuary-false-return", "false-return-source-erased", "sanctuary-memory-archive", 1080, 1280, "F · 지워진 출처의 모순 확인", [
-      "출처가 완전히 지워졌다는 환영과 달리 삭제 로그에는 초대 기록관의 손자국이 남아 있다.",
-    ], { memoryVisual: true, visualVariant: "hand", resolvesFalseReturn: false }),
-    target("sanctuary-false-return", "false-return-resonance-time", "sanctuary-memory-archive", 1600, 1120, "F · 시각 표기의 모순 확인", [
-      "4시 13분 22초를 귀환 사건의 시각으로 부르는 환영은 원본의 공명 시각 표기와 충돌한다.",
-    ], { memoryVisual: true, visualVariant: "light", resolvesFalseReturn: true }),
-  ];
+  const contradictions = freeze({
+    "false-return-garen-unscarred": {
+      x: 560, y: 1120, prompt: "F · 가렌 환영의 모순 확인", visualVariant: "silhouette",
+      pages: ["환영 속 가렌에게는 화산의 흉터가 없다. 보존 기록과 맞지 않는다."],
+    },
+    "false-return-source-erased": {
+      x: 1080, y: 1280, prompt: "F · 지워진 출처의 모순 확인", visualVariant: "hand",
+      pages: ["출처가 완전히 지워졌다는 환영과 달리 삭제 로그에는 초대 기록관의 손자국이 남아 있다."],
+    },
+    "false-return-resonance-time": {
+      x: 1600, y: 1120, prompt: "F · 시각 표기의 모순 확인", visualVariant: "light",
+      pages: ["4시 13분 22초를 귀환 사건의 시각으로 부르는 환영은 원본의 공명 시각 표기와 충돌한다."],
+    },
+  });
+  return FALSE_RETURN_CONTRADICTION_IDS.map(id => target(
+    "sanctuary-false-return",
+    id,
+    "sanctuary-memory-archive",
+    contradictions[id].x,
+    contradictions[id].y,
+    contradictions[id].prompt,
+    contradictions[id].pages,
+    { memoryVisual: true, visualVariant: contradictions[id].visualVariant },
+  ));
 }
 
 // Chapter 13 interaction groups are deliberately empty until their own task adds
@@ -232,9 +246,12 @@ export function getSanctuaryChapterObjective(worldProgress) {
     ]);
   }
   if (!sanctuary.falseReturnRejected) {
-    return objective("reject-false-return", "거짓 귀환 환영의 세 모순을 확인한다.", "sanctuary-memory-archive", [
-      "false-return-garen-unscarred", "false-return-source-erased", "false-return-resonance-time",
-    ]);
+    return objective(
+      "reject-false-return",
+      "거짓 귀환 환영의 세 모순을 확인한다.",
+      "sanctuary-memory-archive",
+      FALSE_RETURN_CONTRADICTION_IDS,
+    );
   }
   return objective("chapter-12-complete", "기억 회랑의 원본을 보존했다. 마지막 귀환 기록실로 향한다.", "sanctuary-return-record");
 }

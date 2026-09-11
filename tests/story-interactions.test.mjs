@@ -4,6 +4,7 @@ import { COAST_STORY_INTERACTIONS, getCoastStoryContent } from "../src/coast-sto
 import {
   ALL_STORY_INTERACTIONS,
   findNearbyStoryInteraction,
+  isStoryInteractionEligible,
   resolveStoryInteraction,
   storyInteractionPrompt,
 } from "../src/story-interactions-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
@@ -15,6 +16,7 @@ import {
   progressSanctuary,
 } from "../src/chapter-progress-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 import { SANCTUARY_STORY_INTERACTIONS } from "../src/sanctuary-story-data-20260911-sanctuary.js";
+import { MEMORY_SOUND_IDS, SANCTUARY_CORE_IDS } from "../src/sanctuary-progress-20260911-sanctuary.js";
 
 const WRECK_DEVICE_IDS = ["wreck-relay-west", "wreck-relay-deck", "wreck-relay-east"];
 const WRECK_RECORD_IDS = [
@@ -117,4 +119,28 @@ test("completed core caskets disappear from nearby selection while memory sounds
     { mapId: casket.mapId, x: casket.x, y: casket.y },
     progress,
   )?.id, casket.id);
+});
+
+test("contradiction interactions dedupe discovery and only the third distinct ID rejects the false return", () => {
+  let progress = createInitialWorldProgress();
+  for (const coreId of SANCTUARY_CORE_IDS) {
+    progress = progressSanctuary(progress, { type: "activate-core", coreId }).progress;
+  }
+  for (const memoryId of MEMORY_SOUND_IDS) {
+    progress = progressSanctuary(progress, { type: "collect-memory", memoryId }).progress;
+  }
+  progress = resolveStoryInteraction(progress, "memory-sequence-console", { sequence: MEMORY_SOUND_IDS }).progress;
+  for (const id of ["truth-resonance-time", "truth-first-archivist-log", "truth-core-self-division"]) {
+    progress = resolveStoryInteraction(progress, id).progress;
+  }
+
+  const resonance = SANCTUARY_STORY_INTERACTIONS.find(value => value.id === "false-return-resonance-time");
+  progress = resolveStoryInteraction(progress, resonance.id).progress;
+  assert.equal(progress.chapters.sanctuary.falseReturnRejected, false);
+  assert.equal(isStoryInteractionEligible(resonance, progress), false);
+  progress = resolveStoryInteraction(progress, "false-return-garen-unscarred").progress;
+  assert.equal(progress.chapters.sanctuary.falseReturnRejected, false);
+  progress = resolveStoryInteraction(progress, "false-return-source-erased").progress;
+  assert.equal(progress.chapters.sanctuary.falseReturnRejected, true);
+  assert.equal(progress.unlockedMapIds.includes("sanctuary-return-record"), true);
 });

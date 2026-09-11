@@ -9,6 +9,15 @@ export const MEMORY_SOUND_IDS = Object.freeze([
   "tide-bell",
   "mine-shift-bell",
 ]);
+export const FALSE_RETURN_CONTRADICTION_IDS = Object.freeze([
+  "false-return-garen-unscarred",
+  "false-return-source-erased",
+  "false-return-resonance-time",
+]);
+const COLLECTIBLE_MEMORY_IDS = Object.freeze([
+  ...MEMORY_SOUND_IDS,
+  ...FALSE_RETURN_CONTRADICTION_IDS,
+]);
 export const RECORD_FIELD_IDS = Object.freeze(["departure", "witness", "seal"]);
 export const TESTIMONY_IDS = Object.freeze(["forest", "coast", "volcano"]);
 export const FUTURE_IDS = Object.freeze(["seal", "restore", "release"]);
@@ -49,7 +58,7 @@ export function createInitialSanctuaryChapter() {
 export function normalizeSanctuaryChapter(value) {
   const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   const activatedCoreIds = allowedUnique(source.activatedCoreIds, SANCTUARY_CORE_IDS);
-  const collectedMemoryIds = allowedUnique(source.collectedMemoryIds, MEMORY_SOUND_IDS);
+  const collectedMemoryIds = allowedUnique(source.collectedMemoryIds, COLLECTIBLE_MEMORY_IDS);
   const memorySequence = allowedUnique(source.memorySequence, MEMORY_SOUND_IDS);
   const memoryOrderSolved = source.memoryOrderSolved === true
     && hasAll(collectedMemoryIds, MEMORY_SOUND_IDS)
@@ -57,7 +66,9 @@ export function normalizeSanctuaryChapter(value) {
   const coreTruthRevealed = source.coreTruthRevealed === true
     && memoryOrderSolved
     && hasAll(activatedCoreIds, SANCTUARY_CORE_IDS);
-  const falseReturnRejected = source.falseReturnRejected === true && coreTruthRevealed;
+  const falseReturnRejected = source.falseReturnRejected === true
+    && coreTruthRevealed
+    && hasAll(collectedMemoryIds, FALSE_RETURN_CONTRADICTION_IDS);
   const completedRecordFieldIds = allowedUnique(source.completedRecordFieldIds, RECORD_FIELD_IDS);
   const correctionLinked = source.correctionLinked === true
     && falseReturnRejected
@@ -111,7 +122,7 @@ function applySanctuaryAction(chapter, action) {
       addIfAllowed(chapter.activatedCoreIds, action.coreId, SANCTUARY_CORE_IDS);
       break;
     case "collect-memory":
-      addIfAllowed(chapter.collectedMemoryIds, action.memoryId, MEMORY_SOUND_IDS);
+      addIfAllowed(chapter.collectedMemoryIds, action.memoryId, COLLECTIBLE_MEMORY_IDS);
       break;
     case "submit-memory-sequence":
       if (hasAll(chapter.collectedMemoryIds, MEMORY_SOUND_IDS) && isExactOrder(action.sequence, MEMORY_SOUND_IDS)) {
@@ -123,7 +134,9 @@ function applySanctuaryAction(chapter, action) {
       if (chapter.memoryOrderSolved && hasAll(chapter.activatedCoreIds, SANCTUARY_CORE_IDS)) chapter.coreTruthRevealed = true;
       break;
     case "reject-false-return":
-      if (chapter.coreTruthRevealed) chapter.falseReturnRejected = true;
+      if (chapter.coreTruthRevealed && hasAll(chapter.collectedMemoryIds, FALSE_RETURN_CONTRADICTION_IDS)) {
+        chapter.falseReturnRejected = true;
+      }
       break;
     case "complete-record-field":
       if (chapter.falseReturnRejected) addIfAllowed(chapter.completedRecordFieldIds, action.fieldId, RECORD_FIELD_IDS);

@@ -15,6 +15,12 @@ function memoryCollectedChapter() {
   return chapter;
 }
 
+const CONTRADICTION_IDS = [
+  "false-return-garen-unscarred",
+  "false-return-source-erased",
+  "false-return-resonance-time",
+];
+
 test("sanctuary normalization rejects hostile types and dependent terminal flags", () => {
   const chapter = normalizeSanctuaryChapter({
     activatedCoreIds: "forest-core-casket",
@@ -45,11 +51,67 @@ test("only the canonical memory order unlocks the truth sequence", () => {
   }).chapter.memoryOrderSolved, true);
 });
 
+test("false return rejection requires three distinct persisted contradictions in any order", () => {
+  let chapter = {
+    ...memoryCollectedChapter(),
+    activatedCoreIds: ["forest-core-casket", "coast-core-casket", "volcano-core-casket"],
+    memorySequence: [...MEMORY_SOUND_IDS],
+    memoryOrderSolved: true,
+    coreTruthRevealed: true,
+  };
+  const before = structuredClone(chapter);
+  for (const id of [CONTRADICTION_IDS[2], CONTRADICTION_IDS[0]]) {
+    chapter = reduceSanctuaryChapter(chapter, { type: "collect-memory", memoryId: id }).chapter;
+  }
+  assert.deepEqual(before.collectedMemoryIds, MEMORY_SOUND_IDS);
+  assert.equal(reduceSanctuaryChapter(chapter, { type: "reject-false-return" }).chapter.falseReturnRejected, false);
+
+  chapter = reduceSanctuaryChapter(chapter, {
+    type: "collect-memory",
+    memoryId: CONTRADICTION_IDS[1],
+  }).chapter;
+  chapter = reduceSanctuaryChapter(chapter, {
+    type: "collect-memory",
+    memoryId: CONTRADICTION_IDS[1],
+  }).chapter;
+  assert.deepEqual(chapter.collectedMemoryIds.slice(-3), [
+    "false-return-resonance-time",
+    "false-return-garen-unscarred",
+    "false-return-source-erased",
+  ]);
+  assert.equal(reduceSanctuaryChapter(chapter, { type: "reject-false-return" }).chapter.falseReturnRejected, true);
+});
+
+test("normalization cannot assert false return rejection without every contradiction", () => {
+  const chapter = normalizeSanctuaryChapter({
+    activatedCoreIds: ["forest-core-casket", "coast-core-casket", "volcano-core-casket"],
+    collectedMemoryIds: [
+      ...MEMORY_SOUND_IDS,
+      "false-return-resonance-time",
+      "false-return-source-erased",
+      "false-return-source-erased",
+      "hostile-memory-id",
+    ],
+    memorySequence: [...MEMORY_SOUND_IDS],
+    memoryOrderSolved: true,
+    coreTruthRevealed: true,
+    falseReturnRejected: true,
+  });
+
+  assert.equal(chapter.coreTruthRevealed, true);
+  assert.equal(chapter.falseReturnRejected, false);
+  assert.deepEqual(chapter.collectedMemoryIds, [
+    ...MEMORY_SOUND_IDS,
+    "false-return-resonance-time",
+    "false-return-source-erased",
+  ]);
+});
+
 test("chorus separation only accepts the matching eligible contributor claim", () => {
   const chapter = {
     ...createInitialSanctuaryChapter(),
     activatedCoreIds: ["forest-core-casket", "coast-core-casket", "volcano-core-casket"],
-    collectedMemoryIds: [...MEMORY_SOUND_IDS],
+    collectedMemoryIds: [...MEMORY_SOUND_IDS, ...CONTRADICTION_IDS],
     memorySequence: [...MEMORY_SOUND_IDS],
     memoryOrderSolved: true,
     coreTruthRevealed: true,

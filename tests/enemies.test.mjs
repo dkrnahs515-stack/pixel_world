@@ -12,7 +12,11 @@ import {
   updateEnemies,
 } from "../src/enemies-20260829-coast-20260905-upgrade-20260911-sanctuary.js";
 import { createInitialWorldProgress, progressSanctuary } from "../src/chapter-progress-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
-import { MEMORY_SOUND_IDS, SANCTUARY_CORE_IDS } from "../src/sanctuary-progress-20260911-sanctuary.js";
+import {
+  FALSE_RETURN_CONTRADICTION_IDS,
+  MEMORY_SOUND_IDS,
+  SANCTUARY_CORE_IDS,
+} from "../src/sanctuary-progress-20260911-sanctuary.js";
 
 test("the safe village never creates enemies", () => {
   assert.deepEqual(createEnemies("village"), []);
@@ -32,6 +36,9 @@ test("memory noise exists only during the local contradiction defense window", (
   assert.deepEqual(createEnemies("sanctuary", progress), []);
   assert.deepEqual(createEnemies("sanctuary-return-record", progress), []);
 
+  for (const memoryId of FALSE_RETURN_CONTRADICTION_IDS) {
+    progress = progressSanctuary(progress, { type: "collect-memory", memoryId }).progress;
+  }
   progress = progressSanctuary(progress, { type: "reject-false-return" }).progress;
   assert.deepEqual(createEnemies("sanctuary-memory-archive", progress), []);
 });
