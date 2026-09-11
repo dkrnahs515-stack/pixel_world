@@ -313,7 +313,7 @@ async function online(browser) {
  assert.equal((await state(A)).progress.worldProgress.chapters.sanctuary.originDefeatReceiptId,(await state(B)).progress.worldProgress.chapters.sanctuary.originDefeatReceiptId);
  await recover(B);await choice(A,'restore');await choice(B,'resonate');
  assert.equal((await state(A)).progress.endingTitle,'세계의 복원자');assert.equal((await state(B)).progress.endingTitle,'세계의 공명자');
- const privileges=await B.evaluate(()=>window.__game.rewardEffects);assert.equal(privileges.immortal,false);assert.equal(privileges.bossCount,1);
+ const privileges=await B.evaluate(async()=>{const {rewardCodeEffects}=await import('/src/reward-codes-20260905-upgrade.js');return rewardCodeEffects(window.__game.progress,'online');});assert.equal(privileges.immortal,false);assert.equal(privileges.bossCount,1);
  evidence.journeys.push({authenticatedContexts:2,distinctUIDs:true,sharedHP:true,authorityHandoff:true,anchorPreserved:true,independentReceipts:true,endings:['restore','resonate']});
  await A.screenshot({path:OUT+'/online-restore.png'});await B.screenshot({path:OUT+'/online-resonate.png'});await a.close();await b.close();
 }
