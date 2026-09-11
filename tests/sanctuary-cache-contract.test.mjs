@@ -159,7 +159,9 @@ function relativeModuleSpecifiers(source) {
   // This deterministic lexer accepts ESM static, side-effect, and re-export
   // declarations plus dynamic import() with quoted or constant-template paths.
   // It scans interpolation expressions recursively, while treating comments,
-  // strings, regex literals, and raw template text as non-code.
+  // strings, regex literals, and raw template text as non-code. A parenthesis
+  // stack preserves statement-start regexes after control conditions while
+  // keeping grouping, call, and parameter closes as completed operands.
   function readEscape(index) {
     const next = source[index + 1];
     if (next === "u") {
@@ -300,6 +302,8 @@ function relativeModuleSpecifiers(source) {
     let index = start;
     let braceDepth = 0;
     let expectsOperand = true;
+    let controlParenPending = false;
+    const parenKinds = [];
     while (index < source.length) {
       const triviaEnd = skipTrivia(index);
       if (triviaEnd !== index) { index = triviaEnd; continue; }
@@ -341,6 +345,9 @@ function relativeModuleSpecifiers(source) {
           expectsOperand = false;
           continue;
         }
+        controlParenPending = source[wordStart - 1] !== "."
+          && ["catch", "for", "if", "switch", "while", "with"].includes(word)
+          && source[skipTrivia(index)] === "(";
         expectsOperand = ["case", "delete", "do", "else", "in", "instanceof", "new", "return", "throw", "typeof", "void", "yield"].includes(word);
         continue;
       }
@@ -351,7 +358,20 @@ function relativeModuleSpecifiers(source) {
         continue;
       }
       if (token === "{") { braceDepth += 1; expectsOperand = true; index += 1; continue; }
-      if (token === "}" || token === ")" || token === "]") { expectsOperand = false; index += 1; continue; }
+      if (token === "(") {
+        parenKinds.push(controlParenPending ? "control" : "ordinary");
+        controlParenPending = false;
+        expectsOperand = true;
+        index += 1;
+        continue;
+      }
+      if (token === ")") {
+        expectsOperand = parenKinds.pop() === "control";
+        index += 1;
+        continue;
+      }
+      if (token === "}" || token === "]") { expectsOperand = false; index += 1; continue; }
+      controlParenPending = false;
       expectsOperand = !["++", "--"].includes(source.slice(index, index + 2));
       index += 1;
     }
@@ -421,5 +441,42 @@ test("cache scanner finds static, side-effect, dynamic, and parent-relative loca
     "./escaped-20260905-upgrade.js",
     "../template-escaped-20260905-upgrade.js",
     "../nested-brace-template-20260905-upgrade.js",
+  ]);
+});
+
+test("cache scanner treats a control-condition close as a regex-literal position", () => {
+  const source = `
+    if (ready) /if-same+/.test(name); import("./after-if-same-20260905-upgrade.js");
+    if (ready) /if-asi+/.test(name)
+    import("./after-if-asi-20260905-upgrade.js");
+    while (ready) /while-same+/.test(name); import("./after-while-same-20260905-upgrade.js");
+    while (ready) /while-asi+/.test(name)
+    import("./after-while-asi-20260905-upgrade.js");
+    for (let index = 0; index < 1; index += 1) /for-same+/.test(name); import("./after-for-same-20260905-upgrade.js");
+    for (let index = 0; index < 1; index += 1) /for-asi+/.test(name)
+    import("./after-for-asi-20260905-upgrade.js");
+    with (scope) /with+/.test(name); import("./after-with-20260905-upgrade.js");
+    try {} catch (error) { /catch+/.test(name); } import("./after-catch-20260905-upgrade.js");
+    switch (value) { default: /switch+/.test(name); } import("./after-switch-20260905-upgrade.js");
+    do /do-body+/.test(name); while (ready); import("./after-do-while-20260905-upgrade.js");
+    const quotient = (a) / b; import("./after-grouping-division-20260905-upgrade.js");
+    call() / divisor; import("./after-call-division-20260905-upgrade.js");
+    promise.catch() / divisor; import("./after-catch-call-division-20260905-upgrade.js");
+  `;
+  assert.doesNotThrow(() => new Function(source));
+  assert.deepEqual(relativeModuleSpecifiers(source), [
+    "./after-if-same-20260905-upgrade.js",
+    "./after-if-asi-20260905-upgrade.js",
+    "./after-while-same-20260905-upgrade.js",
+    "./after-while-asi-20260905-upgrade.js",
+    "./after-for-same-20260905-upgrade.js",
+    "./after-for-asi-20260905-upgrade.js",
+    "./after-with-20260905-upgrade.js",
+    "./after-catch-20260905-upgrade.js",
+    "./after-switch-20260905-upgrade.js",
+    "./after-do-while-20260905-upgrade.js",
+    "./after-grouping-division-20260905-upgrade.js",
+    "./after-call-division-20260905-upgrade.js",
+    "./after-catch-call-division-20260905-upgrade.js",
   ]);
 });
