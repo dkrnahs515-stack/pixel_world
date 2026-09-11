@@ -31,20 +31,20 @@ test("진입 HTML은 CSS와 JavaScript의 실제 파일명으로 기존 배포 �
   const gameModulePath = entry.match(/from "(\.\/game-([^"]+?)\.js)"/)?.[1];
   const gameModuleVersion = entry.match(/from "\.\/game-([^"]+?)\.js"/)?.[1];
 
-  assert.equal(gameModuleVersion, stylesheetVersion);
+  assert.equal(gameModuleVersion, "20260903-volcano-20260905-upgrade");
   assert.ok(gameModulePath);
   assert.ok(existsSync(new URL(`..\/src\/${gameModulePath}`, import.meta.url)));
 });
 
-test("활화산 release는 변경된 전이 모듈과 CSS를 물리 파일 체인으로 연결한다", () => {
-  assert.match(index, /href="\.\/styles-20260903-volcano-20260905-upgrade\.css"/);
-  assert.match(index, /src="\.\/src\/main-20260903-volcano-20260905-upgrade\.js"/);
+test("story release는 기존 RPG 모듈과 CSS를 물리 파일 체인으로 연결한다", () => {
+  assert.match(index, /href="\.\/styles-20260911-story\.css"/);
+  assert.match(index, /src="\.\/src\/main-20260911-story\.js"/);
   assert.doesNotMatch(index, /main-20260829-coast\.js/);
   assert.doesNotMatch(index, /main-20260828-coop\.js/);
   assert.doesNotMatch(index, /main-20260828-classes\.js/);
   assert.doesNotMatch(index, /main-20260827-2\.js/);
-  assert.ok(existsSync(new URL("../styles-20260903-volcano-20260905-upgrade.css", import.meta.url)));
-  assert.ok(existsSync(new URL("../src/main-20260903-volcano-20260905-upgrade.js", import.meta.url)));
+  assert.ok(existsSync(new URL("../styles-20260911-story.css", import.meta.url)));
+  assert.ok(existsSync(new URL("../src/main-20260911-story.js", import.meta.url)));
   assert.ok(existsSync(new URL("../src/game-20260903-volcano-20260905-upgrade.js", import.meta.url)));
   assert.ok(existsSync(new URL("../src/coop-boss-controller-20260903-volcano-20260905-upgrade.js", import.meta.url)));
   assert.ok(existsSync(new URL("../src/network-20260903-volcano-20260905-upgrade.js", import.meta.url)));
@@ -58,7 +58,7 @@ test("활화산 release는 변경된 전이 모듈과 CSS를 물리 파일 체�
   assert.equal(existsSync(new URL("../src/coop-boss-controller-20260829-coast.js", import.meta.url)), false);
   assert.equal(existsSync(new URL("../src/main-20260828-coop.js", import.meta.url)), false);
   assert.equal(existsSync(new URL("../src/game-20260828-coop.js", import.meta.url)), false);
-  const entry = readFileSync(new URL("../src/main-20260903-volcano-20260905-upgrade.js", import.meta.url), "utf8");
+  const entry = readFileSync(new URL("../src/main-20260911-story.js", import.meta.url), "utf8");
   const game = readFileSync(new URL("../src/game-20260903-volcano-20260905-upgrade.js", import.meta.url), "utf8");
   const network = readFileSync(new URL("../src/network-20260903-volcano-20260905-upgrade.js", import.meta.url), "utf8");
   assert.match(entry, /from "\.\/game-20260903-volcano-20260905-upgrade\.js"/);

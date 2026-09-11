@@ -114,10 +114,10 @@ test("legacy combat URLs stay on legacy weapon data while the volcano graph uses
   assert.equal(volcanoProjectileGraph.has(legacyProjectileUrl.href), false);
 });
 
-test("HTML uses query-free physical volcano CSS and JavaScript entry files", async () => {
+test("HTML uses query-free physical story-release CSS and JavaScript entry files", async () => {
   const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
-  assert.match(html, /href="\.\/styles-20260903-volcano-20260905-upgrade\.css"/);
-  assert.match(html, /src="\.\/src\/main-20260903-volcano-20260905-upgrade\.js"/);
+  assert.match(html, /href="\.\/styles-20260911-story\.css"/);
+  assert.match(html, /src="\.\/src\/main-20260911-story\.js"/);
   assert.doesNotMatch(html, /(?:styles|main)[^"']*\?v=/);
-  assert.equal(existsSync(new URL("../styles-20260903-volcano-20260905-upgrade.css", import.meta.url)), true);
+  assert.equal(existsSync(new URL("../styles-20260911-story.css", import.meta.url)), true);
 });
