@@ -897,6 +897,15 @@ export class PixelRPG {
       }
       this.latestChorusSnapshot = structuredClone(result.encounter);
       this.lastPublishedChorusSignature = JSON.stringify(result.encounter);
+      if (processedAction && network.acknowledgeAction) {
+        return Promise.resolve(network.acknowledgeAction(
+          processedAction.uid,
+          processedAction.sequence,
+          result.encounter.authorityEpoch,
+        )).catch(error => {
+          this.reportBossCallbackError("무명의 합창 행동 정리 실패", error);
+        });
+      }
     }).catch(error => {
       this.lastPublishedChorusSignature = null;
       this.reportBossCallbackError("무명의 합창 상태 전송 실패", error);

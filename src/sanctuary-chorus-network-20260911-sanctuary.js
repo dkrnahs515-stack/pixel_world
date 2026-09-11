@@ -223,10 +223,13 @@ export function createChorusNetwork({
   let renewalTimer = null;
   let renewalEpoch = null;
   let latestState = null;
+  let latestActions = {};
   let processedSequenceByUid = {};
   let stateSnapshotReady = false;
+  let actionsSnapshotReady = false;
   let pendingActions = null;
   let stateMutationQueue = Promise.resolve();
+  const actionCleanupPromises = new Map();
 
   const pathRef = suffix => dbModule.ref(db, suffix ? `${BASE_PATH}/${suffix}` : BASE_PATH);
   const readCurrentState = async () => {
@@ -290,6 +293,34 @@ export function createChorusNetwork({
     && encounter.leaseUntil > timestamp,
   );
 
+  const forgetAction = (requestUid, sequence) => {
+    const entries = latestActions[requestUid];
+    if (!entries || !Object.hasOwn(entries, String(sequence))) return;
+    delete entries[String(sequence)];
+    if (Object.keys(entries).length === 0) delete latestActions[requestUid];
+  };
+
+  const cleanupConfirmedActions = () => {
+    if (!active() || !stateSnapshotReady || !isAuthority()) return;
+    const authorityEpoch = latestState.authorityEpoch;
+    for (const [requestUid, entries] of Object.entries(latestActions)) {
+      const confirmedSequence = processedSequenceByUid[requestUid] || 0;
+      for (const sequenceKey of Object.keys(entries || {})) {
+        const sequence = Number(sequenceKey);
+        if (!Number.isSafeInteger(sequence) || sequence < 1
+          || String(sequence) !== sequenceKey || sequence > confirmedSequence) continue;
+        void api.acknowledgeAction(requestUid, sequence, authorityEpoch).catch(() => {});
+      }
+    }
+  };
+
+  const receiveActionsSnapshot = value => {
+    latestActions = structuredClone(value || {});
+    actionsSnapshotReady = true;
+    onActionsChanged(filterProcessedActions(latestActions, processedSequenceByUid));
+    cleanupConfirmedActions();
+  };
+
   const scheduleRenewal = epoch => {
     clearRenewal();
     if (!active()) return;
@@ -322,9 +353,9 @@ export function createChorusNetwork({
     }
     onStateChanged(encounter);
     if (pendingActions) {
-      onActionsChanged(filterProcessedActions(pendingActions, processedSequenceByUid));
+      receiveActionsSnapshot(pendingActions);
       pendingActions = null;
-    }
+    } else cleanupConfirmedActions();
   };
 
   const api = {
@@ -337,9 +368,12 @@ export function createChorusNetwork({
       clearSubscriptions();
       mapId = nextMapId === CHORUS_MAP_ID ? CHORUS_MAP_ID : null;
       latestState = null;
+      latestActions = {};
       processedSequenceByUid = {};
       stateSnapshotReady = false;
+      actionsSnapshotReady = false;
       pendingActions = null;
+      actionCleanupPromises.clear();
       if (!active()) {
         onStateChanged(null);
         onActionsChanged({});
@@ -350,10 +384,10 @@ export function createChorusNetwork({
       unsubscribers.push(dbModule.onValue(pathRef("actions"), snapshot => {
         const actions = snapshot.val() || {};
         if (!stateSnapshotReady) {
-          pendingActions = actions;
+          pendingActions = structuredClone(actions);
           return;
         }
-        onActionsChanged(filterProcessedActions(actions, processedSequenceByUid));
+        receiveActionsSnapshot(actions);
       }));
       return true;
     },
@@ -399,6 +433,7 @@ export function createChorusNetwork({
         await dbModule.update(pathRef("state"), patch);
         latestState = normalizeChorusEncounter({ ...current, ...patch });
         scheduleRenewal(latestState.authorityEpoch);
+        cleanupConfirmedActions();
         return { ok: true, encounter: latestState };
       });
     },
@@ -475,6 +510,7 @@ export function createChorusNetwork({
         if (Object.keys(patch).length > 0) await dbModule.update(pathRef("state"), patch);
         if (processedAction) processedSequenceByUid[processedAction.uid] = processedAction.sequence;
         latestState = next;
+        cleanupConfirmedActions();
         return {
           ok: true,
           encounter: latestState,
@@ -497,6 +533,8 @@ export function createChorusNetwork({
       const sequence = sequenceTransaction.snapshot.val();
       const action = withoutUndefined({ ...request, uid, sequence });
       await dbModule.set(pathRef(`actions/${uid}/${sequence}`), action);
+      latestActions[uid] ||= {};
+      latestActions[uid][String(sequence)] = structuredClone(action);
       return { ok: true, action };
     },
 
@@ -508,8 +546,21 @@ export function createChorusNetwork({
       if ((processedSequenceByUid[requestUid] || 0) < Number(sequence)) {
         return { ok: false, reason: "not_processed" };
       }
-      await dbModule.remove(pathRef(`actions/${requestUid}/${Number(sequence)}`));
-      return { ok: true };
+      const numericSequence = Number(sequence);
+      if (actionsSnapshotReady
+        && !Object.hasOwn(latestActions[requestUid] || {}, String(numericSequence))) {
+        return { ok: true, reason: "already_removed" };
+      }
+      const cleanupKey = `${latestState.encounterId}:${requestUid}:${numericSequence}`;
+      if (actionCleanupPromises.has(cleanupKey)) return actionCleanupPromises.get(cleanupKey);
+      const cleanup = dbModule.remove(pathRef(`actions/${requestUid}/${numericSequence}`))
+        .then(() => {
+          forgetAction(requestUid, numericSequence);
+          return { ok: true };
+        })
+        .finally(() => actionCleanupPromises.delete(cleanupKey));
+      actionCleanupPromises.set(cleanupKey, cleanup);
+      return cleanup;
     },
 
     async writeCompletionClaims(encounterId, claims) {

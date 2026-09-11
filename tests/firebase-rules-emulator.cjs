@@ -1533,3 +1533,105 @@ test("Round 3 pressure는 replay receipt를 per-UID sequence watermark로 제한
     await environment.cleanup();
   }
 });
+
+test("Round 4 pressure는 confirmed action을 현재 authority가 정리한다", async t => {
+  const environment = await initializeTestEnvironment({
+    projectId,
+    database: { rules: readFileSync("database.rules.json", "utf8") },
+  });
+  try {
+    const timestamp = Date.now();
+    const hostDb = environment.authenticatedContext("host").database();
+    const playerDb = environment.authenticatedContext("player").database();
+    const nextHostDb = environment.authenticatedContext("next-host").database();
+    const viewerDb = environment.authenticatedContext("viewer").database();
+
+    await t.test("takeover authority만 confirmed old-epoch action을 삭제한다", async () => {
+      const expired = oneAnchorChorusState({
+        leaseUntil: timestamp - 100,
+        processedSequenceByUid: { player: 40 },
+        processedActionUid: "player",
+        processedActionSequence: 40,
+      });
+      await seedChorus(environment, expired);
+      await environment.withSecurityRulesDisabled(async context => {
+        const database = context.database();
+        await set(ref(database, `${chorusPath}/actions/player/40`), chorusAction("player", 40, {
+          authorityEpoch: 1,
+          createdAt: timestamp,
+        }));
+        await set(ref(database, `${chorusPath}/actions/player/41`), chorusAction("player", 41, {
+          authorityEpoch: 1,
+          createdAt: timestamp,
+        }));
+      });
+      await assertFails(remove(ref(hostDb, `${chorusPath}/actions/player/40`)));
+      await assertSucceeds(update(ref(nextHostDb, chorusStatePath), {
+        authorityUid: "next-host",
+        authorityEpoch: 2,
+        leaseUntil: Date.now() + 6_000,
+        updatedAt: Date.now(),
+      }));
+      await environment.withSecurityRulesDisabled(async context => {
+        await set(ref(context.database(), `${chorusPath}/actions/player/42`), chorusAction("player", 42, {
+          authorityEpoch: 2,
+          createdAt: timestamp,
+        }));
+      });
+
+      await assertFails(remove(ref(hostDb, `${chorusPath}/actions/player/40`)));
+      await assertFails(remove(ref(viewerDb, `${chorusPath}/actions/player/40`)));
+      await assertFails(remove(ref(nextHostDb, `${chorusPath}/actions/player/41`)));
+      await assertFails(remove(ref(nextHostDb, `${chorusPath}/actions/player/42`)));
+      await assertSucceeds(remove(ref(nextHostDb, `${chorusPath}/actions/player/40`)));
+    });
+
+    await t.test("publish 뒤 crash로 남은 action은 takeover listener가 자동 정리한다", async () => {
+      const state = chorusEncounter({ authorityUid: "host", authorityEpoch: 1, leaseUntil: Date.now() + 6_000 });
+      const publishAt = Date.now();
+      await seedChorus(environment, state, { sequence: 10 });
+      const action = chorusAction("player", 10, { createdAt: publishAt });
+      await assertSucceeds(set(ref(playerDb, `${chorusPath}/actions/player/10`), action));
+      await assertSucceeds(update(ref(hostDb, chorusStatePath), {
+        "processedSequenceByUid/player": 10,
+        processedActionUid: "player",
+        processedActionSequence: 10,
+        "contributors/player/firstContributedAt": publishAt,
+        "contributors/player/lastContributedAt": publishAt,
+        "contributors/player/actionTypes/fragment-strike": true,
+        combatRevision: 1,
+        updatedAt: publishAt,
+      }));
+      assert.equal((await get(ref(hostDb, `${chorusPath}/actions/player/10`))).exists(), true);
+      await environment.withSecurityRulesDisabled(async context => {
+        await update(ref(context.database(), chorusStatePath), { leaseUntil: Date.now() - 100 });
+      });
+
+      const { createChorusNetwork } = await import("../src/sanctuary-chorus-network-20260911-sanctuary.js");
+      let actionsObserved = false;
+      const network = createChorusNetwork({
+        dbModule: { get, onValue, ref, remove, runTransaction, serverTimestamp, set, update },
+        db: nextHostDb,
+        roomId: "public",
+        uid: "next-host",
+        callbacks: { onActionsChanged: () => { actionsObserved = true; } },
+        now: () => Date.now(),
+        timers: { set: () => 1, clear: () => {} },
+      });
+      await network.setMap("sanctuary-return-record");
+      await waitFor(() => network.latestState?.authorityUid === "host" && actionsObserved);
+      const takeover = await network.tryAcquireAuthority();
+      assert.equal(takeover.ok, true);
+      let actionExists = true;
+      const unsubscribe = onValue(ref(nextHostDb, `${chorusPath}/actions/player/10`), snapshot => {
+        actionExists = snapshot.exists();
+      });
+      await waitFor(() => actionExists === false);
+      unsubscribe();
+      assert.equal((await get(ref(nextHostDb, `${chorusPath}/actions/player/10`))).exists(), false);
+      await network.stop();
+    });
+  } finally {
+    await environment.cleanup();
+  }
+});

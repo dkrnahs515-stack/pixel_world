@@ -630,6 +630,7 @@ test("local authority waits for the allocated Firebase sequence before publishin
   const state = createChorusEncounter({ encounterId: "shared-e1", authorityUid: "host", now: 1_000 });
   const events = [];
   const publishCalls = [];
+  const acknowledgements = [];
   game.sessionMode = "online";
   game.latestChorusSnapshot = state;
   game.lastPublishedChorusSignature = null;
@@ -651,6 +652,11 @@ test("local authority waits for the allocated Firebase sequence before publishin
           processedSequenceByUid: { host: 321 },
         };
       },
+      acknowledgeAction: async (...args) => {
+        events.push("acknowledge");
+        acknowledgements.push(args);
+        return { ok: true };
+      },
     },
   };
   game.chorusController = game.createChorusControllerForMode("online");
@@ -666,7 +672,8 @@ test("local authority waits for the allocated Firebase sequence before publishin
   await new Promise(resolve => setImmediate(resolve));
 
   assert.equal(result.ok, true);
-  assert.deepEqual(events, ["send", "publish"]);
+  assert.deepEqual(events, ["send", "publish", "acknowledge"]);
+  assert.deepEqual(acknowledgements, [["host", 321, 1]]);
   assert.equal(publishCalls.length, 1);
   assert.equal(publishCalls[0][1].processedAction.sequence, 321);
   assert.equal(publishCalls[0][1].processedAction.uid, "host");

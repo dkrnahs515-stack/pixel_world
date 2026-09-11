@@ -691,3 +691,62 @@ test("a new processed id requires matching pending action metadata", async () =>
   assert.deepEqual(mismatched, { ok: false, reason: "processed_action_mismatch" });
   assert.equal(fake.updates.length, 0);
 });
+
+test("authority automatically removes confirmed actions when listeners converge", async () => {
+  const confirmed = { id: "player-session:2:7:fragment-strike", sequence: 7 };
+  const pending = { id: "player-session:2:8:fragment-strike", sequence: 8 };
+  const state = {
+    ...activeEncounter("a", 9_000),
+    processedSequenceByUid: { player: 7 },
+    processedActionUid: "player",
+    processedActionSequence: 7,
+  };
+  for (const order of ["actions-first", "state-first"]) {
+    const received = [];
+    const fake = firebaseModulesFake({ [`${BASE_PATH}/state`]: state });
+    const network = createChorusNetwork(networkOptions(fake, "a", 10_000, {
+      onActionsChanged: actions => received.push(actions),
+    }));
+    await network.setMap("sanctuary-return-record");
+    const actions = {
+      player: { 2: { ...confirmed, sequence: 2 }, 7: confirmed, 8: pending },
+    };
+    if (order === "actions-first") {
+      fake.emit(`${BASE_PATH}/actions`, actions);
+      fake.emit(`${BASE_PATH}/state`, state);
+    } else {
+      fake.emit(`${BASE_PATH}/state`, state);
+      fake.emit(`${BASE_PATH}/actions`, actions);
+    }
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.deepEqual(received.at(-1), { player: { 8: pending } }, order);
+    assert.deepEqual(fake.removes, [
+      `${BASE_PATH}/actions/player/2`,
+      `${BASE_PATH}/actions/player/7`,
+    ], order);
+    await network.stop();
+  }
+});
+
+test("viewer filters confirmed actions without attempting authority cleanup", async () => {
+  const state = {
+    ...activeEncounter("a", 9_000),
+    processedSequenceByUid: { player: 7 },
+    processedActionUid: "player",
+    processedActionSequence: 7,
+  };
+  const received = [];
+  const fake = firebaseModulesFake({ [`${BASE_PATH}/state`]: state });
+  const viewer = createChorusNetwork(networkOptions(fake, "viewer", 10_000, {
+    onActionsChanged: actions => received.push(actions),
+  }));
+  await viewer.setMap("sanctuary-return-record");
+
+  fake.emit(`${BASE_PATH}/state`, state);
+  fake.emit(`${BASE_PATH}/actions`, { player: { 7: { id: "confirmed", sequence: 7 } } });
+  await new Promise(resolve => setImmediate(resolve));
+
+  assert.deepEqual(received.at(-1), {});
+  assert.deepEqual(fake.removes, []);
+});
