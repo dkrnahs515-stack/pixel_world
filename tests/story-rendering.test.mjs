@@ -14,6 +14,10 @@ import {
   progressSanctuary,
 } from "../src/chapter-progress-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 import { SANCTUARY_CORE_IDS } from "../src/sanctuary-progress-20260911-sanctuary.js";
+import {
+  drawSanctuaryOverlays,
+  updateChorusHud,
+} from "../src/sanctuary-chorus-rendering-20260911-sanctuary.js";
 
 function commandContext() {
   const calls = [];
@@ -30,6 +34,8 @@ function commandContext() {
     closePath() { calls.push({ type: "closePath" }); },
     arc(x, y, radius, start, end) { calls.push({ type: "arc", x, y, radius, start, end }); },
     stroke() { calls.push({ type: "stroke", strokeStyle, lineWidth }); },
+    fill() { calls.push({ type: "fill", fillStyle }); },
+    setLineDash(value) { calls.push({ type: "setLineDash", value }); },
     fillRect(x, y, width, height) { calls.push({ type: "fillRect", fillStyle, x, y, width, height }); },
     set fillStyle(value) { fillStyle = value; },
     get fillStyle() { return fillStyle; },
@@ -50,6 +56,63 @@ test("Echo signal uses a pixel face and a camera-relative waveform", () => {
   assert.ok(context.calls.some(call => call.type === "fillRect"
     && call.fillStyle === "#b8f8ff" && call.x === 68 && call.y === 142 && call.width === 24 && call.height === 20));
   assert.equal(context.calls.filter(call => call.type === "fillRect" && call.fillStyle === "#163e5e").length, 2);
+});
+
+test("chorus telegraphs and black bonds render on independently selectable layers", () => {
+  const context = commandContext();
+  const model = {
+    active: true,
+    telegraph: {
+      id: "forest-root-sweep",
+      shape: "rect",
+      x: 900,
+      y: 500,
+      width: 360,
+      height: 800,
+      impactAt: 2000,
+    },
+    body: { x: 1080, y: 780, radius: 92 },
+    bonds: [{ id: "roan", x1: 1080, y1: 780, x2: 700, y2: 620, vulnerable: true }],
+    fragments: [{ id: "forest", x: 1000, y: 820 }],
+    separated: false,
+  };
+
+  drawSanctuaryOverlays(context, model, { x: 100, y: 200 }, { layer: "telegraph", now: 1500 });
+  assert.ok(context.calls.some(call => call.type === "fillRect" && call.x === 800 && call.y === 300));
+  assert.equal(context.calls.some(call => call.type === "lineTo"), false);
+
+  context.calls.length = 0;
+  drawSanctuaryOverlays(context, model, { x: 100, y: 200 }, { layer: "foreground", now: 1500 });
+  assert.ok(context.calls.some(call => call.type === "lineTo" && call.x === 600 && call.y === 420));
+  assert.equal(context.calls.some(call => call.type === "fillRect" && call.x === 800 && call.y === 300), false);
+});
+
+test("chorus HUD exposes separate cohesion and personal contamination gauges", () => {
+  const element = () => ({ textContent: "", hidden: false, style: {} });
+  const elements = {
+    coopBossHud: element(),
+    chorusHud: element(),
+    chorusCohesionText: element(),
+    chorusCohesionBar: element(),
+    chorusContaminationText: element(),
+    chorusContaminationBar: element(),
+    chorusPhaseText: element(),
+  };
+
+  assert.equal(updateChorusHud(elements, { hp: 70, maxHp: 100, phase: "testimonies" }, {
+    contamination: 35,
+    confusedUntil: 0,
+  }, 1000), true);
+  assert.equal(elements.chorusHud.hidden, false);
+  assert.equal(elements.coopBossHud.hidden, true);
+  assert.equal(elements.chorusCohesionText.textContent, "70 / 100");
+  assert.equal(elements.chorusCohesionBar.style.transform, "scaleX(0.7)");
+  assert.equal(elements.chorusContaminationText.textContent, "35 / 100");
+  assert.equal(elements.chorusContaminationBar.style.transform, "scaleX(0.35)");
+  assert.match(elements.chorusPhaseText.textContent, /증언/);
+
+  updateChorusHud(elements, null, null, 1000);
+  assert.equal(elements.chorusHud.hidden, true);
 });
 
 test("sanctuary memory signals render as face-free archive silhouettes", () => {

@@ -8,6 +8,12 @@
   --accent: #81e6d9;
   --skill: #a78bfa;
   --item: #fbbf24;
+  --sanctuary-white: #f8fafc;
+  --sanctuary-cyan: #67e8f9;
+  --memory-forest: #4ade80;
+  --memory-coast: #38bdf8;
+  --memory-volcano: #fb923c;
+  --chorus-black: #071018;
   --player-panel-stack-top: 220px;
 }
 * { box-sizing: border-box; }
@@ -270,6 +276,13 @@ kbd { min-width: 23px; padding: 2px 5px; border: 1px solid rgba(255,255,255,.35)
 .bar.boss { height: 9px; background: rgba(15,23,42,.72); }
 .bar.boss i { background: linear-gradient(90deg,#ef4444,#f97316,#facc15); transform-origin: left center; transition: transform .18s ease; }
 .coop-boss-meta { margin-top: 5px; color: #e2e8f0; font-size: 10px; }
+.chorus-hud { position: absolute; top: 106px; right: 14px; z-index: 12; display: grid; gap: 8px; width: min(calc(100vw - 28px),360px); padding: 11px 14px; border-color: color-mix(in srgb,var(--sanctuary-cyan) 55%,transparent); border-radius: 13px; background: linear-gradient(145deg,rgba(248,250,252,.88),rgba(15,56,70,.9)); color: #071018; text-shadow: none; }
+.chorus-meter { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; font-size: 11px; font-weight: 900; }
+.chorus-meter .bar { grid-column: 1 / -1; height: 8px; overflow: hidden; background: rgba(7,16,24,.35); }
+.chorus-meter .bar i { display: block; width: 100%; height: 100%; transform-origin: left center; transition: transform .18s ease; }
+.bar.cohesion i { background: linear-gradient(90deg,var(--sanctuary-cyan),var(--sanctuary-white)); box-shadow: 0 0 12px rgba(103,232,249,.58); }
+.bar.contamination i { background: linear-gradient(90deg,#475569,var(--chorus-black)); }
+#chorusPhaseText { color: #dffaff; font-size: 10px; line-height: 1.4; }
 .primary-button, .secondary-button, .danger-button { border: 0; border-radius: 10px; padding: 12px 17px; cursor: pointer; font-weight: 900; }
 .primary-button { width: 100%; background: linear-gradient(135deg,#2dd4bf,#22c55e); color: #07221c; }
 .primary-button:hover { filter: brightness(1.08); }
@@ -292,6 +305,7 @@ kbd { min-width: 23px; padding: 2px 5px; border: 1px solid rgba(255,255,255,.35)
 @media (max-width: 760px) {
   .blacksmith-items { grid-template-columns: 1fr; }
   .coop-boss-hud { top: var(--player-panel-stack-top); left: 14px; width: calc(100% - 28px); max-width: 520px; transform: none; }
+  .chorus-hud { top: var(--player-panel-stack-top); right: 14px; left: auto; width: min(calc(100% - 28px),360px); }
 }
 @media (max-width: 620px) {
   .class-card-grid { grid-template-columns: 1fr; }
@@ -304,10 +318,12 @@ kbd { min-width: 23px; padding: 2px 5px; border: 1px solid rgba(255,255,255,.35)
   .class-card { transition: none; }
   .play-mode-card { transition: none; }
   .bar.boss i { transition: none; }
+  .chorus-hud, .chorus-meter .bar i { animation: none; transition: none; }
 }
 @media (max-width: 520px) {
   .play-mode-grid { grid-template-columns: 1fr; }
   .player-panel { width: calc(100% - 28px); }
+  .chorus-hud { top: var(--player-panel-stack-top); right: 14px; bottom: auto; left: 14px; width: auto; padding: 8px 10px; }
   .performance-panel { display: none; }
   .npc-prompt { bottom: calc(266px + env(safe-area-inset-bottom)); max-width: calc(100% - 28px); white-space: nowrap; }
   .player-header strong { max-width: 130px; }

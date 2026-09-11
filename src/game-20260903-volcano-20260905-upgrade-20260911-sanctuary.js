@@ -28,6 +28,11 @@ import { movementVector } from "./input-20260905-upgrade-20260911-sanctuary.js";
 import { createNetworkAdapter, createOfflineNetworkAdapter } from "./network-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 import { createCoopBossController } from "./coop-boss-controller-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 import { createLocalBossController } from "./local-boss-controller-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import { createSanctuaryChorusController } from "./sanctuary-chorus-controller-20260911-sanctuary.js";
+import {
+  drawSanctuaryOverlays,
+  updateChorusHud as renderChorusHud,
+} from "./sanctuary-chorus-rendering-20260911-sanctuary.js";
 import { validateBossPlayerDamageEvent } from "./coop-boss-state-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 import {
   completeRegion,
@@ -348,8 +353,11 @@ export class PixelRPG {
     this.network = null;
     this.sessionMode = "solo";
     this.coopBossController = null;
+    this.chorusController = createSanctuaryChorusController({ uid: "local-player", mode: "solo" });
     this.processedBossPlayerDamageIds = new Set();
     this.processedBossRewardIds = new Set();
+    this.processedChorusEventIds = new Set();
+    this.processedChorusCompletionIds = new Set();
     this.bossNetworkGeneration = 0;
     this.running = false;
     this.inputEnabled = false;
@@ -584,6 +592,8 @@ export class PixelRPG {
     this.bossNetworkGeneration += 1;
     this.coopBossController?.clear();
     this.coopBossController = null;
+    this.chorusController?.clear?.();
+    this.updateChorusHud(null, Date.now());
     if (network) await network.stop();
 
     this.chat.reset();
@@ -944,7 +954,12 @@ export class PixelRPG {
       if (this.player.respawnTimer <= 0) {
         this.applyEnemyContactDamage();
         this.updatePlayerMovement(dt);
+        this.updateChorusController(dt, {
+          player: { ...this.player, uid: this.network?.uid || "local-player", mapId: this.mapId },
+        }, Date.now());
         this.tryEnterPortal();
+      } else {
+        this.updateChorusController(dt, {}, Date.now());
       }
     }
     this.updateDamageNumbers(dt);
@@ -997,7 +1012,9 @@ export class PixelRPG {
     this.player.moving = Boolean(dx || dy);
 
     if (!this.player.moving) return;
-    const speed = (this.player.speed ?? C.PLAYER_SPEED) * playerMovementMultiplier(this.player);
+    const speed = (this.player.speed ?? C.PLAYER_SPEED)
+      * playerMovementMultiplier(this.player)
+      * (this.chorusController?.movementMultiplier?.(Date.now()) ?? 1);
     const nextX = this.player.x + dx * speed * dt;
     if (!isWorldPositionBlocked(this.mapId, nextX, this.player.y, PLAYER_RADIUS)) this.player.x = nextX;
     const nextY = this.player.y + dy * speed * dt;
@@ -1071,6 +1088,35 @@ export class PixelRPG {
       ? consumedEvents
       : Array.isArray(returnedEvents) ? returnedEvents : [];
     this.handleBossControllerEvents(events);
+    return events;
+  }
+
+  handleChorusControllerEvents(events) {
+    this.processedChorusEventIds ||= new Set();
+    this.processedChorusCompletionIds ||= new Set();
+    for (const event of events || []) {
+      if (event?.type === "damage-player" && event.eventId) {
+        if (this.processedChorusEventIds.has(event.eventId)) continue;
+        this.processedChorusEventIds.add(event.eventId);
+        this.damagePlayer(event.amount ?? event.damage, event.source || this.player);
+      } else if (event?.type === "chorus-completion-claim" && event.claimId) {
+        if (this.processedChorusCompletionIds.has(event.claimId)) continue;
+        this.processedChorusCompletionIds.add(event.claimId);
+      } else if (event?.type === "chorus-separated") {
+        if (this.ui?.message) this.notify("무명의 합창의 결속이 풀렸습니다. 기억 분리 완료.");
+      }
+    }
+  }
+
+  updateChorusHud(model = this.chorusController?.renderModel?.(), now = Date.now()) {
+    return renderChorusHud(this.ui, model?.shared || null, model?.personal || null, now);
+  }
+
+  updateChorusController(dt, context = {}, timestamp = Date.now()) {
+    const tick = this.chorusController?.update?.(dt, context, timestamp);
+    const events = Array.isArray(tick) ? tick : Array.isArray(tick?.events) ? tick.events : [];
+    this.handleChorusControllerEvents(events);
+    this.updateChorusHud(this.chorusController?.renderModel?.(), timestamp);
     return events;
   }
 
@@ -1393,6 +1439,14 @@ export class PixelRPG {
 
   openNpcInteraction() {
     if (!this.running || !this.inputEnabled || this.chatInputActive || this.portalTransition || this.player.respawnTimer > 0) return false;
+    if (this.nearbyChorusInteraction) {
+      Promise.resolve(this.chorusController?.interact?.(this.player, Date.now())).then(result => {
+        if (!result?.ok && result?.reason === "wrong_anchor") this.notify?.("기억 파편이 맞지 않아 개인 오염도가 상승했습니다.");
+        else if (!result?.ok && result?.reason === "wrong_testimony") this.notify?.("증언 판정이 맞지 않아 개인 오염도가 상승했습니다.");
+        if (this.ui?.npcPrompt) this.updateNpcPrompt();
+      }).catch(error => console.warn("무명의 합창 상호작용 실패", error));
+      return true;
+    }
     if (this.nearbyStoryInteraction) return this.openStoryInteraction(this.nearbyStoryInteraction);
     const npc = findNearbyNpc(this.npcs, this.player);
     if (!npc) return false;
@@ -1668,6 +1722,7 @@ export class PixelRPG {
       if (this.ui?.npcPrompt) this.updateNpcPrompt();
       return false;
     }
+    this.syncChorusMap();
     if (hiddenReward?.ok) this.notify?.("선발대장 구출 보상으로 세 직업의 히든 무기를 획득했습니다.");
     return true;
   }
@@ -2037,13 +2092,20 @@ export class PixelRPG {
       && !this.isInteractionOpen()
       && !this.portalTransition
       && this.player.respawnTimer <= 0;
-    this.nearbyStoryInteraction = eligible
+    this.nearbyChorusInteraction = eligible
+      ? this.chorusController?.nearbyInteraction?.(this.player) || null
+      : null;
+    this.nearbyStoryInteraction = eligible && !this.nearbyChorusInteraction
       ? findNearbyStoryInteraction(ALL_STORY_INTERACTIONS, { ...this.player, mapId: this.mapId }, this.progress?.worldProgress)
       : null;
-    this.nearbyNpc = eligible && !this.nearbyStoryInteraction ? findNearbyNpc(this.npcs, this.player) : null;
-    const nearby = this.nearbyStoryInteraction || this.nearbyNpc;
+    this.nearbyNpc = eligible && !this.nearbyChorusInteraction && !this.nearbyStoryInteraction
+      ? findNearbyNpc(this.npcs, this.player)
+      : null;
+    const nearby = this.nearbyChorusInteraction || this.nearbyStoryInteraction || this.nearbyNpc;
     setPropertyIfChanged(this.ui.npcPrompt, "hidden", !nearby);
-    if (this.nearbyStoryInteraction && this.ui.npcPromptText) {
+    if (this.nearbyChorusInteraction && this.ui.npcPromptText) {
+      setTextIfChanged(this.ui.npcPromptText, this.nearbyChorusInteraction.prompt);
+    } else if (this.nearbyStoryInteraction && this.ui.npcPromptText) {
       setTextIfChanged(this.ui.npcPromptText, storyInteractionPrompt(this.nearbyStoryInteraction));
     } else if (this.nearbyNpc && this.ui.npcPromptText) {
       const prompt = {
@@ -2053,6 +2115,12 @@ export class PixelRPG {
       }[this.nearbyNpc.role] || `${this.nearbyNpc.name}와 대화하기`;
       setTextIfChanged(this.ui.npcPromptText, prompt);
     }
+  }
+
+  syncChorusMap() {
+    return this.chorusController?.setMap?.(this.mapId, {
+      correctionLinked: this.progress?.worldProgress?.chapters?.sanctuary?.correctionLinked === true,
+    });
   }
 
   tryEnterPortal() {
@@ -2132,6 +2200,8 @@ export class PixelRPG {
     this.remotePlayers.clear();
     this.ui.playerCount.textContent = "1";
     this.updateCoopBossHud(null, Date.now());
+    this.syncChorusMap();
+    this.updateChorusHud(this.chorusController?.renderModel?.(), Date.now());
     const bossOptions = this.sessionMode === "online"
       ? { partySize: this.remotePlayers.size + 1, deferEncounter: true }
       : { partySize: 1 };
@@ -2152,7 +2222,8 @@ export class PixelRPG {
   }
 
   tryAttack(kind) {
-    if (!this.running || !this.inputEnabled || this.isInteractionOpen() || this.player.respawnTimer > 0 || this.attackState) return;
+    if (!this.running || !this.inputEnabled || this.isInteractionOpen() || this.player.respawnTimer > 0
+      || this.attackState || this.chorusController?.canAttack?.(Date.now()) === false) return false;
     const definition = attackDefinition(kind, this.classId, this.player.equippedWeaponId, this.progress?.level || this.player.level || 1);
     if (kind === "skill-e" || kind === "skill-r") return this.trySkill(kind, definition);
     const cooldown = kind === "strong" ? this.strongCooldown : this.basicCooldown;
@@ -2191,7 +2262,25 @@ export class PixelRPG {
   }
 
   targetableBosses() {
-    return this.coopBossController?.targetableBosses?.() || [this.coopBossController?.targetableBoss?.()].filter(Boolean);
+    const genericBosses = this.coopBossController?.targetableBosses?.()
+      || [this.coopBossController?.targetableBoss?.()].filter(Boolean);
+    const chorusTargets = this.chorusController?.targetableBosses?.() || [];
+    return [...genericBosses, ...chorusTargets];
+  }
+
+  requestBossTargetHit(target, payload) {
+    if (target?.isChorusTarget) return this.chorusController?.requestAttack?.({
+      ...payload,
+      targetId: target.id,
+      player: payload.player || { ...this.player, mapId: this.mapId },
+    });
+    return this.coopBossController?.requestHit?.({ ...payload, targetId: target?.id });
+  }
+
+  requestBossTargetHitById(targetId, payload) {
+    const chorusTarget = this.chorusController?.targetableBosses?.().find(target => target.id === targetId);
+    const identifiesChorus = targetId === "unnamed-chorus" || String(targetId).startsWith("chorus-bond-");
+    return this.requestBossTargetHit(chorusTarget || { id: targetId, isChorusTarget: identifiesChorus }, payload);
   }
 
   trySkill(kind, definition) {
@@ -2239,7 +2328,7 @@ export class PixelRPG {
         const rewards = [];
         for (const target of hits) {
           if (target.isCoopBoss) {
-            this.coopBossController.requestHit({ targetId: target.id, attackKind: cast.kind, castId: cast.id, hitIndex: pulse.hitIndex, player: { ...cast.player, x: this.player.x, y: this.player.y }, classId: cast.classId, weaponId: cast.weaponId, direction: cast.direction }).catch?.(error => console.warn("스킬 요청 실패", error));
+            this.requestBossTargetHit(target, { attackKind: cast.kind, castId: cast.id, hitIndex: pulse.hitIndex, player: { ...cast.player, x: this.player.x, y: this.player.y }, classId: cast.classId, weaponId: cast.weaponId, direction: cast.direction }).catch?.(error => console.warn("스킬 요청 실패", error));
           } else {
             const result = damageEnemy(target, d.damage, vector, d.knockback);
             if (!result.killed) applyEnemyHitStun(target, d.hitStun);
@@ -2317,8 +2406,8 @@ export class PixelRPG {
       if (this.processedProjectileHitIds.has(eventId)) continue;
       if (event.targetType === "coop-boss") {
         this.processedProjectileHitIds.add(eventId);
-        this.coopBossController?.requestHit({
-          targetId: event.enemyId, castId: event.castId, hitIndex: event.hitIndex,
+        this.requestBossTargetHitById(event.enemyId, {
+          castId: event.castId, hitIndex: event.hitIndex,
           attackKind: event.attackKind || (event.kind === "piercing-arrow" || event.kind === "explosive-bolt" ? "strong" : "basic"),
           player: { ...this.player, ...event.playerSnapshot, x: this.player.x, y: this.player.y, mapId: this.mapId },
           classId: event.classId || this.classId,
@@ -2391,8 +2480,7 @@ export class PixelRPG {
     for (const boss of this.targetableBosses()) {
     if (!this.attackState?.requestedBossIds?.has(boss.id) && isTargetInAttackArc(this.player, this.player.dir, boss, definition.range, definition.arcDegrees)) {
       if (this.attackState) { this.attackState.requestedBossIds ||= new Set(); this.attackState.requestedBossIds.add(boss.id); }
-      this.coopBossController.requestHit({
-        targetId: boss.id,
+      this.requestBossTargetHit(boss, {
         attackKind: kind,
         player: { ...this.player, mapId: this.mapId },
         classId: this.classId,
@@ -2621,6 +2709,11 @@ export class PixelRPG {
       cameraY,
       active: this.isVolcanoEruptionActive(),
     });
+    const chorusModel = this.chorusController?.renderModel?.();
+    drawSanctuaryOverlays(ctx, chorusModel, { x: cameraX, y: cameraY }, {
+      layer: "telegraph",
+      now: Date.now(),
+    });
 
     for (const projectile of this.projectiles || []) {
       drawProjectile(ctx, projectile, {
@@ -2668,6 +2761,11 @@ export class PixelRPG {
         visiblePlayers.push(entity);
       }
     }
+
+    drawSanctuaryOverlays(ctx, chorusModel, { x: cameraX, y: cameraY }, {
+      layer: "foreground",
+      now: Date.now(),
+    });
 
     drawPlayerSlowEffect(ctx, this.player, cameraX, cameraY);
     if (this.attackState?.definition.delivery === "melee") {
