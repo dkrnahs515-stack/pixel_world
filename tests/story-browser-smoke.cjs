@@ -144,6 +144,28 @@ async function assertStorageRecovery(browser) {
       unsupportedBytes,
       "unsupported bytes must survive an in-memory start",
     );
+    await advanceThroughInvestigation(page);
+    await selectAcceptedEvidence(page);
+    await page.locator('[data-story-submit]').click();
+    await waitForScene(page, "폐기 보류와 숲 조사 임무");
+    await pressNext(page);
+    await page.locator("#storyCompletion").waitFor({ state: "visible" });
+    await page.locator("#storyReplayButton").click();
+    await page.locator("#storyResetOverlay").waitFor({ state: "visible" });
+    await page.locator("#storyResetConfirmButton").click();
+    await waitForScene(page, "첫 임무");
+    assert.equal(
+      await page.evaluate(key => localStorage.getItem(key), storySaveKey),
+      unsupportedBytes,
+      "Replay/reset must never overwrite unsupported bytes",
+    );
+    await page.locator("[data-story-next]").click();
+    await waitForScene(page, "폐기 기준 확인");
+    assert.equal(
+      await page.evaluate(key => localStorage.getItem(key), storySaveKey),
+      unsupportedBytes,
+      "unsupported session checkpoints must remain unsaved",
+    );
     assert.deepEqual(diagnostics.errors, []);
   } finally {
     await context.close();

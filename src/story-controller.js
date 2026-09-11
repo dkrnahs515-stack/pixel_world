@@ -177,7 +177,7 @@ function confirmReset() {
     ? { ok: true, error: "" }
     : clearStoryProgress(window.localStorage);
   if (!cleared.ok) setStatus(cleared.error, true);
-  storageStatus = "empty";
+  if (storageStatus !== "unsupported") storageStatus = "empty";
   elements.resetOverlay.hidden = true;
   beginChapter();
   modalReturnFocus = null;
