@@ -53,6 +53,21 @@ function normalizedResource(value) {
   return normalized;
 }
 
+function tagAttributes(tag) {
+  const entries = [];
+  const attributePattern = /\s+([^\s=/>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+  let attributeMatch;
+
+  while ((attributeMatch = attributePattern.exec(tag))) {
+    entries.push({
+      name: attributeMatch[1].toLowerCase(),
+      value: attributeMatch[2] ?? attributeMatch[3] ?? attributeMatch[4] ?? "",
+    });
+  }
+
+  return entries;
+}
+
 function resourceAttributes(markup) {
   const entries = [];
   const tagPattern = /<([a-z][\w:-]*)\b[^>]*>/gi;
@@ -60,14 +75,13 @@ function resourceAttributes(markup) {
 
   while ((tagMatch = tagPattern.exec(markup))) {
     const [tag, tagName] = tagMatch;
-    const attributePattern = /\b(src|srcset|href|poster)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
-    let attributeMatch;
-    while ((attributeMatch = attributePattern.exec(tag))) {
+    for (const attribute of tagAttributes(tag)) {
+      if (!["src", "srcset", "href", "poster"].includes(attribute.name)) continue;
       entries.push({
         tag,
         tagName: tagName.toLowerCase(),
-        name: attributeMatch[1].toLowerCase(),
-        value: attributeMatch[2] ?? attributeMatch[3] ?? attributeMatch[4],
+        name: attribute.name,
+        value: attribute.value,
       });
     }
   }
@@ -75,14 +89,45 @@ function resourceAttributes(markup) {
   return entries;
 }
 
+function linkRelTokens(tag) {
+  return tagAttributes(tag)
+    .filter(attribute => attribute.name === "rel")
+    .flatMap(attribute => normalizedResource(attribute.value).toLowerCase().split(/\s+/))
+    .filter(Boolean);
+}
+
 function cssUrls(styles) {
   const urls = [];
+  const normalizedStyles = cssUnescape(styles);
+  const addUrl = value => urls.push(normalizedResource(value));
   const urlPattern = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^\s)]+))\s*\)/gi;
   let match;
-  while ((match = urlPattern.exec(styles))) {
-    urls.push(match[1] ?? match[2] ?? match[3]);
+  while ((match = urlPattern.exec(normalizedStyles))) {
+    addUrl(match[1] ?? match[2] ?? match[3]);
+  }
+
+  const importStringPattern = /@import\s+(?:"([^"]*)"|'([^']*)')/gi;
+  while ((match = importStringPattern.exec(normalizedStyles))) {
+    addUrl(match[1] ?? match[2]);
+  }
+
+  const imageSetPattern = /image-set\s*\(([\s\S]*?)\)/gi;
+  while ((match = imageSetPattern.exec(normalizedStyles))) {
+    const quotedResourcePattern = /"([^"]*)"|'([^']*)'/g;
+    let quotedMatch;
+    while ((quotedMatch = quotedResourcePattern.exec(match[1]))) {
+      addUrl(quotedMatch[1] ?? quotedMatch[2]);
+    }
   }
   return urls;
+}
+
+function cssForbiddenSyntax(styles) {
+  const normalizedStyles = cssUnescape(styles);
+  return {
+    hasImport: /@import\b/i.test(normalizedStyles),
+    hasImageSet: /\bimage-set\s*\(/i.test(normalizedStyles),
+  };
 }
 
 const lateArtworkName = "02_제01장_지워질 네 이름, 돌아온 신호.png";
@@ -94,6 +139,41 @@ function referencesLateArtwork(value) {
 function cssEscapeEveryCharacter(value) {
   return [...value].map(character => `\\${character.codePointAt(0).toString(16)} `).join("");
 }
+
+test("리소스 스캐너는 우회형 CSS와 인용 없는 preload 관계를 정규화해 감지한다", () => {
+  assert.deepEqual(
+    cssUrls(`@import "${encodeURIComponent(lateArtworkName)}";`),
+    [lateArtworkName],
+    "string-form @import must expose its normalized resource",
+  );
+  assert.deepEqual(
+    cssUrls(`.art { background-image: image-set("${cssEscapeEveryCharacter(lateArtworkName)}" 1x); }`),
+    [lateArtworkName],
+    "string-form image-set must expose its CSS-escaped resource",
+  );
+  assert.deepEqual(
+    cssForbiddenSyntax(`@\\69 mport "safe.css"; .art { image-set("safe.png" 1x); }`),
+    { hasImport: true, hasImageSet: true },
+    "normalized CSS syntax must flag import and image-set even before resource allowlisting",
+  );
+
+  for (const { markup, relation } of [
+    { markup: "<link HREF=../src/story-controller.js REL=preload>", relation: "preload" },
+    { markup: '<link rel="modulepreload" href="../src/story-controller.js">', relation: "modulepreload" },
+  ]) {
+    const attributes = tagAttributes(markup);
+    assert.equal(
+      attributes.some(attribute => attribute.name === "rel" && normalizedResource(attribute.value).toLowerCase() === relation),
+      true,
+      `${relation} relation must be detected regardless attribute order, quote form, or case`,
+    );
+    assert.deepEqual(
+      linkRelTokens(markup),
+      [relation],
+      `${relation} must be tokenized independently from its attribute quoting or order`,
+    );
+  }
+});
 
 test("제1장 스토리 셸은 독립된 조사 화면의 시맨틱 훅을 제공한다", () => {
   assert.equal(existsSync(storyHtmlPath), true, "story/index.html must exist");
@@ -180,12 +260,24 @@ test("제1장 스토리 셸은 독립된 조사 화면의 시맨틱 훅을 제�
     "the independent shell may reference only its stylesheet, root return link, and controller",
   );
   assert.deepEqual(cssUrls(css), [], "story CSS must not request assets before Task 6 chooses current artwork");
+  assert.deepEqual(
+    cssForbiddenSyntax(css),
+    { hasImport: false, hasImageSet: false },
+    "the static shell rejects CSS import and image-set disclosure paths even when their resources are otherwise allowlisted",
+  );
 
   const scriptTags = [...html.matchAll(/<script\b[^>]*>/gi)];
   assert.equal(scriptTags.length, 1, "the story shell has exactly one script");
   assert.match(scriptTags[0][0], /\btype\s*=\s*["']module["']/i);
   assert.match(scriptTags[0][0], /\bsrc\s*=\s*["']\.\.\/src\/story-controller\.js["']/i);
-  assert.equal([...html.matchAll(/<link\b[^>]*\brel\s*=\s*["'][^"']*\bpreload\b[^"']*["'][^>]*>/gi)].length, 0);
+  for (const linkTag of html.matchAll(/<link\b[^>]*>/gi)) {
+    const relationTokens = linkRelTokens(linkTag[0]);
+    assert.equal(
+      relationTokens.some(token => token === "preload" || token === "modulepreload"),
+      false,
+      `preload-style link relation is not allowed: ${linkTag[0]}`,
+    );
+  }
 
   for (const forbiddenLateReference of [
     lateArtworkName,
