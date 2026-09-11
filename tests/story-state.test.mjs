@@ -222,6 +222,43 @@ test("forged case-submit evidence is rejected without bypassing required investi
   assert.match(result.feedback, /근거/);
 });
 
+test("forged case-submit evidence is rejected when same-final-time is absent", () => {
+  const state = {
+    schemaVersion: 1,
+    sceneId: "case-submit",
+    discoveredClueIds: [
+      "rule-five-years",
+      "rule-no-life-signal",
+      "rule-no-recovery",
+      "roster-four-names",
+      "recovered-radio",
+      "empty-map-case",
+      "replay-lengths",
+      "new-received-at",
+      "signal-warning",
+      "metal-pattern",
+      "main-compass-missing",
+      "article-18-4",
+    ],
+    completedComparisonIds: ["metal-to-compass"],
+    submittedEvidenceIds: [],
+    revealedArtIds: ["theo"],
+    chapterComplete: false,
+  };
+  const before = structuredClone(state);
+  assert.deepEqual(canAdvance(state), { ok: false, missingIds: ["same-final-time"] });
+
+  const result = submitEvidence(state, {
+    claimId: "investigate-survival",
+    evidenceIds: ["new-received-at", "metal-to-compass", "article-18-4"],
+  });
+
+  assert.equal(result.accepted, false);
+  assert.deepEqual(result.state, before);
+  assert.deepEqual(state, before);
+  assert.match(result.feedback, /근거/);
+});
+
 test("case-submit cannot advance directly to late artwork without evidence submission", () => {
   const result = advanceStory(readyCaseState());
   assert.equal(result.ok, false);
