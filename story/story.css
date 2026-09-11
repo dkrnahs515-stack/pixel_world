@@ -73,8 +73,14 @@ a:focus-visible {
 
 .story-overlay {
   display: grid;
-  min-height: 100vh;
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  min-height: 100%;
   padding: max(1.5rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1.5rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: rgb(4 17 18 / 84%);
   place-items: center;
 }
 

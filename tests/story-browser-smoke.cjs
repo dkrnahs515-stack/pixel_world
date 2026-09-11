@@ -136,7 +136,8 @@ async function assertStorageRecovery(browser) {
     const diagnostics = pageDiagnostics(page);
     await page.goto(`${baseUrl}/story/`, { waitUntil: "networkidle" });
     assert.equal(await page.locator("#storyContinueButton").isDisabled(), true);
-    assert.match(await page.locator("#storyStatus").textContent(), /보존했습니다/);
+    assert.equal(await page.locator("#storyStartStatus").isVisible(), true);
+    assert.match(await page.locator("#storyStartStatus").textContent(), /보존했습니다/);
     await startNewChapter(page);
     assert.equal(
       await page.evaluate(key => localStorage.getItem(key), storySaveKey),
@@ -155,7 +156,8 @@ async function assertStorageRecovery(browser) {
     const diagnostics = pageDiagnostics(page);
     await page.goto(`${baseUrl}/story/`, { waitUntil: "networkidle" });
     assert.equal(await page.locator("#storyContinueButton").isDisabled(), true);
-    assert.match(await page.locator("#storyStatus").textContent(), /손상된 진행을 복구/);
+    assert.equal(await page.locator("#storyStartStatus").isVisible(), true);
+    assert.match(await page.locator("#storyStartStatus").textContent(), /손상된 진행을 복구/);
     await startNewChapter(page);
     assert.equal(
       await page.evaluate(key => JSON.parse(localStorage.getItem(key)).sceneId, storySaveKey),
@@ -244,6 +246,16 @@ async function assertStorageRecovery(browser) {
       await pressNext(page);
       await page.locator("#storyCompletion").waitFor({ state: "visible" });
       assert.equal(await page.locator("#storyCompletionTitle").textContent(), "생존 여부 미확인. 폐기 보류.");
+      assert.equal(await page.locator("#storyScreen").isHidden(), true, "completion must hide the investigation screen");
+      assert.equal(await page.locator("#storyStartOverlay").isHidden(), true);
+      assert.equal(await page.locator("#storyResetOverlay").isHidden(), true);
+      assert.equal(
+        await page.locator("#storyCompletionTitle").evaluate(element => document.activeElement === element),
+        true,
+        "completion must receive focus",
+      );
+      const completionBox = await page.locator("#storyCompletion").boundingBox();
+      assert.ok(completionBox.y >= 0 && completionBox.y < 900, "completion must be immediately viewport-visible");
       const checkpoint = await page.evaluate(({ storyKey, rpgKey }) => ({
         story: localStorage.getItem(storyKey),
         rpg: localStorage.getItem(rpgKey),
@@ -252,16 +264,32 @@ async function assertStorageRecovery(browser) {
       assert.ok(checkpoint.story, "completion must save a story checkpoint");
       assert.equal(checkpoint.rpg, null);
       assert.deepEqual(checkpoint.keys.filter(key => key.includes("story") || key.includes("progress")), [storySaveKey]);
-      await page.screenshot({ path: path.join(screenshotDirectory, "desktop-completion.png"), fullPage: true });
+      await page.screenshot({ path: path.join(screenshotDirectory, "desktop-completion.png") });
 
       await page.evaluate(({ rpgKey }) => localStorage.setItem(rpgKey, "rpg-bytes-must-survive"), { rpgKey: rpgSaveKey });
       await page.reload({ waitUntil: "networkidle" });
       assert.equal(await page.locator("#storyContinueButton").isEnabled(), true);
       await page.locator("#storyContinueButton").click();
       await page.locator("#storyCompletion").waitFor({ state: "visible" });
+      assert.equal(await page.locator("#storyScreen").isHidden(), true, "Continue must reopen completion directly");
+      assert.equal(await page.locator("#storyCompletionTitle").evaluate(element => document.activeElement === element), true);
 
       await page.locator("#storyReplayButton").click();
       await page.locator("#storyResetOverlay").waitFor({ state: "visible" });
+      assert.equal(await page.locator("#storyResetConfirmButton").evaluate(element => document.activeElement === element), true);
+      const resetPresentation = await page.locator("#storyResetOverlay").evaluate(element => {
+        const box = element.getBoundingClientRect();
+        return { position: getComputedStyle(element).position, top: box.top, bottom: box.bottom };
+      });
+      assert.equal(resetPresentation.position, "fixed");
+      assert.ok(resetPresentation.top <= 0 && resetPresentation.bottom >= 900, "reset must cover the viewport");
+      assert.equal(await page.locator("#storyCompletion").getAttribute("inert"), "");
+      await page.keyboard.press("Tab");
+      assert.equal(await page.locator("#storyResetCancelButton").evaluate(element => document.activeElement === element), true);
+      await page.keyboard.press("Tab");
+      assert.equal(await page.locator("#storyResetConfirmButton").evaluate(element => document.activeElement === element), true);
+      await page.keyboard.press("Shift+Tab");
+      assert.equal(await page.locator("#storyResetCancelButton").evaluate(element => document.activeElement === element), true);
       await page.keyboard.press("Escape");
       assert.equal(await page.locator("#storyResetOverlay").isHidden(), true);
       assert.equal(await page.locator("#storyReplayButton").evaluate(element => document.activeElement === element), true);

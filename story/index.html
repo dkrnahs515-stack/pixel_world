@@ -15,6 +15,7 @@
         <p>
           정식 모험가가 된 첫날, 테오에게 맡겨진 것은 네 명의 실종자 명부를 폐기하는 일이었습니다.
         </p>
+        <p id="storyStartStatus" class="story-status" aria-live="polite"></p>
         <div class="story-start-actions" aria-label="제1장 시작 방식">
           <button id="storyNewButton" type="button">처음부터 조사하기</button>
           <button id="storyContinueButton" type="button" disabled>이어하기</button>
@@ -92,7 +93,7 @@
     <section id="storyCompletion" class="story-overlay" aria-labelledby="storyCompletionTitle" hidden>
       <div class="story-completion-paper">
         <p class="story-kicker">제1장 기록 결재</p>
-        <h2 id="storyCompletionTitle">생존 여부 미확인. 폐기 보류.</h2>
+        <h2 id="storyCompletionTitle" tabindex="-1">생존 여부 미확인. 폐기 보류.</h2>
         <p>조사단의 다음 열람 기록은 보존됩니다.</p>
         <div class="story-confirm-actions">
           <button id="storyReplayButton" type="button">제1장 다시 보기</button>

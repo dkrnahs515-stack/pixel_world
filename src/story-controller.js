@@ -38,6 +38,25 @@ function setStatus(message, shouldFocus = false) {
   }
 }
 
+function setStartStatus(message) {
+  if (elements) elements.startStatus.textContent = message;
+}
+
+function setBackgroundInert(value) {
+  for (const surface of [elements.startOverlay, elements.screen, elements.completion]) {
+    surface.inert = value;
+  }
+}
+
+function showCompletion() {
+  elements.startOverlay.hidden = true;
+  elements.screen.hidden = true;
+  elements.resetOverlay.hidden = true;
+  elements.completion.hidden = false;
+  setBackgroundInert(false);
+  queueMicrotask(() => elements.completionTitle.focus());
+}
+
 function focusSceneTitle() {
   queueMicrotask(() => elements?.sceneTitle.focus());
 }
@@ -130,6 +149,7 @@ function beginChapter() {
   selectedClaimId = null;
   selectedEvidenceIds = [];
   storyState = createInitialStoryState();
+  setBackgroundInert(false);
   elements.startOverlay.hidden = true;
   elements.screen.hidden = false;
   elements.completion.hidden = true;
@@ -140,12 +160,14 @@ function beginChapter() {
 
 function closeResetDialog() {
   elements.resetOverlay.hidden = true;
+  setBackgroundInert(false);
   modalReturnFocus?.focus();
   modalReturnFocus = null;
 }
 
 function openResetDialog(trigger) {
   modalReturnFocus = trigger;
+  setBackgroundInert(true);
   elements.resetOverlay.hidden = false;
   queueMicrotask(() => elements.resetConfirm.focus());
 }
@@ -156,8 +178,8 @@ function confirmReset() {
     : clearStoryProgress(window.localStorage);
   if (!cleared.ok) setStatus(cleared.error, true);
   storageStatus = "empty";
-  beginChapter();
   elements.resetOverlay.hidden = true;
+  beginChapter();
   modalReturnFocus = null;
 }
 
@@ -179,7 +201,7 @@ function handleContinue() {
   elements.startOverlay.hidden = true;
   elements.screen.hidden = false;
   renderScene(storyState);
-  if (storyState.chapterComplete) elements.completion.hidden = false;
+  if (storyState.chapterComplete) showCompletion();
   else focusSceneTitle();
 }
 
@@ -194,7 +216,7 @@ function handleNext() {
   setStatus(result.feedback);
   saveCheckpoint();
   if (storyState.chapterComplete) {
-    elements.completion.hidden = false;
+    showCompletion();
     return;
   }
   focusSceneTitle();
@@ -264,6 +286,7 @@ function handleActionClick(event) {
 function bindPage() {
   elements = {
     startOverlay: document.querySelector("#storyStartOverlay"),
+    startStatus: document.querySelector("#storyStartStatus"),
     newButton: document.querySelector("#storyNewButton"),
     continueButton: document.querySelector("#storyContinueButton"),
     screen: document.querySelector("#storyScreen"),
@@ -282,14 +305,15 @@ function bindPage() {
     resetConfirm: document.querySelector("#storyResetConfirmButton"),
     resetCancel: document.querySelector("#storyResetCancelButton"),
     completion: document.querySelector("#storyCompletion"),
+    completionTitle: document.querySelector("#storyCompletionTitle"),
     replay: document.querySelector("#storyReplayButton"),
   };
 
   const loaded = loadStoryProgress(window.localStorage);
   storageStatus = loaded.status;
   elements.continueButton.disabled = loaded.status !== "loaded";
-  if (loaded.status === "recovered") setStatus("손상된 진행을 복구하고 처음부터 시작할 수 있습니다.");
-  if (loaded.status === "unsupported") setStatus("다른 버전의 진행은 보존했습니다. 이 버전은 처음부터 시작합니다.");
+  if (loaded.status === "recovered") setStartStatus("손상된 진행을 복구하고 처음부터 시작할 수 있습니다.");
+  if (loaded.status === "unsupported") setStartStatus("다른 버전의 진행은 보존했습니다. 이 버전은 처음부터 시작합니다.");
 
   elements.newButton.addEventListener("click", handleNew);
   elements.continueButton.addEventListener("click", handleContinue);
@@ -309,9 +333,21 @@ function bindPage() {
     elements.artRetry.hidden = true;
   });
   document.addEventListener("keydown", event => {
-    if (event.key === "Escape" && !elements.resetOverlay.hidden) {
-      event.preventDefault();
-      closeResetDialog();
+    if (!elements.resetOverlay.hidden) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeResetDialog();
+        return;
+      }
+      if (event.key === "Tab") {
+        const controls = [elements.resetConfirm, elements.resetCancel];
+        const currentIndex = controls.indexOf(document.activeElement);
+        const nextIndex = event.shiftKey
+          ? (currentIndex <= 0 ? controls.length - 1 : currentIndex - 1)
+          : (currentIndex === controls.length - 1 ? 0 : currentIndex + 1);
+        event.preventDefault();
+        controls[nextIndex].focus();
+      }
     }
   });
 }
