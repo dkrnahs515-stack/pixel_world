@@ -48,6 +48,23 @@ function decodeNumericHtmlCharacterReferences(value) {
   });
 }
 
+const namedHtmlCharacterReferences = new Map([
+  ["amp", "&"],
+  ["apos", "'"],
+  ["colon", ":"],
+  ["gt", ">"],
+  ["lt", "<"],
+  ["newline", "\n"],
+  ["quot", '"'],
+  ["tab", "\t"],
+]);
+
+function decodeNamedHtmlCharacterReferences(value) {
+  return value.replace(/&([\da-z]+);/gi, (match, name) => (
+    namedHtmlCharacterReferences.get(name.toLowerCase()) ?? match
+  ));
+}
+
 function decodeUriComponents(value) {
   return value.replace(/(?:%[\da-f]{2})+/gi, encoded => {
     try {
@@ -61,7 +78,7 @@ function decodeUriComponents(value) {
 function normalizedDocument(value) {
   let normalized = String(value);
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const decoded = decodeUriComponents(cssUnescape(decodeNumericHtmlCharacterReferences(normalized)));
+    const decoded = decodeUriComponents(cssUnescape(decodeNamedHtmlCharacterReferences(decodeNumericHtmlCharacterReferences(normalized))));
     if (decoded === normalized) break;
     normalized = decoded;
   }
@@ -110,7 +127,7 @@ function resourceAttributes(markup) {
 
 function wholeDocumentResourceAssignments(markup) {
   const entries = [];
-  const assignmentPattern = /(?<![\w-])(srcset|imagesrcset|poster|src|href|data)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi;
+  const assignmentPattern = /(?<![\w:-])(xlink:href|imagesrcset|background|manifest|srcset|poster|src|href|data)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi;
   let assignmentMatch;
 
   while ((assignmentMatch = assignmentPattern.exec(markup))) {
@@ -209,6 +226,11 @@ function hasMetaRefresh(markup) {
   return /\bhttp-equiv\s*=\s*(?:"\s*refresh\s*"|'\s*refresh\s*'|refresh\b)/i.test(normalizedDocument(markup));
 }
 
+function hasSrcdocAttribute(markup) {
+  // Attribute names are parsed from raw markup: character references do not create HTML attribute names.
+  return /(?<![\w:-])srcdoc\s*(?:=|\s|\/?>)/i.test(markup);
+}
+
 function cssEscapeEveryCharacter(value) {
   return [...value].map(character => `\\${character.codePointAt(0).toString(16)} `).join("");
 }
@@ -287,14 +309,44 @@ test("초기 로드 계약은 모든 브라우저 리소스 속성과 인라인 
   );
   assert.equal(hasExactInitialResourceAllowlist(benignLookingResources), false, "only the shell's exact resource list is allowed");
   assert.deepEqual(
-    wholeDocumentResourceAssignments('<div data-story-next="duty" data-note="safe" data-srcset="safe.png" data-href="../safe"></div>'),
+    wholeDocumentResourceAssignments('<div data-story-next="duty" data-note="safe" data-srcset="safe.png" data-href="../safe" data-srcdoc="safe"></div>'),
     [],
     "data-* hooks must not be treated as initial-load resources",
   );
+  assert.equal(hasSrcdocAttribute('<div data-srcdoc="safe"></div>'), false, "data-srcdoc must not be mistaken for srcdoc");
 
   const inlinePaths = '<div style="background: url(safe.png)"></div><style>.x { color: teal; }</style><meta http-equiv="refresh" content="0;url=/safe">';
   assert.equal(hasInlineStylePath(inlinePaths), true, "inline style attributes and blocks are forbidden initial-load paths");
   assert.equal(hasMetaRefresh(inlinePaths), true, "http-equiv refresh is forbidden even for local URLs");
+});
+
+test("초기 로드 계약은 레거시·SVG·내장 문서 우회를 봉쇄한다", () => {
+  const relatedFetches = [
+    '<body data-note=">" background="/paper.png">',
+    '<table data-note=">" background="https://example.test/table.png"></table>',
+    '<svg><use xlink:href="../sprite.svg#seal"></use></svg>',
+    '<html manifest="../story.appcache"></html>',
+  ].join("");
+  assert.deepEqual(
+    wholeDocumentResourceAssignments(relatedFetches),
+    [
+      { name: "background", value: "/paper.png" },
+      { name: "background", value: "https://example.test/table.png" },
+      { name: "xlink:href", value: "../sprite.svg#seal" },
+      { name: "manifest", value: "../story.appcache" },
+    ],
+    "quoted boundaries must not hide legacy or SVG fetch attributes",
+  );
+  assert.equal(hasExactInitialResourceAllowlist(relatedFetches), false, "related fetch attributes are outside the exact initial allowlist");
+  assert.deepEqual(
+    wholeDocumentResourceAssignments('<div data-background="safe.png" data-xlink:href="safe.svg" data-manifest="safe.appcache"></div>'),
+    [],
+    "data-* attributes must remain outside browser resource assignment scanning",
+  );
+
+  const srcdocPayload = '<iframe data-note=">" srcdoc="&lt;img src&#61;&quot;https://example.test/safe.png&quot;&gt;"></iframe>';
+  assert.equal(hasSrcdocAttribute(srcdocPayload), true, "srcdoc must be rejected even when its embedded document uses character references");
+  assert.match(normalizedDocument(srcdocPayload), /<img src="https:\/\/example\.test\/safe\.png">/);
 });
 
 test("제1장 스토리 셸은 독립된 조사 화면의 시맨틱 훅을 제공한다", () => {
@@ -385,6 +437,7 @@ test("제1장 스토리 셸은 독립된 조사 화면의 시맨틱 훅을 제�
   assert.equal(referencesLateArtwork(`${html}\n${css}`), false, "the normalized late-art filename, stem, and path are forbidden anywhere in shell files");
   assert.equal(hasInlineStylePath(html), false, "story HTML must not contain inline style attributes or style blocks");
   assert.equal(hasMetaRefresh(html), false, "story HTML must not contain an http-equiv refresh");
+  assert.equal(hasSrcdocAttribute(html), false, "story HTML must not embed a second document with srcdoc");
 
   const scriptTags = [...html.matchAll(/<script\b[^>]*>/gi)];
   assert.equal(scriptTags.length, 1, "the story shell has exactly one script");
