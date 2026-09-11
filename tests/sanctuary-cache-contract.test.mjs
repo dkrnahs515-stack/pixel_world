@@ -152,13 +152,9 @@ test("four of five opinions cannot unlock previews or a choice", () => {
 function relativeModuleSpecifiers(source) {
   const specifiers = [];
   const isWord = value => /[A-Za-z0-9_$]/.test(value || "");
-  const skipSpace = index => {
-    while (/\s/.test(source[index] || "")) index += 1;
-    return index;
-  };
   const readString = index => {
     const quote = source[index];
-    if (!["'", '"', "`"].includes(quote)) return null;
+    if (!["'", '"'].includes(quote)) return null;
     let value = "";
     for (index += 1; index < source.length; index += 1) {
       if (source[index] === "\\") { value += source[index + 1] || ""; index += 1; continue; }
@@ -170,7 +166,39 @@ function relativeModuleSpecifiers(source) {
   const add = value => {
     if ((value.startsWith("./") || value.startsWith("../")) && value.endsWith(".js")) specifiers.push(value);
   };
-  for (let index = 0; index < source.length;) {
+  const skipTrivia = index => {
+    while (index < source.length) {
+      if (/\s/.test(source[index])) { index += 1; continue; }
+      if (source.startsWith("//", index)) {
+        const lineEnd = source.indexOf("\n", index + 2);
+        index = lineEnd < 0 ? source.length : lineEnd + 1;
+        continue;
+      }
+      if (source.startsWith("/*", index)) {
+        const commentEnd = source.indexOf("*/", index + 2);
+        index = commentEnd < 0 ? source.length : commentEnd + 2;
+        continue;
+      }
+      break;
+    }
+    return index;
+  };
+  const skipRegex = index => {
+    for (index += 1; index < source.length; index += 1) {
+      if (source[index] === "\\") { index += 1; continue; }
+      if (source[index] === "/") {
+        index += 1;
+        while (/[A-Za-z]/.test(source[index] || "")) index += 1;
+        return index;
+      }
+      if (source[index] === "\n") return index;
+    }
+    return index;
+  };
+  const scan = (start, stopAtBrace = false) => {
+    let index = start;
+    while (index < source.length) {
+      if (stopAtBrace && source[index] === "}") return index + 1;
     if (source.startsWith("//", index)) {
       const lineEnd = source.indexOf("\n", index + 2);
       index = lineEnd < 0 ? source.length : lineEnd + 1;
@@ -181,32 +209,55 @@ function relativeModuleSpecifiers(source) {
       index = commentEnd < 0 ? source.length : commentEnd + 2;
       continue;
     }
-    if (["'", '"', "`"].includes(source[index])) {
+    if (["'", '"'].includes(source[index])) {
       index = readString(index)?.end || source.length;
+      continue;
+    }
+    if (source[index] === "`") {
+      index = scanTemplate(index);
+      continue;
+    }
+    if (source[index] === "/") {
+      index = skipRegex(index);
       continue;
     }
     const keyword = source.startsWith("import", index) ? "import" : source.startsWith("export", index) ? "export" : null;
     if (!keyword || isWord(source[index - 1]) || isWord(source[index + keyword.length])) { index += 1; continue; }
-    let cursor = skipSpace(index + keyword.length);
+    let cursor = skipTrivia(index + keyword.length);
+    if (keyword === "import" && source[cursor] === ".") { index = cursor + 1; continue; }
     if (keyword === "import" && source[cursor] === "(") {
-      const module = readString(skipSpace(cursor + 1));
+      cursor = skipTrivia(cursor + 1);
+      const module = readString(cursor);
       if (module) add(module.value);
-      index = module?.end || cursor + 1;
+      index = module ? module.end : source[cursor] === "`" ? scanTemplate(cursor) : cursor + 1;
       continue;
     }
     let module = readString(cursor);
     if (!module) {
       while (cursor < source.length) {
         if (source.startsWith("from", cursor) && !isWord(source[cursor - 1]) && !isWord(source[cursor + 4])) {
-          module = readString(skipSpace(cursor + 4));
+          module = readString(skipTrivia(cursor + 4));
           break;
         }
+        if (source.startsWith("//", cursor) || source.startsWith("/*", cursor)) { cursor = skipTrivia(cursor); continue; }
+        if (["'", '"'].includes(source[cursor])) { cursor = readString(cursor)?.end || source.length; continue; }
         cursor += 1;
       }
     }
     if (module) add(module.value);
     index = module?.end || cursor + 1;
   }
+    return index;
+  };
+  const scanTemplate = start => {
+    for (let index = start + 1; index < source.length; index += 1) {
+      if (source[index] === "\\") { index += 1; continue; }
+      if (source[index] === "`") return index + 1;
+      if (source[index] === "$" && source[index + 1] === "{") index = scan(index + 2, true) - 1;
+    }
+    return source.length;
+  };
+  scan(0);
   return specifiers;
 }
 
@@ -236,15 +287,28 @@ test("cache scanner finds static, side-effect, dynamic, and parent-relative loca
     // import "./comment-20260905-upgrade.js";
     /* export { stale } from "../block-20260905-upgrade.js"; */
     const decoy = 'import("../decoy-20260905-upgrade.js")';
+    const regexDecoy = /import\\s*\\(\\s*["']\\.\\/regex-20260905-upgrade\\.js["']\\s*\\)/;
+    const templateDecoy = \`import("../template-20260905-upgrade.js")\`;
     import "./side-effect-20260911-sanctuary.js";
     import { value } from "../parent-20260911-sanctuary.js";
     export { value as copied } from "./re-export-20260911-sanctuary.js";
     await import("../dynamic-20260911-sanctuary.js");
+    await import /* cache note */ ("../dynamic-comment-20260905-upgrade.js");
+    import /* note */ "./side-comment-20260905-upgrade.js";
+    export /* note */ { value } from "../export-comment-20260905-upgrade.js";
+    await import(\`raw import("../template-raw-20260905-upgrade.js") \${ import("../template-expression-20260905-upgrade.js") }\`);
+    await import(\`outer \${ \`\${ import("./nested-expression-20260905-upgrade.js") }\` }\`);
+    console.log(import.meta.url);
   `;
   assert.deepEqual(relativeModuleSpecifiers(source), [
     "./side-effect-20260911-sanctuary.js",
     "../parent-20260911-sanctuary.js",
     "./re-export-20260911-sanctuary.js",
     "../dynamic-20260911-sanctuary.js",
+    "../dynamic-comment-20260905-upgrade.js",
+    "./side-comment-20260905-upgrade.js",
+    "../export-comment-20260905-upgrade.js",
+    "../template-expression-20260905-upgrade.js",
+    "./nested-expression-20260905-upgrade.js",
   ]);
 });
