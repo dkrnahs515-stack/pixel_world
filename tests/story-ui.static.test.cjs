@@ -39,18 +39,37 @@ function cssUnescape(value) {
   ));
 }
 
-function normalizedResource(value) {
-  let normalized = cssUnescape(value.trim());
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+function decodeNumericHtmlCharacterReferences(value) {
+  return value.replace(/&#(?:(x[\da-f]+)|(\d+));?/gi, (match, hexadecimal, decimal) => {
+    const codePoint = Number.parseInt(hexadecimal ? hexadecimal.slice(1) : decimal, hexadecimal ? 16 : 10);
+    return Number.isInteger(codePoint) && codePoint >= 0 && codePoint <= 0x10ffff
+      ? String.fromCodePoint(codePoint)
+      : match;
+  });
+}
+
+function decodeUriComponents(value) {
+  return value.replace(/(?:%[\da-f]{2})+/gi, encoded => {
     try {
-      const decoded = decodeURIComponent(normalized);
-      if (decoded === normalized) break;
-      normalized = decoded;
+      return decodeURIComponent(encoded);
     } catch {
-      break;
+      return encoded;
     }
+  });
+}
+
+function normalizedDocument(value) {
+  let normalized = String(value);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const decoded = decodeUriComponents(cssUnescape(decodeNumericHtmlCharacterReferences(normalized)));
+    if (decoded === normalized) break;
+    normalized = decoded;
   }
   return normalized;
+}
+
+function normalizedResource(value) {
+  return normalizedDocument(value.trim());
 }
 
 function tagAttributes(tag) {
@@ -89,6 +108,21 @@ function resourceAttributes(markup) {
   return entries;
 }
 
+function wholeDocumentResourceAssignments(markup) {
+  const entries = [];
+  const assignmentPattern = /\b(src|href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi;
+  let assignmentMatch;
+
+  while ((assignmentMatch = assignmentPattern.exec(markup))) {
+    entries.push({
+      name: assignmentMatch[1].toLowerCase(),
+      value: normalizedResource(assignmentMatch[2] ?? assignmentMatch[3] ?? assignmentMatch[4]),
+    });
+  }
+
+  return entries;
+}
+
 function linkRelTokens(tag) {
   return tagAttributes(tag)
     .filter(attribute => attribute.name === "rel")
@@ -98,7 +132,7 @@ function linkRelTokens(tag) {
 
 function cssUrls(styles) {
   const urls = [];
-  const normalizedStyles = cssUnescape(styles);
+  const normalizedStyles = normalizedDocument(styles);
   const addUrl = value => urls.push(normalizedResource(value));
   const urlPattern = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^\s)]+))\s*\)/gi;
   let match;
@@ -123,7 +157,7 @@ function cssUrls(styles) {
 }
 
 function cssForbiddenSyntax(styles) {
-  const normalizedStyles = cssUnescape(styles);
+  const normalizedStyles = normalizedDocument(styles);
   return {
     hasImport: /@import\b/i.test(normalizedStyles),
     hasImageSet: /\bimage-set\s*\(/i.test(normalizedStyles),
@@ -131,9 +165,22 @@ function cssForbiddenSyntax(styles) {
 }
 
 const lateArtworkName = "02_제01장_지워질 네 이름, 돌아온 신호.png";
+const lateArtworkStem = lateArtworkName.replace(/\.png$/i, "");
+const lateArtworkPath = `assets/chapter-01/${lateArtworkName}`;
 
 function referencesLateArtwork(value) {
-  return normalizedResource(value).toLowerCase().includes(lateArtworkName.toLowerCase());
+  const normalizedValue = normalizedDocument(value).toLowerCase();
+  return [lateArtworkName, lateArtworkStem, lateArtworkPath]
+    .map(marker => normalizedDocument(marker).toLowerCase())
+    .some(marker => normalizedValue.includes(marker));
+}
+
+function hasPreloadToken(value) {
+  return /\b(?:preload|modulepreload)\b/i.test(normalizedDocument(value));
+}
+
+function hasUnsafeResourceScheme(value) {
+  return /\b(?:data|blob):/i.test(normalizedDocument(value));
 }
 
 function cssEscapeEveryCharacter(value) {
@@ -173,6 +220,27 @@ test("리소스 스캐너는 우회형 CSS와 인용 없는 preload 관계를 �
       `${relation} must be tokenized independently from its attribute quoting or order`,
     );
   }
+});
+
+test("문서 전체 스캔은 인용된 태그 경계와 엔터티 우회를 넘어서 리소스를 찾는다", () => {
+  for (const hiddenDataUrl of [
+    '<img data-note=">" src="data:image/png;base64,AA==">',
+    '<source data-note=">" src="data:image/png;base64,AA==">',
+  ]) {
+    assert.deepEqual(
+      wholeDocumentResourceAssignments(hiddenDataUrl),
+      [{ name: "src", value: "data:image/png;base64,AA==" }],
+      "a quoted > before src must not hide a data URL from resource scanning",
+    );
+    assert.equal(hasUnsafeResourceScheme(hiddenDataUrl), true, "a data URL after quoted > must be rejected");
+  }
+  const entityPreload = '<link rel="modulepre&#108;oad" href="../src/story-controller.js">';
+  assert.deepEqual(
+    linkRelTokens(entityPreload),
+    ["modulepreload"],
+    "numeric HTML character references must not hide preload tokens",
+  );
+  assert.equal(hasPreloadToken(entityPreload), true, "whole-document preload detection must decode numeric references");
 });
 
 test("제1장 스토리 셸은 독립된 조사 화면의 시맨틱 훅을 제공한다", () => {
@@ -246,18 +314,16 @@ test("제1장 스토리 셸은 독립된 조사 화면의 시맨틱 훅을 제�
   assert.ok(fallbackIndex > figureEnd, "the fallback must be physically outside and after the figure");
   assert.match(html, /<section id="storyArtFallback"[^>]*role="status"[^>]*aria-live="polite"[^>]*hidden/);
 
-  const resources = resourceAttributes(html);
-  const permittedResourceSet = new Set(["./story.css", "../", "../src/story-controller.js"]);
-  for (const resource of resources) {
-    const normalized = normalizedResource(resource.value);
-    assert.equal(/^(?:data|blob):/i.test(normalized), false, `non-file URL not allowed: ${resource.value}`);
-    assert.equal(referencesLateArtwork(resource.value), false, `late artwork must not be referenced: ${resource.value}`);
-    assert.equal(permittedResourceSet.has(normalized), true, `unexpected ${resource.name} resource: ${resource.value}`);
-  }
   assert.deepEqual(
-    new Set(resources.map(resource => normalizedResource(resource.value))),
-    permittedResourceSet,
-    "the independent shell may reference only its stylesheet, root return link, and controller",
+    wholeDocumentResourceAssignments(html),
+    [
+      { name: "href", value: "./story.css" },
+      { name: "href", value: "../" },
+      { name: "href", value: "../" },
+      { name: "href", value: "../" },
+      { name: "src", value: "../src/story-controller.js" },
+    ],
+    "the independent shell has exactly one controller src, one stylesheet href, and three root-back href values",
   );
   assert.deepEqual(cssUrls(css), [], "story CSS must not request assets before Task 6 chooses current artwork");
   assert.deepEqual(
@@ -265,19 +331,14 @@ test("제1장 스토리 셸은 독립된 조사 화면의 시맨틱 훅을 제�
     { hasImport: false, hasImageSet: false },
     "the static shell rejects CSS import and image-set disclosure paths even when their resources are otherwise allowlisted",
   );
+  assert.equal(hasPreloadToken(html), false, "preload and modulepreload tokens are forbidden anywhere in decoded HTML");
+  assert.equal(hasUnsafeResourceScheme(`${html}\n${css}`), false, "data and blob resource schemes are forbidden anywhere in decoded shell files");
+  assert.equal(referencesLateArtwork(`${html}\n${css}`), false, "the normalized late-art filename, stem, and path are forbidden anywhere in shell files");
 
   const scriptTags = [...html.matchAll(/<script\b[^>]*>/gi)];
   assert.equal(scriptTags.length, 1, "the story shell has exactly one script");
   assert.match(scriptTags[0][0], /\btype\s*=\s*["']module["']/i);
   assert.match(scriptTags[0][0], /\bsrc\s*=\s*["']\.\.\/src\/story-controller\.js["']/i);
-  for (const linkTag of html.matchAll(/<link\b[^>]*>/gi)) {
-    const relationTokens = linkRelTokens(linkTag[0]);
-    assert.equal(
-      relationTokens.some(token => token === "preload" || token === "modulepreload"),
-      false,
-      `preload-style link relation is not allowed: ${linkTag[0]}`,
-    );
-  }
 
   for (const forbiddenLateReference of [
     lateArtworkName,
