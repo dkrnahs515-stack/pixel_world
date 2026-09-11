@@ -373,9 +373,43 @@ test("rescued Lumen interrupts the false order once while lost never revives an 
   const first = rescued.update(1 / 60, {}, 3000);
   const second = rescued.update(1 / 60, {}, 3001);
   assert.deepEqual(first.events.filter(event => event.presentationId === "false-order-interrupt").map(event => event.speaker), ["lumen"]);
+  assert.deepEqual(first.events.filter(event => event.presentationId === "false-order-interrupt").map(event => event.eventId), [
+    "chorus-test:false-order-interrupt",
+  ]);
   assert.deepEqual(second.events.filter(event => event.presentationId === "false-order-interrupt"), []);
 
   const lost = controllerFor("testimonies", { captainOutcome: "lost", now: () => 3000 });
   assert.deepEqual(lost.update(1 / 60, {}, 3000).events.filter(event => event.speaker === "lumen"), []);
   assert.equal(lost.renderModel().branch.lumen.presentActor, false);
+});
+
+test("a rescued hidden-weapon player can press F at one valid anchor for the shared assist", async () => {
+  const controller = controllerFor("anchors", {
+    captainOutcome: "rescued",
+    classId: "warrior",
+    ownedWeaponIds: ["volcanic-heartblade"],
+    now: () => 3000,
+  });
+  const nearby = controller.nearbyInteraction({ x: 700, y: 1120 }, 3000);
+  assert.deepEqual(nearby, {
+    type: "lumen-assist",
+    anchorId: "forest",
+    prompt: "F · 루멘의 숲 기록 닻 안정화",
+  });
+
+  const assisted = await controller.interact({ x: 700, y: 1120 }, 3000);
+  assert.equal(assisted.ok, true);
+  assert.deepEqual(controller.snapshot.stabilizedAnchorIds, ["forest"]);
+  assert.equal(controller.snapshot.lumenAssistUsed, true);
+  assert.equal(controller.nearbyInteraction({ x: 1080, y: 1120 }, 3001), null);
+});
+
+test("lost and rescued players without a hidden weapon never receive an assist prompt", () => {
+  for (const options of [
+    { captainOutcome: "lost", classId: "warrior", ownedWeaponIds: ["volcanic-heartblade"] },
+    { captainOutcome: "rescued", classId: "warrior", ownedWeaponIds: [] },
+  ]) {
+    const controller = controllerFor("anchors", { ...options, now: () => 3000 });
+    assert.equal(controller.nearbyInteraction({ x: 700, y: 1120 }, 3000), null);
+  }
 });

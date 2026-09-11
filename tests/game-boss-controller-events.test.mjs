@@ -2,6 +2,63 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { PixelRPG } from "../src/game-20260903-volcano-20260905-upgrade.js";
 import { PixelRPG as SanctuaryPixelRPG } from "../src/game-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import { createSanctuaryChorusController } from "../src/sanctuary-chorus-controller-20260911-sanctuary.js";
+import { createChorusEncounter } from "../src/sanctuary-chorus-state-20260911-sanctuary.js";
+import {
+  chooseVolcanoRoute,
+  normalizeWorldProgress,
+  recordChapterBossDefeat,
+} from "../src/chapter-progress-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import {
+  createInitialProgress,
+} from "../src/quest-state-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import {
+  grantVolcanoHiddenWeapons,
+} from "../src/equipment-state-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import {
+  loadProgress,
+  saveProgress,
+} from "../src/progress-storage-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+
+function loadedRescuedProgress() {
+  let worldProgress = normalizeWorldProgress({
+    chapters: {
+      coast: { coreFragmentObtained: true },
+      volcano: {
+        repairedDeviceIds: [
+          "ash-gate-pressure-seal",
+          "magma-valve-west",
+          "magma-valve-central",
+          "magma-valve-east",
+          "observatory-stabilizer",
+        ],
+        collectedClueIds: [
+          "garen-scorched-insignia",
+          "garen-escort-record",
+          "captain-transport-order",
+          "captain-core-contact-record",
+        ],
+        coolantAnchorIds: [
+          "ash-gate-coolant-anchor",
+          "magma-route-coolant-anchor",
+          "observatory-coolant-anchor",
+        ],
+      },
+    },
+    unlockedMapIds: ["volcano-observatory"],
+  });
+  worldProgress = chooseVolcanoRoute(worldProgress, "rescue").progress;
+  worldProgress = recordChapterBossDefeat(worldProgress, "volcano").progress;
+  const granted = grantVolcanoHiddenWeapons({ ...createInitialProgress(), worldProgress });
+  assert.equal(granted.ok, true);
+  const values = new Map();
+  const storage = {
+    getItem(key) { return values.get(key) ?? null; },
+    setItem(key, value) { values.set(key, String(value)); },
+  };
+  assert.equal(saveProgress(storage, "합창 구조대", granted.progress).ok, true);
+  return loadProgress(storage, "합창 구조대");
+}
 
 function harness(controller) {
   const game = Object.create(PixelRPG.prototype);
@@ -142,4 +199,127 @@ test("chorus update applies only its local damage event and never grants a gener
 
   assert.deepEqual(damage, [14]);
   assert.deepEqual(rewards, []);
+});
+
+test("the game syncs loaded captain branch class and owned equipment into the live Chorus controller", () => {
+  const game = Object.create(SanctuaryPixelRPG.prototype);
+  game.progress = loadedRescuedProgress();
+  game.progress.worldProgress.chapters.sanctuary.correctionLinked = true;
+  game.classId = "archer";
+  game.mapId = "sanctuary-return-record";
+  game.chorusController = createSanctuaryChorusController({ uid: "local-player", now: () => 2000 });
+
+  game.syncChorusMap();
+
+  const model = game.chorusController.renderModel();
+  assert.equal(model.branch.lumen.mode, "live-voice");
+  assert.deepEqual(model.lumenAssist.availableAnchorIds, ["forest", "coast", "volcano"]);
+  assert.equal(game.chorusController.classId, "archer");
+});
+
+test("class and equipment changes refresh Chorus assist eligibility without replacing its encounter", () => {
+  const game = Object.create(SanctuaryPixelRPG.prototype);
+  game.progress = loadedRescuedProgress();
+  game.progress.worldProgress.chapters.sanctuary.correctionLinked = true;
+  game.classId = "warrior";
+  game.player = { classId: "warrior", equippedWeaponId: "starter-sword", skillResources: {} };
+  game.skillCasts = [];
+  game.sessionMode = "solo";
+  game.applyProgressionStats = () => {};
+  game.mapId = "sanctuary-return-record";
+  game.chorusController = createSanctuaryChorusController({ uid: "local-player", now: () => 2000 });
+  game.syncChorusMap();
+  const encounterId = game.chorusController.snapshot.encounterId;
+
+  game.progress.equipmentByClass.mage.ownedWeaponIds = [];
+  game.configureClassSession("mage");
+  assert.equal(game.chorusController.snapshot.encounterId, encounterId);
+  assert.equal(game.chorusController.classId, "mage");
+  assert.equal(game.chorusController.renderModel().lumenAssist, null);
+
+  game.progress.equipmentByClass.mage.ownedWeaponIds.push("leyflame-core-staff");
+  game.syncChorusMap();
+  assert.deepEqual(game.chorusController.renderModel().lumenAssist.availableAnchorIds, ["forest", "coast", "volcano"]);
+});
+
+test("the actual game F handler uses a nearby rescued assist and lost never exposes it", async () => {
+  const rescued = Object.create(SanctuaryPixelRPG.prototype);
+  rescued.progress = loadedRescuedProgress();
+  rescued.progress.worldProgress.chapters.sanctuary.correctionLinked = true;
+  rescued.classId = "warrior";
+  rescued.mapId = "sanctuary-return-record";
+  rescued.player = { x: 700, y: 1120, respawnTimer: 0 };
+  rescued.chorusController = createSanctuaryChorusController({ uid: "local-player", now: () => 2000 });
+  rescued.running = true;
+  rescued.inputEnabled = true;
+  rescued.chatInputActive = false;
+  rescued.portalTransition = null;
+  rescued.nearbyStoryInteraction = null;
+  rescued.npcs = [];
+  rescued.ui = { npcPrompt: { hidden: true }, npcPromptText: { textContent: "" } };
+  rescued.isInteractionOpen = () => false;
+  rescued.notify = () => {};
+  rescued.syncChorusMap();
+  rescued.updateNpcPrompt();
+
+  assert.equal(rescued.nearbyChorusInteraction.type, "lumen-assist");
+  assert.equal(rescued.openNpcInteraction(), true);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(rescued.chorusController.snapshot.lumenAssistUsed, true);
+  assert.deepEqual(rescued.chorusController.snapshot.stabilizedAnchorIds, ["forest"]);
+
+  const lost = Object.create(SanctuaryPixelRPG.prototype);
+  lost.progress = structuredClone(rescued.progress);
+  lost.progress.worldProgress.chapters.volcano.captainOutcome = "lost";
+  lost.classId = "warrior";
+  lost.mapId = "sanctuary-return-record";
+  lost.player = { x: 1080, y: 1120, respawnTimer: 0 };
+  lost.chorusController = createSanctuaryChorusController({ uid: "local-player", now: () => 2000 });
+  lost.running = true;
+  lost.inputEnabled = true;
+  lost.chatInputActive = false;
+  lost.portalTransition = null;
+  lost.npcs = [];
+  lost.ui = { npcPrompt: { hidden: true }, npcPromptText: { textContent: "" } };
+  lost.isInteractionOpen = () => false;
+  lost.syncChorusMap();
+  lost.updateNpcPrompt();
+  assert.equal(lost.nearbyChorusInteraction, null);
+});
+
+test("the one-time rescued controller interruption reaches the visible dialogue UI", () => {
+  const opened = [];
+  const game = Object.create(SanctuaryPixelRPG.prototype);
+  game.classId = "warrior";
+  game.progress = loadedRescuedProgress();
+  game.keys = new Set(["ArrowRight"]);
+  game.player = { moving: true };
+  game.ui = { message: {} };
+  game.dialogue = {
+    open(model) { opened.push(model); },
+    actionButtons() { return []; },
+  };
+  game.processedChorusEventIds = new Set();
+  game.updateChorusHud = () => {};
+  const seed = {
+    ...createChorusEncounter({ encounterId: "chorus-1", authorityUid: "local-player", now: 1000 }),
+    stabilizedAnchorIds: ["forest", "coast", "volcano"],
+  };
+  game.chorusController = createSanctuaryChorusController({
+    uid: "local-player",
+    captainOutcome: "rescued",
+    seedSnapshot: seed,
+    now: () => 3000,
+  });
+  game.chorusController.setMap("sanctuary-return-record", { correctionLinked: true });
+
+  game.updateChorusController(1 / 60, {}, 3000);
+  game.updateChorusController(1 / 60, {}, 3001);
+
+  assert.equal(opened.length, 1);
+  assert.equal(opened[0].title, "루멘의 생존 통신");
+  assert.match(opened[0].pages.join(" "), /거짓 명령/);
+  assert.deepEqual(opened[0].actions, []);
+  assert.deepEqual([...game.keys], []);
+  assert.equal(game.player.moving, false);
 });

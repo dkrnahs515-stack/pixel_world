@@ -172,15 +172,11 @@ class SanctuaryChorusController {
     this.uid = typeof options.uid === "string" && options.uid ? options.uid : "local-player";
     this.mode = options.mode === "online" ? "online" : "solo";
     this.network = options.network || null;
-    this.captainOutcome = options.captainOutcome === "rescued" ? "rescued" : "lost";
-    this.classId = normalizeClassId(options.classId);
-    const equipmentOwnedIds = options.equipmentByClass?.[this.classId]?.ownedWeaponIds;
-    this.ownedWeaponIds = new Set([
-      ...(Array.isArray(options.ownedWeaponIds) ? options.ownedWeaponIds : []),
-      ...(Array.isArray(equipmentOwnedIds) ? equipmentOwnedIds : []),
-    ]);
-    this.hiddenWeaponOwned = options.hiddenWeaponOwned === true
-      || this.ownedWeaponIds.has(VOLCANO_HIDDEN_WEAPON_IDS[this.classId]);
+    this.captainOutcome = "lost";
+    this.classId = "warrior";
+    this.ownedWeaponIds = new Set();
+    this.hiddenWeaponOwned = false;
+    this.setPlayerContext(options);
     this.now = typeof options.now === "function" ? options.now : () => Date.now();
     this.seedSnapshot = normalizeChorusEncounter(options.seedSnapshot);
     this.savedSnapshot = this.seedSnapshot;
@@ -197,6 +193,23 @@ class SanctuaryChorusController {
     this.lastPlayer = null;
     this.falseOrderInterruptEncounterId = null;
     this.lastAttackPresentation = null;
+  }
+
+  setPlayerContext(options = {}) {
+    this.captainOutcome = options.captainOutcome === "rescued" ? "rescued" : "lost";
+    this.classId = normalizeClassId(options.classId);
+    const equipmentOwnedIds = options.equipmentByClass?.[this.classId]?.ownedWeaponIds;
+    this.ownedWeaponIds = new Set([
+      ...(Array.isArray(options.ownedWeaponIds) ? options.ownedWeaponIds : []),
+      ...(Array.isArray(equipmentOwnedIds) ? equipmentOwnedIds : []),
+    ]);
+    this.hiddenWeaponOwned = options.hiddenWeaponOwned === true
+      || this.ownedWeaponIds.has(VOLCANO_HIDDEN_WEAPON_IDS[this.classId]);
+    return {
+      captainOutcome: this.captainOutcome,
+      classId: this.classId,
+      hiddenWeaponOwned: this.hiddenWeaponOwned,
+    };
   }
 
   setMap(mapId, options = {}) {
@@ -344,9 +357,21 @@ class SanctuaryChorusController {
   nearbyInteraction(player, timestamp = this.now()) {
     this.expireRecordWindow(timestamp);
     if (!this.snapshot || this.snapshot.status !== "active") return null;
-    if (this.snapshot.phase === "anchors" && this.personalSnapshot.carriedFragmentId) {
+    if (this.snapshot.phase === "anchors") {
       const anchor = nearestWithin(player, ANCHORS);
-      return anchor ? { type: "anchor", anchorId: anchor.id, prompt: `${anchor.name}에 기억 파편 놓기` } : null;
+      if (this.personalSnapshot.carriedFragmentId) {
+        return anchor ? { type: "anchor", anchorId: anchor.id, prompt: `${anchor.name}에 기억 파편 놓기` } : null;
+      }
+      if (anchor && this.captainOutcome === "rescued" && this.hiddenWeaponOwned
+        && this.snapshot.lumenAssistUsed !== true
+        && !this.snapshot.stabilizedAnchorIds.includes(anchor.id)) {
+        return {
+          type: "lumen-assist",
+          anchorId: anchor.id,
+          prompt: `F · 루멘의 ${anchor.name} 안정화`,
+        };
+      }
+      return null;
     }
     if (this.snapshot.phase === "testimonies") {
       const station = nearestWithin(player, VERDICT_STATIONS);
@@ -388,6 +413,7 @@ class SanctuaryChorusController {
         verdict: nearby.verdict,
       }, timestamp), timestamp);
     }
+    if (nearby.type === "lumen-assist") return this.requestLumenAssist(nearby.anchorId, timestamp);
     return this.applyRequest(this.nextAction("record-activate", { recordId: nearby.recordId }, timestamp), timestamp);
   }
 
@@ -441,6 +467,7 @@ class SanctuaryChorusController {
       this.falseOrderInterruptEncounterId = this.snapshot.encounterId;
       events.push({
         type: "chorus-branch-interruption",
+        eventId: `${this.snapshot.encounterId}:${branch.lumen.interruptionId}`,
         presentationId: branch.lumen.interruptionId,
         speaker: "lumen",
         pages: [...branch.lumen.pages],

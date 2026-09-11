@@ -47,7 +47,11 @@ import {
   getSanctuaryChapterObjective,
 } from "./sanctuary-story-data-20260911-sanctuary.js";
 import { collectRecordArchiveEntries } from "./record-archive-20260911-sanctuary.js";
-import { actorDialogueModel, storyDialogueModel } from "./story-dialogue-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import {
+  actorDialogueModel,
+  chorusBranchDialogueModel,
+  storyDialogueModel,
+} from "./story-dialogue-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 import {
   ALL_STORY_INTERACTIONS,
   findNearbyStoryInteraction,
@@ -1104,6 +1108,21 @@ export class PixelRPG {
         this.processedChorusCompletionIds.add(event.claimId);
       } else if (event?.type === "chorus-separated") {
         if (this.ui?.message) this.notify("무명의 합창의 결속이 풀렸습니다. 기억 분리 완료.");
+      } else if (event?.type === "chorus-branch-interruption"
+        && event.eventId
+        && event.presentationId === "false-order-interrupt") {
+        if (this.processedChorusEventIds.has(event.eventId)) continue;
+        this.processedChorusEventIds.add(event.eventId);
+        const model = chorusBranchDialogueModel("rescued", { phase: "testimonies" });
+        this.keys?.clear?.();
+        if (this.player) this.player.moving = false;
+        this.attackState = null;
+        this.pendingStoryInteraction = null;
+        this.pendingMemorySequence = [];
+        if (typeof this.dialogue?.open === "function") {
+          this.dialogue.open(model);
+          this.dialogue.actionButtons?.()[0]?.focus?.();
+        } else if (this.ui?.message) this.notify(model.pages[0]);
       }
     }
   }
@@ -1440,9 +1459,11 @@ export class PixelRPG {
   openNpcInteraction() {
     if (!this.running || !this.inputEnabled || this.chatInputActive || this.portalTransition || this.player.respawnTimer > 0) return false;
     if (this.nearbyChorusInteraction) {
+      const interaction = this.nearbyChorusInteraction;
       Promise.resolve(this.chorusController?.interact?.(this.player, Date.now())).then(result => {
         if (!result?.ok && result?.reason === "wrong_anchor") this.notify?.("기억 파편이 맞지 않아 개인 오염도가 상승했습니다.");
         else if (!result?.ok && result?.reason === "wrong_testimony") this.notify?.("증언 판정이 맞지 않아 개인 오염도가 상승했습니다.");
+        else if (result?.ok && interaction.type === "lumen-assist") this.notify?.("루멘의 통신이 기록 닻 하나를 안정화했습니다.");
         if (this.ui?.npcPrompt) this.updateNpcPrompt();
       }).catch(error => console.warn("무명의 합창 상호작용 실패", error));
       return true;
@@ -1863,6 +1884,7 @@ export class PixelRPG {
     ));
     const weapon = resolveWeaponDefinition(equipment.equippedWeaponId, this.classId);
     this.player.equippedWeaponId = weapon.id;
+    this.syncChorusContext();
     return weapon;
   }
 
@@ -1983,6 +2005,7 @@ export class PixelRPG {
       return false;
     }
     this.progress = result.progress;
+    this.syncChorusContext();
     this.updateProgressHud();
     this.updateInventoryHud();
     this.updateBlacksmithHud();
@@ -2118,8 +2141,20 @@ export class PixelRPG {
   }
 
   syncChorusMap() {
+    this.syncChorusContext();
     return this.chorusController?.setMap?.(this.mapId, {
       correctionLinked: this.progress?.worldProgress?.chapters?.sanctuary?.correctionLinked === true,
+    });
+  }
+
+  syncChorusContext() {
+    const captainOutcome = this.progress?.worldProgress?.chapters?.volcano?.captainOutcome;
+    const equipment = getClassEquipment(this.progress, this.classId);
+    return this.chorusController?.setPlayerContext?.({
+      captainOutcome,
+      classId: this.classId,
+      equipmentByClass: this.progress?.equipmentByClass,
+      ownedWeaponIds: equipment.ownedWeaponIds,
     });
   }
 
