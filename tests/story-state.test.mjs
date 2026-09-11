@@ -206,7 +206,7 @@ test("forged case-submit evidence is rejected without bypassing required investi
     schemaVersion: 1,
     sceneId: "case-submit",
     discoveredClueIds: ["new-received-at", "article-18-4"],
-    completedComparisonIds: ["metal-to-compass"],
+    completedComparisonIds: ["metal-to-compass", "same-final-time"],
     submittedEvidenceIds: [],
     revealedArtIds: ["theo"],
     chapterComplete: false,
@@ -219,7 +219,7 @@ test("forged case-submit evidence is rejected without bypassing required investi
   assert.equal(result.accepted, false);
   assert.deepEqual(result.state, before);
   assert.deepEqual(state, before);
-  assert.match(result.feedback, /근거/);
+  assert.equal(result.feedback, "아직 확인할 자료가 남아 있습니다.");
 });
 
 test("forged case-submit evidence is rejected when same-final-time is absent", () => {
@@ -256,7 +256,7 @@ test("forged case-submit evidence is rejected when same-final-time is absent", (
   assert.equal(result.accepted, false);
   assert.deepEqual(result.state, before);
   assert.deepEqual(state, before);
-  assert.match(result.feedback, /근거/);
+  assert.equal(result.feedback, "확정할 수 있는 범위의 근거만 제출한다.");
 });
 
 test("case-submit cannot advance directly to late artwork without evidence submission", () => {

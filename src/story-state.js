@@ -193,8 +193,11 @@ export function submitEvidence(state, submission) {
   if (nextState.sceneId !== "case-submit") {
     return rejected(CHAPTER_01.scenes[nextState.sceneId].hint);
   }
-  if (!satisfiesCompletedScenes(nextState) || !respectsSceneAvailability(nextState) || !canAdvance(nextState).ok) {
+  if (!canAdvance(nextState).ok) {
     return rejected(CHAPTER_01.scenes["case-submit"].hint);
+  }
+  if (!satisfiesCompletedScenes(nextState) || !respectsSceneAvailability(nextState)) {
+    return rejected(CHAPTER_01.feedback.incompletePrerequisites);
   }
   if (!STORY_CLAIM_IDS.includes(claimId) || claimId !== "investigate-survival") {
     return rejected(feedbackForInvalidSubmission(claimId));
