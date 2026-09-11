@@ -19,14 +19,26 @@ function firebaseModulesFake(initial = {}) {
       listeners.set(ref.path, callback);
       return () => listeners.delete(ref.path);
     },
+    async get(ref) {
+      const value = structuredClone(values.get(ref.path) ?? null);
+      return { val: () => value };
+    },
     async set(ref, value) {
       sets.push({ path: ref.path, value: structuredClone(value) });
       values.set(ref.path, structuredClone(value));
     },
     async update(ref, value) {
       updates.push({ path: ref.path, value: structuredClone(value) });
-      const current = values.get(ref.path) || {};
-      values.set(ref.path, { ...current, ...structuredClone(value) });
+      const current = structuredClone(values.get(ref.path) || {});
+      for (const [path, entry] of Object.entries(structuredClone(value))) {
+        const parts = path.split("/");
+        let parent = current;
+        for (const part of parts.slice(0, -1)) parent = parent[part] ||= {};
+        const key = parts.at(-1);
+        if (entry === null) delete parent[key];
+        else parent[key] = entry;
+      }
+      values.set(ref.path, current);
     },
     async remove(ref) {
       removes.push(ref.path);
@@ -81,7 +93,7 @@ test("chorus network uses only the dedicated sanctuary path", async () => {
   const fake = firebaseModulesFake();
   const a = createChorusNetwork(networkOptions(fake, "a"));
   await a.setMap("sanctuary-return-record");
-  await a.sendAction({ type: "anchor-stabilize", sequence: 1, encounterId: "e1" });
+  await a.sendAction({ id: "a:2:1:anchor-stabilize", type: "anchor-stabilize", sequence: 1, encounterId: "e1" });
 
   assert.equal(fake.sets[0].path, `${BASE_PATH}/actions/a/1`);
   assert.equal([...fake.listeners.keys()].every(path => path.startsWith(BASE_PATH)), true);
@@ -110,6 +122,16 @@ test("expired authority transfers without replaying acknowledged actions", async
   assert.equal(result.encounter.authorityEpoch, 3);
   assert.deepEqual(result.encounter.stabilizedAnchorIds, ["forest"]);
   assert.deepEqual(result.encounter.processedActionIds, ["a:2:1:anchor-stabilize"]);
+  assert.deepEqual(fake.updates.at(-1), {
+    path: `${BASE_PATH}/state`,
+    value: {
+      authorityUid: "b",
+      authorityEpoch: 3,
+      leaseUntil: 15_000,
+      updatedAt: 10_000,
+    },
+  });
+  assert.equal(fake.transactions.some(value => value.path === `${BASE_PATH}/state`), false);
   assert.equal(fake.removes.length, 0);
   await b.stop();
 });
@@ -143,8 +165,22 @@ test("only the active authority publishes state and removes applied actions", as
   await a.setMap("sanctuary-return-record");
   fake.emit(`${BASE_PATH}/state`, state);
 
-  assert.equal((await a.publishState({ ...state, hp: 90 })).ok, true);
-  assert.equal(fake.transactions.at(-1).path, `${BASE_PATH}/state`);
+  assert.equal((await a.publishState({
+    ...state,
+    stabilizedAnchorIds: ["forest"],
+    combatRevision: 1,
+    updatedAt: 10_000,
+  })).ok, true);
+  assert.deepEqual(fake.updates.at(-1), {
+    path: `${BASE_PATH}/state`,
+    value: {
+      hp: 90,
+      stabilizedAnchorIds: ["forest"],
+      combatRevision: 1,
+      updatedAt: 10_000,
+    },
+  });
+  assert.equal(fake.transactions.some(value => value.path === `${BASE_PATH}/state`), false);
   assert.equal((await a.acknowledgeAction("b", 7)).ok, true);
   assert.equal(fake.removes.at(-1), `${BASE_PATH}/actions/b/7`);
 
@@ -197,6 +233,19 @@ test("authority creates immutable contributor claims and each user acknowledges 
   assert.equal(acknowledged.ok, true);
   assert.deepEqual(bFake.transactions.at(-1).next, { ...claims.b, acknowledgedAt: 12_345 });
   assert.equal(bFake.transactions.at(-1).path, `${BASE_PATH}/completionClaims/e1/b`);
+});
+
+test("invalid encounter keys never become completion claim paths", async () => {
+  const state = activeEncounter("a", 9_000);
+  const fake = firebaseModulesFake({ [`${BASE_PATH}/state`]: state });
+  const network = createChorusNetwork(networkOptions(fake, "a"));
+  await network.setMap("sanctuary-return-record");
+  fake.emit(`${BASE_PATH}/state`, state);
+
+  const result = await network.acknowledgeCompletionClaim("bad/id");
+
+  assert.deepEqual(result, { ok: false, reason: "invalid_claim" });
+  assert.equal(fake.transactions.length, 0);
 });
 
 test("a solo-completed snapshot is never uploaded as a shared encounter", async () => {
@@ -267,16 +316,16 @@ test("renewal and combat publishes are serialized while newer combat state prese
 test("state mutations never overlap even when Firebase transactions settle later", async () => {
   const state = activeEncounter("a", 9_000);
   const fake = firebaseModulesFake({ [`${BASE_PATH}/state`]: state });
-  const originalTransaction = fake.dbModule.runTransaction;
+  const originalUpdate = fake.dbModule.update;
   const releases = [];
   let inFlight = 0;
   let maxInFlight = 0;
-  fake.dbModule.runTransaction = async (ref, update) => {
+  fake.dbModule.update = async (ref, value) => {
     inFlight += 1;
     maxInFlight = Math.max(maxInFlight, inFlight);
     await new Promise(resolve => releases.push(resolve));
     try {
-      return await originalTransaction(ref, update);
+      return await originalUpdate(ref, value);
     } finally {
       inFlight -= 1;
     }
@@ -295,6 +344,32 @@ test("state mutations never overlap even when Firebase transactions settle later
   releases.shift()();
   await Promise.all([renewing, publishing]);
   assert.equal(maxInFlight, 1);
+});
+
+test("encounter creation uses an atomic child patch instead of a parent state transaction", async () => {
+  const fake = firebaseModulesFake();
+  const network = createChorusNetwork(networkOptions(fake, "host"));
+  await network.setMap("sanctuary-return-record");
+
+  const encounter = await network.ensureEncounter();
+
+  assert.equal(encounter.authorityUid, "host");
+  assert.equal(fake.updates.at(-1).path, `${BASE_PATH}/state`);
+  assert.equal(fake.updates.at(-1).value.encounterId, encounter.encounterId);
+  assert.equal(fake.transactions.some(value => value.path === `${BASE_PATH}/state`), false);
+});
+
+test("invalid action IDs are rejected before allocating a sequence", async () => {
+  const fake = firebaseModulesFake();
+  const network = createChorusNetwork(networkOptions(fake, "player"));
+  await network.setMap("sanctuary-return-record");
+
+  for (const id of [" has-space", "bad/id", "bad.id", "bad#id", "bad\u0001id"]) {
+    const result = await network.sendAction({ id, type: "fragment-strike", encounterId: "e1", sequence: 1 });
+    assert.deepEqual(result, { ok: false, reason: "invalid_action" });
+  }
+  assert.equal(fake.transactions.length, 0);
+  assert.equal(fake.sets.length, 0);
 });
 
 test("reconnected clients allocate a new monotonic Firebase action sequence for the same uid", async () => {

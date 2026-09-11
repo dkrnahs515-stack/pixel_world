@@ -1,11 +1,12 @@
 const test = require("node:test");
+const assert = require("node:assert/strict");
 const { readFileSync } = require("node:fs");
 const {
   assertFails,
   assertSucceeds,
   initializeTestEnvironment,
 } = require("@firebase/rules-unit-testing");
-const { get, ref, remove, runTransaction, set } = require("firebase/database");
+const { get, ref, remove, runTransaction, set, update } = require("firebase/database");
 
 const projectId = "demo-pixel-world-rules";
 const bossMapId = "volcano-core-caldera";
@@ -74,7 +75,7 @@ function chorusAction(uid, sequence, overrides = {}) {
 function separatedChorusState(overrides = {}) {
   const timestamp = Date.now();
   return chorusEncounter({
-    leaseUntil: timestamp + 30_000,
+    leaseUntil: timestamp + 6_000,
     status: "separated",
     phase: "separated",
     hp: 0,
@@ -98,6 +99,73 @@ function separatedChorusState(overrides = {}) {
     },
     separatedAt: timestamp,
     ...overrides,
+  });
+}
+
+function oneAnchorChorusState(overrides = {}) {
+  const timestamp = Date.now();
+  return chorusEncounter({
+    leaseUntil: timestamp + 6_000,
+    stabilizedAnchorIds: ["forest"],
+    hp: 90,
+    combatRevision: 1,
+    processedActionIds: ["player:1:1:anchor-stabilize"],
+    contributors: {
+      player: {
+        firstContributedAt: timestamp - 1_000,
+        lastContributedAt: timestamp,
+        actionTypes: ["anchor-stabilize"],
+      },
+    },
+    updatedAt: timestamp,
+    ...overrides,
+  });
+}
+
+function onslaughtChorusState(overrides = {}) {
+  const timestamp = Date.now();
+  return chorusEncounter({
+    leaseUntil: timestamp + 30_000,
+    stabilizedAnchorIds: ["forest", "coast", "volcano"],
+    resolvedTestimonyIds: [
+      "core-self-division-original",
+      "lumen-caused-core-division",
+      "lumen-touched-seal-to-delay-eruption",
+      "return-delay-was-lumen-alone",
+      "first-archivist-deletion-protected-everyone",
+      "resonance-time-was-incident-time",
+    ],
+    severedBondIds: ["roan", "sera", "garen"],
+    phase: "onslaught",
+    hp: 10,
+    combatRevision: 12,
+    processedActionIds: ["player:1:12:bond-cut"],
+    contributors: {
+      player: {
+        firstContributedAt: timestamp - 1_000,
+        lastContributedAt: timestamp,
+        actionTypes: ["bond-cut"],
+      },
+    },
+    updatedAt: timestamp,
+    ...overrides,
+  });
+}
+
+async function seedChorus(environment, state, { sequence = null, playerMapId = "sanctuary-return-record" } = {}) {
+  await environment.withSecurityRulesDisabled(async context => {
+    const database = context.database();
+    await set(ref(database, "rooms/public"), {
+      players: {
+        player: player({ mapId: playerMapId }),
+      },
+      chorus: {
+        "sanctuary-return-record": {
+          state,
+          ...(sequence == null ? {} : { actionSequences: { player: sequence } }),
+        },
+      },
+    });
   });
 }
 
@@ -165,6 +233,7 @@ test("Realtime Database 규칙은 보스 읽기·관리자·공격·피해 권�
     database: { rules: readFileSync("database.rules.json", "utf8") },
   });
   try {
+    await environment.clearDatabase();
     const hostDb = environment.authenticatedContext("host").database();
     const fighterDb = environment.authenticatedContext("fighter").database();
     const strangerDb = environment.authenticatedContext("stranger").database();
@@ -335,6 +404,7 @@ test("Realtime Database 규칙은 sanctuary chorus 공유 경계와 canonical cl
     database: { rules: readFileSync("database.rules.json", "utf8") },
   });
   try {
+    await environment.clearDatabase();
     const hostDb = environment.authenticatedContext("host").database();
     const playerDb = environment.authenticatedContext("player").database();
     const otherDb = environment.authenticatedContext("other").database();
@@ -356,29 +426,26 @@ test("Realtime Database 규칙은 sanctuary chorus 공유 경계와 canonical cl
       ...sanctuaryPlayer, mapId: "sanctuary-return-record",
     }));
 
-    await assertFails(set(ref(guestDb, chorusStatePath), chorusEncounter()));
+    await assertFails(update(ref(guestDb, chorusStatePath), chorusEncounter()));
     const initial = chorusEncounter();
-    await assertSucceeds(set(ref(hostDb, chorusStatePath), initial));
+    await assertSucceeds(update(ref(hostDb, chorusStatePath), initial));
     await assertSucceeds(get(ref(playerDb, chorusPath)));
     await assertFails(set(ref(otherDb, chorusStatePath), { ...initial, updatedAt: Date.now() }));
-    await assertFails(set(ref(hostDb, chorusStatePath), {
-      ...initial,
+    await assertFails(update(ref(hostDb, chorusStatePath), {
       hp: 0,
       status: "separated",
       phase: "separated",
       combatRevision: 1,
       updatedAt: Date.now(),
     }));
-    await assertFails(set(ref(hostDb, chorusStatePath), {
-      ...initial,
+    await assertFails(update(ref(hostDb, chorusStatePath), {
       stabilizedAnchorIds: ["forest", "coast", "volcano"],
       phase: "testimonies",
       hp: 70,
       combatRevision: 1,
       updatedAt: Date.now(),
     }));
-    await assertFails(set(ref(hostDb, chorusStatePath), {
-      ...initial,
+    await assertFails(update(ref(hostDb, chorusStatePath), {
       damage: 999,
       combatRevision: 1,
       updatedAt: Date.now(),
@@ -398,7 +465,14 @@ test("Realtime Database 규칙은 sanctuary chorus 공유 경계와 canonical cl
       },
       updatedAt: Date.now(),
     };
-    await assertSucceeds(set(ref(hostDb, chorusStatePath), oneAnchor));
+    await assertSucceeds(update(ref(hostDb, chorusStatePath), {
+      stabilizedAnchorIds: oneAnchor.stabilizedAnchorIds,
+      hp: oneAnchor.hp,
+      combatRevision: oneAnchor.combatRevision,
+      processedActionIds: oneAnchor.processedActionIds,
+      "contributors/player": oneAnchor.contributors.player,
+      updatedAt: oneAnchor.updatedAt,
+    }));
 
     const expiredState = chorusEncounter({ leaseUntil: Date.now() - 100 });
     await environment.withSecurityRulesDisabled(async context => {
@@ -418,12 +492,32 @@ test("Realtime Database 규칙은 sanctuary chorus 공유 경계와 canonical cl
       hp: 70,
       combatRevision: 1,
     };
-    await assertFails(set(ref(otherDb, chorusStatePath), invalidTakeover));
-    await assertFails(set(ref(otherDb, chorusStatePath), { ...validTakeover, authorityEpoch: 1 }));
-    await assertFails(set(ref(hostDb, chorusStatePath), {
-      ...expiredState, leaseUntil: Date.now() + 4_000, updatedAt: Date.now(),
+    await assertFails(update(ref(otherDb, chorusStatePath), {
+      authorityUid: invalidTakeover.authorityUid,
+      authorityEpoch: invalidTakeover.authorityEpoch,
+      leaseUntil: invalidTakeover.leaseUntil,
+      updatedAt: invalidTakeover.updatedAt,
+      stabilizedAnchorIds: invalidTakeover.stabilizedAnchorIds,
+      hp: invalidTakeover.hp,
+      phase: invalidTakeover.phase,
+      combatRevision: invalidTakeover.combatRevision,
     }));
-    await assertSucceeds(set(ref(otherDb, chorusStatePath), validTakeover));
+    await assertFails(update(ref(otherDb, chorusStatePath), {
+      authorityUid: validTakeover.authorityUid,
+      authorityEpoch: 1,
+      leaseUntil: validTakeover.leaseUntil,
+      updatedAt: validTakeover.updatedAt,
+    }));
+    await assertFails(update(ref(hostDb, chorusStatePath), {
+      leaseUntil: Date.now() + 4_000,
+      updatedAt: Date.now(),
+    }));
+    await assertSucceeds(update(ref(otherDb, chorusStatePath), {
+      authorityUid: validTakeover.authorityUid,
+      authorityEpoch: validTakeover.authorityEpoch,
+      leaseUntil: validTakeover.leaseUntil,
+      updatedAt: validTakeover.updatedAt,
+    }));
 
     await environment.withSecurityRulesDisabled(async context => {
       await set(ref(context.database(), chorusStatePath), chorusEncounter({ leaseUntil: Date.now() + 30_000 }));
@@ -575,12 +669,308 @@ test("Realtime Database 규칙은 sanctuary chorus 공유 경계와 canonical cl
     await assertFails(set(ref(playerDb, claimPath), {
       ...claim, status: "separated", acknowledgedAt: Date.now(),
     }));
-    await assertSucceeds(set(ref(playerDb, claimPath), { ...claim, acknowledgedAt: Date.now() }));
+    const acknowledgedAt = Date.now();
+    const acknowledgedClaim = { ...claim, acknowledgedAt };
+    await assertSucceeds(set(ref(playerDb, claimPath), acknowledgedClaim));
+    await assertFails(set(ref(playerDb, claimPath), { ...acknowledgedClaim, acknowledgedAt: acknowledgedAt + 1 }));
+    await assertFails(set(ref(playerDb, claimPath), { ...acknowledgedClaim, createdAt: claim.createdAt + 1 }));
+    await assertFails(set(ref(playerDb, claimPath), { ...acknowledgedClaim, encounterId: "other-encounter" }));
+    await assertFails(set(ref(playerDb, claimPath), { ...acknowledgedClaim, uid: "other" }));
+    await assertFails(set(ref(hostDb, claimPath), claim));
+    await assertFails(remove(ref(playerDb, claimPath)));
 
     for (const privatePath of ["contamination/player", "carriedFragment/player", "chapters/player", "endingChoice/player"]) {
       await assertFails(set(ref(playerDb, `${chorusPath}/${privatePath}`), privatePath));
     }
     await assertFails(set(ref(playerDb, "rooms/public/chorus/sanctuary-secret/state"), chorusEncounter()));
+  } finally {
+    await environment.cleanup();
+  }
+});
+
+test("Round 1 pressure는 structured state와 parent fan-out 우회를 거부한다", async t => {
+  const environment = await initializeTestEnvironment({
+    projectId,
+    database: { rules: readFileSync("database.rules.json", "utf8") },
+  });
+  try {
+    await environment.clearDatabase();
+    const hostDb = environment.authenticatedContext("host").database();
+    const playerDb = environment.authenticatedContext("player").database();
+    const otherDb = environment.authenticatedContext("other").database();
+
+    await t.test("nonempty structured state의 same-revision lease renewal은 허용한다", async () => {
+      const current = oneAnchorChorusState();
+      await seedChorus(environment, current);
+      await assertSucceeds(update(ref(hostDb, chorusStatePath), {
+        leaseUntil: current.leaseUntil + 1_000,
+      }));
+    });
+
+    await t.test("nonempty structured state의 immutable takeover는 허용한다", async () => {
+      const current = oneAnchorChorusState({ leaseUntil: Date.now() - 100 });
+      await seedChorus(environment, current);
+      await assertSucceeds(update(ref(otherDb, chorusStatePath), {
+        authorityUid: "other",
+        authorityEpoch: 2,
+        leaseUntil: Date.now() + 4_000,
+        updatedAt: Date.now(),
+      }));
+    });
+
+    await t.test("same-revision의 nonempty structured replacement를 거부한다", async () => {
+      const current = onslaughtChorusState();
+      await seedChorus(environment, current);
+      await assertFails(update(ref(hostDb, chorusStatePath), {
+        stabilizedAnchorIds: ["coast", "forest", "volcano"],
+        resolvedTestimonyIds: [...current.resolvedTestimonyIds].reverse(),
+        severedBondIds: ["sera", "roan", "garen"],
+        processedActionIds: ["player:1:1:fragment-strike"],
+        "contributors/player": {
+          ...current.contributors.player,
+          actionTypes: ["record-activate"],
+        },
+      }));
+    });
+
+    await t.test("expired takeover의 nonempty structured replacement를 거부한다", async () => {
+      const current = onslaughtChorusState({ leaseUntil: Date.now() - 100 });
+      await seedChorus(environment, current);
+      await assertFails(update(ref(otherDb, chorusStatePath), {
+        authorityUid: "other",
+        authorityEpoch: 2,
+        leaseUntil: Date.now() + 4_000,
+        updatedAt: Date.now(),
+        stabilizedAnchorIds: ["coast", "forest", "volcano"],
+        resolvedTestimonyIds: [...current.resolvedTestimonyIds].reverse(),
+        severedBondIds: ["sera", "roan", "garen"],
+        processedActionIds: ["player:1:1:fragment-strike"],
+        "contributors/player": {
+          ...current.contributors.player,
+            actionTypes: ["record-activate"],
+        },
+      }));
+    });
+
+    await t.test("direct chorus parent set으로 structured state를 교체하지 못한다", async () => {
+      const current = oneAnchorChorusState();
+      await seedChorus(environment, current);
+      await assertFails(set(ref(hostDb, chorusPath), {
+        state: {
+          ...current,
+          stabilizedAnchorIds: ["coast"],
+          processedActionIds: ["player:1:1:fragment-strike"],
+          contributors: {
+            player: {
+              ...current.contributors.player,
+              actionTypes: ["fragment-strike"],
+            },
+          },
+        },
+      }));
+    });
+
+    await t.test("final player map을 벗어나는 action fan-out을 거부하되 정상 leave/chat은 허용한다", async () => {
+      const current = chorusEncounter({ leaseUntil: Date.now() + 30_000 });
+      await seedChorus(environment, current, { sequence: 2 });
+      await assertSucceeds(update(ref(playerDb, "rooms/public"), {
+        "players/player/mapId": "sanctuary",
+        "chat/player/round1-leave": chat({ mapId: "sanctuary" }),
+      }));
+      await assertSucceeds(update(ref(playerDb, "rooms/public/players/player"), {
+        mapId: "sanctuary-return-record",
+      }));
+      await assertFails(update(ref(playerDb, "rooms/public"), {
+        "players/player/mapId": "sanctuary",
+        [`chorus/sanctuary-return-record/actions/player/2`]: chorusAction("player", 2),
+      }));
+    });
+
+    await t.test("claim 생성과 contributor/status fan-out 변조를 함께 허용하지 않는다", async () => {
+      const current = separatedChorusState();
+      await seedChorus(environment, current);
+      await assertFails(update(ref(hostDb, "rooms/public"), {
+        "chorus/sanctuary-return-record/state/status": "reforming",
+        "chorus/sanctuary-return-record/state/combatRevision": current.combatRevision + 1,
+        "chorus/sanctuary-return-record/state/updatedAt": Date.now(),
+        "chorus/sanctuary-return-record/state/contributors/player": null,
+        "chorus/sanctuary-return-record/completionClaims/chorus-emulator-1/player": {
+          encounterId: "chorus-emulator-1",
+          uid: "player",
+          eligible: true,
+          createdAt: Date.now(),
+        },
+      }));
+    });
+  } finally {
+    await environment.cleanup();
+  }
+});
+
+test("Round 1 pressure는 encounter/action ID 문법을 runtime-compatible하게 강제한다", async t => {
+  const environment = await initializeTestEnvironment({
+    projectId,
+    database: { rules: readFileSync("database.rules.json", "utf8") },
+  });
+  try {
+    await environment.clearDatabase();
+    const hostDb = environment.authenticatedContext("host").database();
+    const playerDb = environment.authenticatedContext("player").database();
+
+    await t.test("state encounterId의 Firebase 비호환 문자와 제어문자를 거부한다", async () => {
+      const accepted = [];
+      for (const encounterId of ["bad/id", "bad.id", "bad#id", "bad$id", "bad[id", "bad]id", "bad\u0001id"] ) {
+        try {
+          await assertFails(update(ref(hostDb, chorusStatePath), chorusEncounter({ encounterId })));
+        } catch {
+          accepted.push(JSON.stringify(encounterId));
+          await environment.withSecurityRulesDisabled(async context => {
+            await remove(ref(context.database(), chorusStatePath));
+          });
+        }
+      }
+      assert.deepEqual(accepted, []);
+    });
+
+    await t.test("action ID의 공백·제어문자·Firebase 비호환 문자를 거부한다", async () => {
+      await seedChorus(environment, chorusEncounter({ leaseUntil: Date.now() + 30_000 }), { sequence: 1 });
+      const accepted = [];
+      for (const id of [
+        " player:1:1:fragment-strike",
+        "player:1:1:fragment-strike ",
+        "player/1/1/fragment-strike",
+        "player.1.1.fragment-strike",
+        "player#1#1#fragment-strike",
+        "player$1$1$fragment-strike",
+        "player[1]:1:fragment-strike",
+        "player:1:\u0001:fragment-strike",
+      ]) {
+        try {
+          await assertFails(set(ref(playerDb, `${chorusPath}/actions/player/1`), chorusAction("player", 1, { id })));
+        } catch {
+          accepted.push(JSON.stringify(id));
+          await environment.withSecurityRulesDisabled(async context => {
+            await remove(ref(context.database(), `${chorusPath}/actions/player/1`));
+          });
+        }
+      }
+      assert.deepEqual(accepted, []);
+    });
+  } finally {
+    await environment.cleanup();
+  }
+});
+
+test("Round 1 pressure는 state lifecycle과 required field 경계를 강제한다", async t => {
+  const environment = await initializeTestEnvironment({
+    projectId,
+    database: { rules: readFileSync("database.rules.json", "utf8") },
+  });
+  try {
+    await environment.clearDatabase();
+    const hostDb = environment.authenticatedContext("host").database();
+
+    await t.test("onslaught에서 reforming으로 건너뛰지 못한다", async () => {
+      const current = onslaughtChorusState();
+      await seedChorus(environment, current);
+      await assertFails(update(ref(hostDb, chorusStatePath), {
+        status: "reforming",
+        phase: "separated",
+        hp: 0,
+        severedBondIds: ["roan", "sera", "garen", "lumen"],
+        combatRevision: current.combatRevision + 1,
+        separatedAt: Date.now(),
+        updatedAt: Date.now(),
+      }));
+    });
+
+    await t.test("separated에서 reforming만 허용하고 rollback은 거부한다", async () => {
+      const separated = separatedChorusState();
+      await seedChorus(environment, separated);
+      const reforming = {
+        status: "reforming",
+        combatRevision: separated.combatRevision + 1,
+        updatedAt: Date.now(),
+      };
+      await assertSucceeds(update(ref(hostDb, chorusStatePath), reforming));
+      await assertFails(update(ref(hostDb, chorusStatePath), {
+        status: "separated",
+        combatRevision: reforming.combatRevision + 1,
+        updatedAt: Date.now(),
+      }));
+    });
+
+    await t.test("stale revision과 required child 삭제를 거부한다", async () => {
+      const current = oneAnchorChorusState();
+      await seedChorus(environment, current);
+      await assertFails(update(ref(hostDb, chorusStatePath), {
+        combatRevision: current.combatRevision - 1,
+      }));
+      await assertFails(remove(ref(hostDb, `${chorusStatePath}/encounterId`)));
+      await assertFails(remove(ref(hostDb, `${chorusStatePath}/authorityEpoch`)));
+      await assertFails(remove(ref(hostDb, `${chorusStatePath}/processedActionIds`)));
+      await assertFails(remove(ref(hostDb, `${chorusStatePath}/contributors`)));
+      await assertFails(update(ref(hostDb, chorusStatePath), {
+        processedActionIds: null,
+        combatRevision: current.combatRevision + 1,
+        updatedAt: Date.now(),
+      }));
+      await assertFails(update(ref(hostDb, chorusStatePath), {
+        "contributors/player": null,
+        combatRevision: current.combatRevision + 1,
+        updatedAt: Date.now(),
+      }));
+    });
+  } finally {
+    await environment.cleanup();
+  }
+});
+
+test("Round 1 pressure는 action payload와 objective ID 전체 경계를 강제한다", async () => {
+  const environment = await initializeTestEnvironment({
+    projectId,
+    database: { rules: readFileSync("database.rules.json", "utf8") },
+  });
+  try {
+    await environment.clearDatabase();
+    const playerDb = environment.authenticatedContext("player").database();
+    const expectActionDenied = async (state, overrides, options = {}) => {
+      await seedChorus(environment, state, { sequence: 1, ...options });
+      await assertFails(set(ref(playerDb, `${chorusPath}/actions/player/1`), chorusAction("player", 1, overrides)));
+    };
+
+    const anchors = chorusEncounter({ leaseUntil: Date.now() + 30_000 });
+    await expectActionDenied(anchors, {}, { playerMapId: "sanctuary" });
+    await expectActionDenied(anchors, { uid: "other" });
+    await expectActionDenied(anchors, { encounterId: "other-encounter" });
+    await expectActionDenied(anchors, { authorityEpoch: 2 });
+    await expectActionDenied(anchors, { fragmentId: "void" });
+    await expectActionDenied(anchors, { type: "anchor-stabilize", anchorId: "void" });
+    await expectActionDenied(anchors, { type: "lumen-assist", fragmentId: null, anchorId: "void" });
+
+    const testimonies = chorusEncounter({
+      leaseUntil: Date.now() + 30_000,
+      stabilizedAnchorIds: ["forest", "coast", "volcano"],
+      phase: "testimonies",
+      hp: 70,
+      combatRevision: 3,
+    });
+    await expectActionDenied(testimonies, {
+      type: "testimony-resolve", fragmentId: null, phase: "testimonies",
+      testimonyId: "void", verdict: "fact",
+    });
+    await expectActionDenied(testimonies, {
+      type: "testimony-resolve", fragmentId: null, phase: "testimonies",
+      testimonyId: "core-self-division-original", verdict: "invented",
+    });
+
+    const onslaught = onslaughtChorusState();
+    await expectActionDenied(onslaught, {
+      type: "record-activate", fragmentId: null, phase: "onslaught", recordId: "void",
+    });
+    await expectActionDenied(onslaught, {
+      type: "bond-cut", fragmentId: null, phase: "onslaught", bondId: "void",
+    });
   } finally {
     await environment.cleanup();
   }

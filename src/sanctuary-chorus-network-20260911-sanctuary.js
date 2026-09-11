@@ -1,4 +1,5 @@
 import {
+  CHORUS_ACTION_ID_MAX_LENGTH,
   CHORUS_AUTHORITY_RENEW_MS,
   CHORUS_MAP_ID,
   CHORUS_PROCESSED_ACTION_LIMIT,
@@ -21,7 +22,12 @@ const COMBAT_STATE_FIELDS = Object.freeze([
 
 function validKey(value, maxLength = 160) {
   return typeof value === "string" && value.length > 0 && value.length <= maxLength
-    && !/[.#$\[\]/\u0000-\u001f\u007f]/.test(value);
+    && /^[A-Za-z0-9:_-]+$/.test(value);
+}
+
+function validActionId(value) {
+  return typeof value === "string" && value.length <= CHORUS_ACTION_ID_MAX_LENGTH
+    && /^[A-Za-z0-9:_-]+$/.test(value);
 }
 
 function withoutUndefined(value) {
@@ -47,6 +53,25 @@ function mergeProcessedActionIds(current, incoming) {
 
 function sameCombatState(left, right) {
   return COMBAT_STATE_FIELDS.every(field => JSON.stringify(left?.[field]) === JSON.stringify(right?.[field]));
+}
+
+function statePatch(current, next) {
+  const patch = {};
+  for (const field of COMBAT_STATE_FIELDS) {
+    if (field === "contributors") {
+      for (const [contributorUid, contributor] of Object.entries(next.contributors || {})) {
+        if (JSON.stringify(current?.contributors?.[contributorUid]) !== JSON.stringify(contributor)) {
+          patch[`contributors/${contributorUid}`] = contributor;
+        }
+      }
+    } else if (JSON.stringify(current?.[field]) !== JSON.stringify(next[field])) {
+      patch[field] = next[field];
+    }
+  }
+  for (const field of ["combatRevision", "leaseUntil", "updatedAt"]) {
+    if (current?.[field] !== next[field]) patch[field] = next[field];
+  }
+  return withoutUndefined(patch);
 }
 
 export function createChorusNetwork({
@@ -78,6 +103,12 @@ export function createChorusNetwork({
   let stateMutationQueue = Promise.resolve();
 
   const pathRef = suffix => dbModule.ref(db, suffix ? `${BASE_PATH}/${suffix}` : BASE_PATH);
+  const readCurrentState = async () => {
+    if (latestState) return latestState;
+    if (typeof dbModule.get !== "function") return null;
+    const snapshot = await dbModule.get(pathRef("state"));
+    return normalizeChorusEncounter(snapshot.val());
+  };
 
   const clearRenewal = () => {
     if (renewalTimer !== null) clearTimer(renewalTimer);
@@ -183,17 +214,19 @@ export function createChorusNetwork({
       if (!active()) return null;
       return enqueueStateMutation(async () => {
         if (!active()) return null;
+        const current = await readCurrentState();
+        if (current) {
+          latestState = current;
+          return structuredClone(current);
+        }
         const timestamp = now();
-        const transaction = await dbModule.runTransaction(pathRef("state"), current => {
-          const encounter = normalizeChorusEncounter(current);
-          if (encounter) return undefined;
-          return createChorusEncounter({
-            encounterId: `sanctuary-chorus-${Math.trunc(timestamp)}-${uid.slice(0, 12)}`,
-            authorityUid: uid,
-            now: timestamp,
-          });
+        const encounter = createChorusEncounter({
+          encounterId: `sanctuary-chorus-${Math.trunc(timestamp)}-${uid.slice(0, 12)}`,
+          authorityUid: uid,
+          now: timestamp,
         });
-        const encounter = normalizeChorusEncounter(transaction.snapshot.val());
+        if (!encounter) return null;
+        await dbModule.update(pathRef("state"), withoutUndefined(encounter));
         if (encounter) {
           latestState = encounter;
           if (isAuthority(encounter)) scheduleRenewal(encounter.authorityEpoch);
@@ -206,13 +239,17 @@ export function createChorusNetwork({
       if (!active()) return { ok: false, reason: "inactive" };
       return enqueueStateMutation(async () => {
         if (!active()) return { ok: false, reason: "inactive" };
-        let outcome = { ok: false, reason: "transaction_aborted" };
-        const transaction = await dbModule.runTransaction(pathRef("state"), current => {
-          outcome = acquireChorusAuthority(current, { uid, now: now() });
-          return outcome.ok ? outcome.encounter : undefined;
-        });
-        if (!transaction.committed) return outcome;
-        latestState = normalizeChorusEncounter(transaction.snapshot.val());
+        const current = await readCurrentState();
+        const outcome = acquireChorusAuthority(current, { uid, now: now() });
+        if (!outcome.ok) return outcome;
+        const patch = {
+          authorityUid: outcome.encounter.authorityUid,
+          authorityEpoch: outcome.encounter.authorityEpoch,
+          leaseUntil: outcome.encounter.leaseUntil,
+          updatedAt: outcome.encounter.updatedAt,
+        };
+        await dbModule.update(pathRef("state"), patch);
+        latestState = normalizeChorusEncounter({ ...current, ...patch });
         scheduleRenewal(latestState.authorityEpoch);
         return { ok: true, encounter: latestState };
       });
@@ -222,13 +259,11 @@ export function createChorusNetwork({
       if (!active()) return { ok: false, reason: "inactive" };
       return enqueueStateMutation(async () => {
         if (!active()) return { ok: false, reason: "inactive" };
-        let outcome = { ok: false, reason: "transaction_aborted" };
-        const transaction = await dbModule.runTransaction(pathRef("state"), current => {
-          outcome = renewChorusAuthority(current, { uid, authorityEpoch: epoch, now: now() });
-          return outcome.ok ? outcome.encounter : undefined;
-        });
-        if (!transaction.committed) return outcome;
-        latestState = normalizeChorusEncounter(transaction.snapshot.val());
+        const outcome = renewChorusAuthority(latestState, { uid, authorityEpoch: epoch, now: now() });
+        if (!outcome.ok) return outcome;
+        const patch = { leaseUntil: outcome.encounter.leaseUntil };
+        await dbModule.update(pathRef("state"), patch);
+        latestState = normalizeChorusEncounter({ ...latestState, ...patch });
         return { ok: true, encounter: latestState };
       });
     },
@@ -243,45 +278,43 @@ export function createChorusNetwork({
       }
       return enqueueStateMutation(async () => {
         if (!active()) return { ok: false, reason: "inactive" };
-        let outcome = { ok: false, reason: "authority_changed" };
-        const transaction = await dbModule.runTransaction(pathRef("state"), currentValue => {
-          const current = normalizeChorusEncounter(currentValue);
-          if (!current || current.authorityUid !== uid
-            || current.authorityEpoch !== incoming.authorityEpoch
-            || current.encounterId !== incoming.encounterId) return undefined;
-          if (current.leaseUntil <= now()) {
-            outcome = { ok: false, reason: "lease_expired" };
-            return undefined;
-          }
-          const olderRevision = incoming.combatRevision < current.combatRevision;
-          const conflictingSameRevision = incoming.combatRevision === current.combatRevision
-            && !sameCombatState(incoming, current);
-          if (olderRevision || conflictingSameRevision
-            || !containsAll(incoming.stabilizedAnchorIds, current.stabilizedAnchorIds)
-            || !containsAll(incoming.resolvedTestimonyIds, current.resolvedTestimonyIds)
-            || !containsAll(incoming.severedBondIds, current.severedBondIds)) {
-            outcome = { ok: false, reason: "stale_state" };
-            return undefined;
-          }
-          outcome = { ok: true };
-          return withoutUndefined({
-            ...incoming,
-            leaseUntil: Math.max(current.leaseUntil, incoming.leaseUntil),
-            updatedAt: incoming.combatRevision > current.combatRevision
-              ? incoming.updatedAt
-              : current.updatedAt,
-            processedActionIds: mergeProcessedActionIds(current.processedActionIds, incoming.processedActionIds),
-          });
-        });
-        if (!transaction.committed) return outcome;
-        latestState = normalizeChorusEncounter(transaction.snapshot.val());
+        const current = normalizeChorusEncounter(latestState);
+        if (!current || current.authorityUid !== uid
+          || current.authorityEpoch !== incoming.authorityEpoch
+          || current.encounterId !== incoming.encounterId) {
+          return { ok: false, reason: "authority_changed" };
+        }
+        if (current.leaseUntil <= now()) return { ok: false, reason: "lease_expired" };
+        const olderRevision = incoming.combatRevision < current.combatRevision;
+        const skippedRevision = incoming.combatRevision > current.combatRevision + 1;
+        const conflictingSameRevision = incoming.combatRevision === current.combatRevision
+          && !sameCombatState(incoming, current);
+        if (olderRevision || skippedRevision || conflictingSameRevision
+          || !containsAll(incoming.stabilizedAnchorIds, current.stabilizedAnchorIds)
+          || !containsAll(incoming.resolvedTestimonyIds, current.resolvedTestimonyIds)
+          || !containsAll(incoming.severedBondIds, current.severedBondIds)) {
+          return { ok: false, reason: "stale_state" };
+        }
+        const next = normalizeChorusEncounter(withoutUndefined({
+          ...incoming,
+          leaseUntil: Math.max(current.leaseUntil, incoming.leaseUntil),
+          updatedAt: incoming.combatRevision > current.combatRevision
+            ? incoming.updatedAt
+            : current.updatedAt,
+          processedActionIds: mergeProcessedActionIds(current.processedActionIds, incoming.processedActionIds),
+          contributors: { ...current.contributors, ...incoming.contributors },
+        }));
+        const patch = statePatch(current, next);
+        if (Object.keys(patch).length > 0) await dbModule.update(pathRef("state"), patch);
+        latestState = next;
         return { ok: true, encounter: latestState };
       });
     },
 
     async sendAction(request) {
       if (!active() || !Number.isInteger(request?.sequence) || request.sequence < 1
-        || !validKey(String(request.sequence), 24)) {
+        || !validKey(String(request.sequence), 24) || !validActionId(request?.id)
+        || !validKey(request?.encounterId)) {
         return { ok: false, reason: "invalid_action" };
       }
       const sequenceTransaction = await dbModule.runTransaction(pathRef(`actionSequences/${uid}`), current => {
@@ -305,7 +338,7 @@ export function createChorusNetwork({
     },
 
     async writeCompletionClaims(encounterId, claims) {
-      if (!isAuthority() || latestState?.status !== "separated"
+      if (!validKey(encounterId) || !isAuthority() || latestState?.status !== "separated"
         || latestState.encounterId !== encounterId) {
         return { ok: false, reason: "not_authority", results: [] };
       }
@@ -336,6 +369,7 @@ export function createChorusNetwork({
 
     async acknowledgeCompletionClaim(encounterId) {
       if (!active()) return { ok: false, reason: "inactive" };
+      if (!validKey(encounterId)) return { ok: false, reason: "invalid_claim" };
       let outcome = { ok: false, reason: "claim_missing" };
       const transaction = await dbModule.runTransaction(pathRef(`completionClaims/${encounterId}/${uid}`), current => {
         if (!current || current.uid !== uid || current.encounterId !== encounterId || current.eligible !== true) {

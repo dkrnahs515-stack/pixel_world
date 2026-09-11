@@ -39,10 +39,16 @@ function validId(value, maxLength = 160) {
   return typeof value === "string" && value.length > 0 && value.length <= maxLength;
 }
 
+function validFirebaseKey(value, maxLength = 160) {
+  return typeof value === "string"
+    && value.length <= maxLength
+    && /^[A-Za-z0-9:_-]+$/.test(value);
+}
+
 function validActionId(value) {
-  return validId(value, CHORUS_ACTION_ID_MAX_LENGTH)
-    && value.trim() === value
-    && !/[\u0000-\u001f\u007f]/.test(value);
+  return typeof value === "string"
+    && value.length <= CHORUS_ACTION_ID_MAX_LENGTH
+    && /^[A-Za-z0-9:_-]+$/.test(value);
 }
 
 function normalizeProcessedActionIds(value) {
@@ -145,7 +151,7 @@ export function createChorusEncounter({
   authorityEpoch = 1,
   now = Date.now(),
 } = {}) {
-  if (!validId(encounterId) || !validId(authorityUid, 128) || !Number.isFinite(now)) return null;
+  if (!validFirebaseKey(encounterId) || !validId(authorityUid, 128) || !Number.isFinite(now)) return null;
   return {
     encounterId,
     bossId: CHORUS_BOSS_ID,
@@ -179,7 +185,7 @@ export function createChorusEncounter({
 export function normalizeChorusEncounter(value) {
   const source = objectValue(value);
   if (!source || source.bossId !== CHORUS_BOSS_ID || source.mapId !== CHORUS_MAP_ID
-    || !validId(source.encounterId) || !validId(source.authorityUid, 128)) return null;
+    || !validFirebaseKey(source.encounterId) || !validId(source.authorityUid, 128)) return null;
   const objectives = objectiveState(source);
   const onslaught = objectives.phase === "onslaught";
   const separated = objectives.phase === "separated";

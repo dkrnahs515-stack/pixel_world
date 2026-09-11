@@ -192,6 +192,21 @@ test("validation rejects hostile ids, phases, epochs, encounters, timestamps, an
   ).reason, "duplicate_objective");
 });
 
+test("encounter keys and action IDs reject Firebase delimiters, whitespace, and controls", () => {
+  for (const encounterId of ["bad/id", "bad.id", "bad#id", "bad$id", "bad[id", "bad]id", "bad\u0001id"]) {
+    assert.equal(createChorusEncounter({ encounterId, authorityUid: "host", now: 1000 }), null);
+    assert.equal(normalizeChorusEncounter({ ...anchorsEncounter(), encounterId }), null);
+  }
+
+  const encounter = anchorsEncounter();
+  const valid = action(encounter, "a", "fragment-strike", 2000, { fragmentId: "forest" });
+  for (const id of [
+    " leading", "trailing ", "bad/id", "bad.id", "bad#id", "bad$id", "bad[id", "bad]id", "bad\u0001id",
+  ]) {
+    assert.equal(validateChorusAction({ ...valid, id }, context(encounter, "a", 2000)).reason, "invalid_action_id");
+  }
+});
+
 test("record activation replay cannot extend its window, emit again, or update its contributor", () => {
   const encounter = onslaughtEncounter();
   const request = action(encounter, "recorder", "record-activate", 2000, { recordId: "roan" });
