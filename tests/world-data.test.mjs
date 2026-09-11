@@ -9,9 +9,28 @@ import {
   normalizeWorldId,
 } from "../src/world-data-20260829-coast-20260905-upgrade.js";
 import { findActivePortal, isWorldPositionBlocked } from "../src/world-20260829-coast-20260905-upgrade.js";
+import {
+  WORLD_DEFINITIONS as SANCTUARY_WORLD_REGISTRY,
+  WORLD_IDS as SANCTUARY_WORLD_IDS,
+  getTotalWorldArea as getSanctuaryTotalWorldArea,
+} from "../src/world-data-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 
 const PLAYER_RADIUS = 14;
 const PORTAL_EXIT_SAFE_MARGIN = 32;
+
+test("sanctuary registry adds three maps beyond the original sanctuary area", () => {
+  assert.deepEqual(SANCTUARY_WORLD_IDS.slice(-4), [
+    "sanctuary",
+    "sanctuary-memory-archive",
+    "sanctuary-return-record",
+    "sanctuary-three-futures",
+  ]);
+  assert.equal(
+    getSanctuaryTotalWorldArea(),
+    2880 * 1800 * 10 + 4 * 2160 * 1800,
+  );
+  assert.equal(SANCTUARY_WORLD_REGISTRY["sanctuary-three-futures"].safe, true);
+});
 
 test("four regions total exactly ten times the original playable area", () => {
   assert.equal(getTotalWorldArea(), 2880 * 1800 * 10);

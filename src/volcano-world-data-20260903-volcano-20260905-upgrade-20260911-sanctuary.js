@@ -102,21 +102,4 @@ export const VOLCANO_WORLD_DEFINITIONS = Object.freeze({
       { x: 1920, y: 1180, w: 240, h: 620, type: "lava" },
     ]),
   }),
-  sanctuary: Object.freeze({
-    id: "sanctuary",
-    name: "픽셀 코어 성역 입구",
-    width: VOLCANO_WIDTH,
-    height: VOLCANO_HEIGHT,
-    spawn: Object.freeze({ x: 1080, y: 1460 }),
-    safe: true,
-    portals: Object.freeze([
-      portal("to-core-caldera", 1032, 1600, "화구 코어 제단", "#ef4444", "volcano-core-caldera", 1080, 300),
-    ]),
-    enemySpawns: Object.freeze([]),
-    obstacles: Object.freeze([
-      { x: 0, y: 0, w: 360, h: VOLCANO_HEIGHT, type: "sanctuaryWall" },
-      { x: 1800, y: 0, w: 360, h: VOLCANO_HEIGHT, type: "sanctuaryWall" },
-      { x: 720, y: 360, w: 720, h: 500, type: "sanctuaryGate" },
-    ]),
-  }),
 });

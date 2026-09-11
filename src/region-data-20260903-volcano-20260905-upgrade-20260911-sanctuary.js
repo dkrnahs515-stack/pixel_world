@@ -1,3 +1,5 @@
+import { SANCTUARY_MAP_IDS } from "./sanctuary-world-data-20260911-sanctuary.js";
+
 export const REGION_IDS = Object.freeze(["village", "forest", "coast", "volcano", "sanctuary"]);
 
 function defineRegion(id, entryMapId, mapIds, prerequisiteRegionId) {
@@ -24,7 +26,7 @@ export const REGION_DEFINITIONS = Object.freeze({
     "volcano-observatory",
     "volcano-core-caldera",
   ], "coast"),
-  sanctuary: defineRegion("sanctuary", "sanctuary", ["sanctuary"], "volcano"),
+  sanctuary: defineRegion("sanctuary", "sanctuary", SANCTUARY_MAP_IDS, "volcano"),
 });
 
 export function getRegionDefinition(regionId) {

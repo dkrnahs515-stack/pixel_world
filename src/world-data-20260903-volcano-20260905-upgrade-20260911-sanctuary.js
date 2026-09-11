@@ -1,5 +1,9 @@
 import { WORLD_DEFINITIONS as COAST_WORLD_DEFINITIONS } from "./world-data-20260829-coast-20260905-upgrade-20260911-sanctuary.js";
 import { VOLCANO_WORLD_DEFINITIONS } from "./volcano-world-data-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import {
+  SANCTUARY_MAP_IDS,
+  SANCTUARY_WORLD_DEFINITIONS,
+} from "./sanctuary-world-data-20260911-sanctuary.js";
 
 const village = COAST_WORLD_DEFINITIONS.village;
 const villagePortals = village.portals.map(portal => (
@@ -22,13 +26,14 @@ export const WORLD_IDS = Object.freeze([
   "volcano-magma-route",
   "volcano-observatory",
   "volcano-core-caldera",
-  "sanctuary",
+  ...SANCTUARY_MAP_IDS,
 ]);
 
 export const WORLD_DEFINITIONS = Object.freeze({
   ...COAST_WORLD_DEFINITIONS,
   village: Object.freeze({ ...village, portals: Object.freeze(villagePortals) }),
   ...VOLCANO_WORLD_DEFINITIONS,
+  ...SANCTUARY_WORLD_DEFINITIONS,
 });
 
 export function normalizeWorldId(value) {

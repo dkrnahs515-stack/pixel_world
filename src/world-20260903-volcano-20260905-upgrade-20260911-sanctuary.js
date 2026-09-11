@@ -9,6 +9,7 @@ import { getCoastChapterObjective } from "./coast-story-data-20260829-coast-2026
 import { isStoryInteractionEligible } from "./story-interactions-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 import { getVolcanoStoryContent } from "./volcano-story-data-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 import { WORLD_IDS, getWorldDefinition, normalizeWorldId } from "./world-data-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import { SANCTUARY_MAP_IDS } from "./sanctuary-world-data-20260911-sanctuary.js";
 
 const WORLD_LAYER_SCALE = 0.5;
 const VOLCANO_MAP_IDS = new Set([
@@ -16,8 +17,8 @@ const VOLCANO_MAP_IDS = new Set([
   "volcano-magma-route",
   "volcano-observatory",
   "volcano-core-caldera",
-  "sanctuary",
 ]);
+const SANCTUARY_MAP_ID_SET = new Set(SANCTUARY_MAP_IDS);
 const worldLayerCache = new Map();
 
 function includesAll(values, required) {
@@ -84,10 +85,10 @@ function obstacleColor(type) {
 }
 
 function drawGround(context, world) {
-  const sanctuary = world.id === "sanctuary";
-  context.fillStyle = sanctuary ? "#182541" : "#2a2024";
+  const sanctuary = SANCTUARY_MAP_ID_SET.has(world.id);
+  context.fillStyle = sanctuary ? "#effcff" : "#2a2024";
   context.fillRect(0, 0, world.width, world.height);
-  context.fillStyle = sanctuary ? "#23375d" : "#3a292c";
+  context.fillStyle = sanctuary ? "#c9f7f8" : "#3a292c";
   for (let y = 0; y < world.height; y += 96) {
     for (let x = (y / 96) % 2 * 48; x < world.width; x += 96) {
       context.fillRect(x, y, 42, 10);
@@ -128,7 +129,7 @@ function drawPortals(context, portals) {
 function drawWorldTitle(context, world) {
   context.fillStyle = "rgba(12, 15, 24, .78)";
   context.fillRect(world.width / 2 - 190, 38, 380, 70);
-  context.fillStyle = world.id === "sanctuary" ? "#fef3c7" : "#ffb199";
+  context.fillStyle = SANCTUARY_MAP_ID_SET.has(world.id) ? "#0f766e" : "#ffb199";
   context.font = "bold 28px sans-serif";
   context.textAlign = "center";
   context.fillText(world.name, world.width / 2, 84);
@@ -143,7 +144,7 @@ function drawVolcanoWorldLayer(context, world) {
 
 export function createWorldLayer(mapId = "village") {
   const world = getWorldDefinition(mapId);
-  if (!VOLCANO_MAP_IDS.has(world.id)) return createCoastWorldLayer(world.id);
+  if (!VOLCANO_MAP_IDS.has(world.id) && !SANCTUARY_MAP_ID_SET.has(world.id)) return createCoastWorldLayer(world.id);
   const cached = worldLayerCache.get(world.id);
   if (cached) return cached;
 
@@ -168,7 +169,7 @@ function yieldToMainThread() {
 export async function prewarmWorldLayers({ yieldControl = yieldToMainThread } = {}) {
   const layers = new Map();
   for (const mapId of WORLD_IDS) {
-    if (VOLCANO_MAP_IDS.has(mapId) && !worldLayerCache.has(mapId)) await yieldControl();
+    if ((VOLCANO_MAP_IDS.has(mapId) || SANCTUARY_MAP_ID_SET.has(mapId)) && !worldLayerCache.has(mapId)) await yieldControl();
     layers.set(mapId, createWorldLayer(mapId));
   }
   return layers;

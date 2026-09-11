@@ -3,8 +3,19 @@ import assert from "node:assert/strict";
 import { createInitialWorldProgress, completeRegion } from "../src/chapter-progress-20260829-coast-20260905-upgrade.js";
 import { WORLD_DEFINITIONS } from "../src/world-data-20260829-coast-20260905-upgrade.js";
 import { advancePortalTransition, canUsePortal, createPortalTransition } from "../src/portal-transition-20260829-coast.js";
+import { createInitialWorldProgress as createSanctuaryProgress } from "../src/chapter-progress-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import { WORLD_DEFINITIONS as SANCTUARY_WORLD_DEFINITIONS } from "../src/world-data-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import { canUsePortal as canUseSanctuaryPortal } from "../src/portal-transition-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 
 const portal = { destination: { mapId: "forest", x: 2160, y: 3260 } };
+
+test("sanctuary archive portals use the existing destination-map unlock contract", () => {
+  const portal = SANCTUARY_WORLD_DEFINITIONS.sanctuary.portals.find(value => value.id === "to-memory-archive");
+  const initial = createSanctuaryProgress();
+  assert.equal(canUseSanctuaryPortal(portal, initial), false);
+  initial.unlockedMapIds.push("sanctuary-memory-archive");
+  assert.equal(canUseSanctuaryPortal(portal, initial), true);
+});
 
 test("portal travel swaps regions once at the midpoint and ends after half a second", () => {
   let tick = advancePortalTransition(createPortalTransition(portal), 0.2);
