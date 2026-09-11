@@ -2765,6 +2765,8 @@ export class PixelRPG {
     drawSanctuaryOverlays(ctx, chorusModel, { x: cameraX, y: cameraY }, {
       layer: "foreground",
       now: Date.now(),
+      viewWidth: viewW,
+      viewHeight: viewH,
     });
 
     drawPlayerSlowEffect(ctx, this.player, cameraX, cameraY);

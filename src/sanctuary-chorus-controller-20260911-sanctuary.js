@@ -263,7 +263,20 @@ class SanctuaryChorusController {
     return fragmentId;
   }
 
-  nearbyInteraction(player) {
+  expireRecordWindow(timestamp = this.now()) {
+    if (!this.snapshot || this.snapshot.status !== "active" || this.snapshot.phase !== "onslaught"
+      || !this.snapshot.activeRecordId || this.snapshot.vulnerableUntil >= timestamp) return false;
+    this.snapshot = normalizeChorusEncounter({
+      ...this.snapshot,
+      activeRecordId: null,
+      vulnerableUntil: 0,
+    });
+    this.savedSnapshot = this.snapshot;
+    return true;
+  }
+
+  nearbyInteraction(player, timestamp = this.now()) {
+    this.expireRecordWindow(timestamp);
     if (!this.snapshot || this.snapshot.status !== "active") return null;
     if (this.snapshot.phase === "anchors" && this.personalSnapshot.carriedFragmentId) {
       const anchor = nearestWithin(player, ANCHORS);
@@ -292,7 +305,7 @@ class SanctuaryChorusController {
   }
 
   async interact(player, timestamp = this.now()) {
-    const nearby = this.nearbyInteraction(player);
+    const nearby = this.nearbyInteraction(player, timestamp);
     if (!nearby) return { ok: false, reason: "no_interaction", events: [] };
     this.lastPlayer = player ? { ...player } : null;
     if (nearby.type === "anchor") {
@@ -354,6 +367,7 @@ class SanctuaryChorusController {
   update(_dt, context = {}, timestamp = this.now()) {
     if (context.player) this.lastPlayer = { ...context.player };
     const events = this.pendingEvents.splice(0);
+    this.expireRecordWindow(timestamp);
     if (!this.snapshot || this.snapshot.phase !== "onslaught" || this.snapshot.status !== "active") {
       return { events, shared: this.snapshot, personal: this.personalSnapshot };
     }
@@ -408,13 +422,14 @@ class SanctuaryChorusController {
       fragments,
       telegraph: this.activePattern ? { ...this.activePattern } : null,
       separated,
+      statusLabel: separated ? "기억 분리 완료" : null,
       separatedFragments: separated ? ANCHORS.map((anchor, index) => ({
         id: anchor.id,
         x: CHORUS_CENTER.x + (index - 1) * 145,
         y: CHORUS_CENTER.y + (index % 2 ? 70 : -55),
       })) : [],
       message: separated
-        ? "기억 분리 완료\n무명의 합창의 결속이 풀렸습니다.\n기억들은 아직 어느 곳에도 귀속되지 않았습니다.\n이제 남겨진 기억의 운명을 결정해야 합니다."
+        ? "무명의 합창의 결속이 풀렸습니다.\n기억들은 아직 어느 곳에도 귀속되지 않았습니다.\n이제 남겨진 기억의 운명을 결정해야 합니다."
         : null,
     };
   }

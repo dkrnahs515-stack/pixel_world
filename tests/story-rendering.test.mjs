@@ -18,13 +18,17 @@ import {
   drawSanctuaryOverlays,
   updateChorusHud,
 } from "../src/sanctuary-chorus-rendering-20260911-sanctuary.js";
+import { CHORUS_TESTIMONIES } from "../src/sanctuary-chorus-data-20260911-sanctuary.js";
 
 function commandContext() {
   const calls = [];
   let fillStyle = "";
   let strokeStyle = "";
   let lineWidth = 1;
+  let font = "";
+  let textAlign = "start";
   return {
+    canvas: { width: 800, height: 600 },
     calls,
     save() { calls.push({ type: "save" }); },
     restore() { calls.push({ type: "restore" }); },
@@ -37,12 +41,17 @@ function commandContext() {
     fill() { calls.push({ type: "fill", fillStyle }); },
     setLineDash(value) { calls.push({ type: "setLineDash", value }); },
     fillRect(x, y, width, height) { calls.push({ type: "fillRect", fillStyle, x, y, width, height }); },
+    fillText(text, x, y) { calls.push({ type: "fillText", text, x, y, fillStyle, font, textAlign }); },
     set fillStyle(value) { fillStyle = value; },
     get fillStyle() { return fillStyle; },
     set strokeStyle(value) { strokeStyle = value; },
     get strokeStyle() { return strokeStyle; },
     set lineWidth(value) { lineWidth = value; },
     get lineWidth() { return lineWidth; },
+    set font(value) { font = value; },
+    get font() { return font; },
+    set textAlign(value) { textAlign = value; },
+    get textAlign() { return textAlign; },
   };
 }
 
@@ -85,6 +94,88 @@ test("chorus telegraphs and black bonds render on independently selectable layer
   drawSanctuaryOverlays(context, model, { x: 100, y: 200 }, { layer: "foreground", now: 1500 });
   assert.ok(context.calls.some(call => call.type === "lineTo" && call.x === 600 && call.y === 420));
   assert.equal(context.calls.some(call => call.type === "fillRect" && call.x === 800 && call.y === 300), false);
+});
+
+test("chorus testimony verdicts and record activations render at their exact interaction positions", () => {
+  const context = commandContext();
+  const testimony = CHORUS_TESTIMONIES[0];
+  const camera = { x: 100, y: 200 };
+
+  drawSanctuaryOverlays(context, {
+    active: true,
+    shared: { phase: "testimonies", severedBondIds: [], activeRecordId: null },
+    testimony,
+    verdictStations: [
+      { verdict: "fact", name: "사실", x: 700, y: 1120 },
+      { verdict: "partial", name: "일부 사실", x: 1080, y: 1120 },
+      { verdict: "unsupported", name: "근거 없음", x: 1340, y: 1120 },
+    ],
+    recordStations: [],
+    anchors: [],
+    bonds: [],
+    fragments: [],
+  }, camera, { layer: "foreground" });
+
+  assert.ok(context.calls.some(call => call.type === "fillText" && call.text === testimony.statement));
+  assert.deepEqual(
+    context.calls.filter(call => call.type === "fillText" && call.text.startsWith("F · "))
+      .map(call => [call.text, call.x, call.y]),
+    [
+      ["F · 사실", 600, 920],
+      ["F · 일부 사실", 980, 920],
+      ["F · 근거 없음", 1240, 920],
+    ],
+  );
+
+  context.calls.length = 0;
+  drawSanctuaryOverlays(context, {
+    active: true,
+    shared: { phase: "onslaught", severedBondIds: ["sera"], activeRecordId: "roan" },
+    testimony: null,
+    verdictStations: [],
+    recordStations: [
+      { id: "roan", name: "로안 기록", x: 700, y: 620 },
+      { id: "sera", name: "세라 기록", x: 1080, y: 560 },
+      { id: "garen", name: "가렌 기록", x: 1460, y: 620 },
+      { id: "lumen", name: "루멘 기록", x: 1080, y: 1320 },
+    ],
+    anchors: [],
+    bonds: [],
+    fragments: [],
+  }, camera, { layer: "foreground" });
+
+  assert.deepEqual(
+    context.calls.filter(call => call.type === "fillText" && call.text.includes("기록"))
+      .map(call => [call.text, call.x, call.y]),
+    [
+      ["활성 중 · 로안 기록", 600, 420],
+      ["대기 · 가렌 기록", 1360, 420],
+      ["대기 · 루멘 기록", 980, 1120],
+    ],
+  );
+});
+
+test("separated chorus overlay shows the exact nonlethal completion copy", () => {
+  const context = commandContext();
+  const message = "무명의 합창의 결속이 풀렸습니다.\n기억들은 아직 어느 곳에도 귀속되지 않았습니다.\n이제 남겨진 기억의 운명을 결정해야 합니다.";
+
+  drawSanctuaryOverlays(context, {
+    active: true,
+    shared: { phase: "separated", severedBondIds: [], activeRecordId: null },
+    separated: true,
+    statusLabel: "기억 분리 완료",
+    message,
+    anchors: [],
+    bonds: [],
+    fragments: [],
+    separatedFragments: [],
+  }, {}, { layer: "foreground", viewWidth: 800, viewHeight: 600 });
+
+  assert.deepEqual(
+    context.calls.filter(call => call.type === "fillText").map(call => call.text),
+    ["기억 분리 완료", ...message.split("\n")],
+  );
+  assert.equal(context.calls.some(call => ["죽음", "폭발", "시체"].some(word => call.text?.includes(word))), false);
 });
 
 test("chorus HUD exposes separate cohesion and personal contamination gauges", () => {

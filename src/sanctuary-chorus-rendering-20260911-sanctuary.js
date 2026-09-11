@@ -123,15 +123,118 @@ function drawFragments(ctx, fragments, camera) {
   }
 }
 
+function drawStation(ctx, station, camera, label, options = {}) {
+  const offset = cameraPosition(camera);
+  const x = station.x - offset.x;
+  const y = station.y - offset.y;
+  ctx.save();
+  ctx.fillStyle = options.fill || "rgba(7,16,24,.84)";
+  ctx.strokeStyle = options.color || COLORS.cyan;
+  ctx.lineWidth = options.active ? 5 : 3;
+  ctx.beginPath();
+  ctx.arc(x, y, options.radius || 54, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = options.textColor || COLORS.white;
+  ctx.font = options.active ? "900 15px sans-serif" : "800 14px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(label, x, y);
+  ctx.restore();
+}
+
+function drawTestimonyStations(ctx, testimony, stations, camera) {
+  if (!testimony || !stations?.length) return;
+  const offset = cameraPosition(camera);
+  const x = CHORUS_TEXT_CENTER.x - offset.x;
+  const y = CHORUS_TEXT_CENTER.y - offset.y;
+  ctx.save();
+  ctx.fillStyle = "rgba(7,16,24,.9)";
+  ctx.strokeStyle = COLORS.cyan;
+  ctx.lineWidth = 3;
+  ctx.fillRect(x - 280, y - 38, 560, 76);
+  ctx.strokeRect?.(x - 280, y - 38, 560, 76);
+  ctx.fillStyle = COLORS.cyan;
+  ctx.font = "800 12px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("현재 증언", x, y - 13);
+  ctx.fillStyle = COLORS.white;
+  ctx.font = "900 17px sans-serif";
+  ctx.fillText(testimony.statement, x, y + 14);
+  ctx.restore();
+  for (const station of stations) {
+    drawStation(ctx, station, camera, `F · ${station.name}`, {
+      color: station.verdict === "fact"
+        ? COLORS.forest
+        : station.verdict === "partial"
+          ? COLORS.coast
+          : COLORS.volcano,
+    });
+  }
+}
+
+function drawRecordStations(ctx, model, camera) {
+  if (model.shared?.phase !== "onslaught") return;
+  const severed = new Set(model.shared.severedBondIds || []);
+  const activeRecordId = model.shared.activeRecordId;
+  const availableRecordId = activeRecordId
+    ? null
+    : (model.recordStations || []).find(station => !severed.has(station.id))?.id;
+  for (const station of model.recordStations || []) {
+    if (severed.has(station.id)) continue;
+    const active = station.id === activeRecordId;
+    const available = station.id === availableRecordId;
+    drawStation(ctx, station, camera,
+      active ? `활성 중 · ${station.name}` : available ? `F · ${station.name} 활성화` : `대기 · ${station.name}`,
+      {
+        active,
+        color: active ? COLORS.white : available ? COLORS.cyan : "#64748b",
+        textColor: active || available ? COLORS.white : "#cbd5e1",
+      });
+  }
+}
+
+function drawSeparatedMessage(ctx, model, options) {
+  if (!model.separated || !model.message) return;
+  const width = Number.isFinite(options.viewWidth) ? options.viewWidth : finiteDimension(ctx.canvas?.width, 800);
+  const height = Number.isFinite(options.viewHeight) ? options.viewHeight : finiteDimension(ctx.canvas?.height, 600);
+  const panelWidth = Math.min(680, Math.max(320, width - 32));
+  const centerX = width / 2;
+  const top = Math.max(84, height * 0.16);
+  const lines = model.message.split("\n");
+  ctx.save();
+  ctx.fillStyle = "rgba(7,16,24,.94)";
+  ctx.strokeStyle = COLORS.cyan;
+  ctx.lineWidth = 3;
+  ctx.fillRect(centerX - panelWidth / 2, top, panelWidth, 148);
+  ctx.strokeRect?.(centerX - panelWidth / 2, top, panelWidth, 148);
+  ctx.textAlign = "center";
+  ctx.fillStyle = COLORS.cyan;
+  ctx.font = "900 18px sans-serif";
+  ctx.fillText(model.statusLabel || "기억 분리 완료", centerX, top + 30);
+  ctx.fillStyle = COLORS.white;
+  ctx.font = "800 14px sans-serif";
+  lines.forEach((line, index) => ctx.fillText(line, centerX, top + 62 + index * 25));
+  ctx.restore();
+}
+
+const CHORUS_TEXT_CENTER = Object.freeze({ x: 1080, y: 990 });
+
+function finiteDimension(value, fallback) {
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
 export function drawSanctuaryOverlays(ctx, model, camera = {}, options = {}) {
   if (!ctx || !model?.active) return false;
   const layer = options.layer || "all";
   if ((layer === "all" || layer === "telegraph") && model.telegraph) drawTelegraph(ctx, model.telegraph, camera);
   if (layer === "telegraph") return true;
   drawAnchors(ctx, model.anchors, camera);
+  drawTestimonyStations(ctx, model.testimony, model.verdictStations, camera);
+  drawRecordStations(ctx, model, camera);
   drawBody(ctx, model.body, camera);
   drawBonds(ctx, model.bonds, camera);
   drawFragments(ctx, [...(model.fragments || []), ...(model.separatedFragments || [])], camera);
+  drawSeparatedMessage(ctx, model, options);
   return true;
 }
 

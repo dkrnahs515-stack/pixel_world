@@ -250,7 +250,28 @@ test("only a record-activated black bond is targetable and attacks separate with
   assert.equal(controller.snapshot.hp, 0);
   assert.ok(lastResult.events.every(event => !["death", "boss-defeated", "explosion", "corpse"].includes(event.type)));
   assert.equal(controller.renderModel().message,
-    "기억 분리 완료\n무명의 합창의 결속이 풀렸습니다.\n기억들은 아직 어느 곳에도 귀속되지 않았습니다.\n이제 남겨진 기억의 운명을 결정해야 합니다.");
+    "무명의 합창의 결속이 풀렸습니다.\n기억들은 아직 어느 곳에도 귀속되지 않았습니다.\n이제 남겨진 기억의 운명을 결정해야 합니다.");
+  assert.equal(controller.renderModel().statusLabel, "기억 분리 완료");
   assert.deepEqual(controller.renderModel().separatedFragments.map(fragment => fragment.id), ANCHOR_IDS);
   assert.equal(controller.renderModel().telegraph, null);
+});
+
+test("an expired record window releases F interaction so the same record can be activated again", async () => {
+  let now = 3000;
+  const controller = controllerFor("onslaught", { now: () => now });
+  const player = { uid: "local-player", x: 700, y: 620 };
+
+  controller.update(1 / 60, { player }, now);
+  assert.equal(controller.nearbyInteraction(player).recordId, "roan");
+  assert.equal((await controller.interact(player, now)).ok, true);
+  const firstVulnerableUntil = controller.snapshot.vulnerableUntil;
+  assert.equal(controller.nearbyInteraction(player), null);
+
+  now = firstVulnerableUntil + 1;
+  controller.update(1 / 60, { player }, now);
+  assert.equal(controller.snapshot.activeRecordId, null);
+  assert.equal(controller.nearbyInteraction(player).recordId, "roan");
+  assert.equal((await controller.interact(player, now)).ok, true);
+  assert.equal(controller.snapshot.activeRecordId, "roan");
+  assert.ok(controller.snapshot.vulnerableUntil > firstVulnerableUntil);
 });

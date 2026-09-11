@@ -324,6 +324,7 @@ kbd { min-width: 23px; padding: 2px 5px; border: 1px solid rgba(255,255,255,.35)
   .play-mode-grid { grid-template-columns: 1fr; }
   .player-panel { width: calc(100% - 28px); }
   .chorus-hud { top: var(--player-panel-stack-top); right: 14px; bottom: auto; left: 14px; width: auto; padding: 8px 10px; }
+  .hud:has(.chorus-hud:not([hidden])) .quest-tracker { top: calc(var(--player-panel-stack-top) + 124px); }
   .performance-panel { display: none; }
   .npc-prompt { bottom: calc(266px + env(safe-area-inset-bottom)); max-width: calc(100% - 28px); white-space: nowrap; }
   .player-header strong { max-width: 130px; }
