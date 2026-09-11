@@ -201,6 +201,27 @@ test("named evidence is rejected when its source was not actually collected", ()
   assert.equal(result.state.sceneId, "case-submit");
 });
 
+test("forged case-submit evidence is rejected without bypassing required investigation history", () => {
+  const state = {
+    schemaVersion: 1,
+    sceneId: "case-submit",
+    discoveredClueIds: ["new-received-at", "article-18-4"],
+    completedComparisonIds: ["metal-to-compass"],
+    submittedEvidenceIds: [],
+    revealedArtIds: ["theo"],
+    chapterComplete: false,
+  };
+  const before = structuredClone(state);
+  const result = submitEvidence(state, {
+    claimId: "investigate-survival",
+    evidenceIds: ["new-received-at", "metal-to-compass", "article-18-4"],
+  });
+  assert.equal(result.accepted, false);
+  assert.deepEqual(result.state, before);
+  assert.deepEqual(state, before);
+  assert.match(result.feedback, /근거/);
+});
+
 test("case-submit cannot advance directly to late artwork without evidence submission", () => {
   const result = advanceStory(readyCaseState());
   assert.equal(result.ok, false);
@@ -240,6 +261,74 @@ test("normalization accepts every valid checkpoint and returns fresh canonical a
     const normalized = normalizeStoryState(checkpoint);
     assert.notEqual(normalized, checkpoint);
     assert.notEqual(normalized.discoveredClueIds, checkpoint.discoveredClueIds);
+    assert.deepEqual(normalized, checkpoint);
+  }
+});
+
+test("normalization accepts literal partially investigated current-scene checkpoints", () => {
+  const priorRules = ["rule-five-years", "rule-no-life-signal", "rule-no-recovery"];
+  const priorRoster = ["roster-four-names", "recovered-radio", "empty-map-case"];
+  const priorRadio = ["replay-lengths", "new-received-at", "signal-warning", "metal-pattern"];
+  const partialCheckpoints = [
+    {
+      schemaVersion: 1,
+      sceneId: "disposal-rule",
+      discoveredClueIds: ["rule-five-years"],
+      completedComparisonIds: [],
+      submittedEvidenceIds: [],
+      revealedArtIds: ["theo"],
+      chapterComplete: false,
+    },
+    {
+      schemaVersion: 1,
+      sceneId: "roster-items",
+      discoveredClueIds: [...priorRules, "roster-four-names"],
+      completedComparisonIds: [],
+      submittedEvidenceIds: [],
+      revealedArtIds: ["theo"],
+      chapterComplete: false,
+    },
+    {
+      schemaVersion: 1,
+      sceneId: "radio",
+      discoveredClueIds: [...priorRules, ...priorRoster, "replay-lengths", "new-received-at"],
+      completedComparisonIds: [],
+      submittedEvidenceIds: [],
+      revealedArtIds: ["theo"],
+      chapterComplete: false,
+    },
+    {
+      schemaVersion: 1,
+      sceneId: "compass-compare",
+      discoveredClueIds: [...priorRules, ...priorRoster, ...priorRadio, "main-compass-missing"],
+      completedComparisonIds: [],
+      submittedEvidenceIds: [],
+      revealedArtIds: ["theo"],
+      chapterComplete: false,
+    },
+    {
+      schemaVersion: 1,
+      sceneId: "time-compare",
+      discoveredClueIds: [...priorRules, ...priorRoster, ...priorRadio, "main-compass-missing"],
+      completedComparisonIds: ["metal-to-compass"],
+      submittedEvidenceIds: [],
+      revealedArtIds: ["theo"],
+      chapterComplete: false,
+    },
+    {
+      schemaVersion: 1,
+      sceneId: "case-submit",
+      discoveredClueIds: [...priorRules, ...priorRoster, ...priorRadio, "main-compass-missing"],
+      completedComparisonIds: ["metal-to-compass", "same-final-time"],
+      submittedEvidenceIds: [],
+      revealedArtIds: ["theo"],
+      chapterComplete: false,
+    },
+  ];
+
+  for (const checkpoint of partialCheckpoints) {
+    const normalized = normalizeStoryState(checkpoint);
+    assert.notEqual(normalized, checkpoint);
     assert.deepEqual(normalized, checkpoint);
   }
 });
