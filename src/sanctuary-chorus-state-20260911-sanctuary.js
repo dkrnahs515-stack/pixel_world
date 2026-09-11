@@ -1,6 +1,7 @@
 import {
   ANCHOR_IDS,
   BOND_IDS,
+  CHORUS_ACTION_ID_MAX_LENGTH,
   CHORUS_ACTION_TIME_TOLERANCE_MS,
   CHORUS_AUTHORITY_LEASE_MS,
   CHORUS_BOSS_ID,
@@ -10,6 +11,7 @@ import {
   CHORUS_MAP_ID,
   CHORUS_MAX_HP,
   CHORUS_PATTERN_IDS,
+  CHORUS_PROCESSED_ACTION_LIMIT,
   CHORUS_VULNERABLE_MS,
   RECORD_IDS,
   TESTIMONY_IDS,
@@ -31,6 +33,25 @@ function nonNegativeTime(value, fallback = 0) {
 
 function validId(value, maxLength = 160) {
   return typeof value === "string" && value.length > 0 && value.length <= maxLength;
+}
+
+function validActionId(value) {
+  return validId(value, CHORUS_ACTION_ID_MAX_LENGTH)
+    && value.trim() === value
+    && !/[\u0000-\u001f\u007f]/.test(value);
+}
+
+function normalizeProcessedActionIds(value) {
+  if (!Array.isArray(value)) return [];
+  const newest = [];
+  const seen = new Set();
+  for (let index = value.length - 1; index >= 0 && newest.length < CHORUS_PROCESSED_ACTION_LIMIT; index -= 1) {
+    const id = value[index];
+    if (!validActionId(id) || seen.has(id)) continue;
+    seen.add(id);
+    newest.unshift(id);
+  }
+  return newest;
 }
 
 function allowedIds(value, allowed) {
@@ -138,6 +159,7 @@ export function createChorusEncounter({
     patternEndsAt: 0,
     vulnerableUntil: 0,
     lumenAssistUsed: false,
+    processedActionIds: [],
     contributors: {},
     authorityUid,
     authorityEpoch: Math.max(1, Math.trunc(finite(authorityEpoch, 1))),
@@ -173,6 +195,7 @@ export function normalizeChorusEncounter(value) {
     patternEndsAt: onslaught ? nonNegativeTime(source.patternEndsAt) : 0,
     vulnerableUntil: onslaught ? nonNegativeTime(source.vulnerableUntil) : 0,
     lumenAssistUsed: source.lumenAssistUsed === true,
+    processedActionIds: normalizeProcessedActionIds(source.processedActionIds),
     contributors: normalizeContributors(source.contributors),
     authorityUid: source.authorityUid,
     authorityEpoch: Math.max(1, Math.trunc(finite(source.authorityEpoch, 1))),
@@ -190,6 +213,7 @@ function cloneEncounter(encounter) {
     stabilizedAnchorIds: [...encounter.stabilizedAnchorIds],
     resolvedTestimonyIds: [...encounter.resolvedTestimonyIds],
     severedBondIds: [...encounter.severedBondIds],
+    processedActionIds: [...encounter.processedActionIds],
     contributors: Object.fromEntries(Object.entries(encounter.contributors).map(([uid, contributor]) => [uid, {
       ...contributor,
       actionTypes: [...contributor.actionTypes],
@@ -214,10 +238,12 @@ export function validateChorusAction(action, context = {}) {
   const request = objectValue(action);
   const encounter = normalizeChorusEncounter(context.encounter);
   if (!request || !encounter || encounter.status !== "active") return rejection("invalid_encounter");
+  if (!validActionId(request.id)) return rejection("invalid_action_id");
   if (request.encounterId !== encounter.encounterId) return rejection("encounter_mismatch");
   if (request.authorityEpoch !== encounter.authorityEpoch) return rejection("authority_mismatch");
   if (!validId(request.uid, 128) || request.uid !== context.authenticatedUid) return rejection("uid_mismatch");
   if (request.phase !== encounter.phase) return rejection("phase_mismatch");
+  if (encounter.processedActionIds.includes(request.id)) return rejection("duplicate_action");
   const now = finite(context.now, Date.now());
   if (!Number.isFinite(request.createdAt)
     || request.createdAt < now - CHORUS_ACTION_TIME_TOLERANCE_MS
@@ -326,11 +352,13 @@ export function applyChorusAction(value, validated, now = Date.now()) {
     return { encounter: encounter || value, events: [], personalEvent: validated?.personalEvent || null };
   }
   const action = objectValue(validated.action);
-  if (!action || !CHORUS_CONTRIBUTION_TYPES.includes(action.type)) {
+  if (!action || !validActionId(action.id) || encounter.processedActionIds.includes(action.id)
+    || !CHORUS_CONTRIBUTION_TYPES.includes(action.type)) {
     return { encounter, events: [], personalEvent: null };
   }
   const next = cloneEncounter(encounter);
   const events = [];
+  next.processedActionIds = [...next.processedActionIds, action.id].slice(-CHORUS_PROCESSED_ACTION_LIMIT);
   applyObjectiveAction(next, action, now, events);
   recordContribution(next, action.uid, action.type, now);
   next.updatedAt = now;

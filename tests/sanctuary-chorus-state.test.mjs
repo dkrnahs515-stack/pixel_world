@@ -192,6 +192,94 @@ test("validation rejects hostile ids, phases, epochs, encounters, timestamps, an
   ).reason, "duplicate_objective");
 });
 
+test("record activation replay cannot extend its window, emit again, or update its contributor", () => {
+  const encounter = onslaughtEncounter();
+  const request = action(encounter, "recorder", "record-activate", 2000, { recordId: "roan" });
+  const firstValidation = validateChorusAction(request, context(encounter, "recorder", 2000));
+  assert.equal(firstValidation.ok, true);
+  const first = applyChorusAction(encounter, firstValidation, 2000);
+  assert.equal(first.encounter.vulnerableUntil, 5000);
+  assert.equal(first.encounter.contributors.recorder.lastContributedAt, 2000);
+  assert.equal(first.events.length, 1);
+
+  const replayValidation = validateChorusAction(request, context(first.encounter, "recorder", 2100));
+  assert.deepEqual(replayValidation, {
+    ok: false,
+    reason: "duplicate_action",
+    personalEvent: null,
+  });
+  const replay = applyChorusAction(first.encounter, replayValidation, 2100);
+  assert.deepEqual(replay.encounter, first.encounter);
+  assert.deepEqual(replay.events, []);
+  assert.equal(replay.encounter.vulnerableUntil, 5000);
+  assert.equal(replay.encounter.contributors.recorder.lastContributedAt, 2000);
+});
+
+test("fragment strike replay cannot update contribution timestamps", () => {
+  const encounter = anchorsEncounter();
+  const request = action(encounter, "striker", "fragment-strike", 1100, { fragmentId: "forest" });
+  const first = applyChorusAction(
+    encounter,
+    validateChorusAction(request, context(encounter, "striker", 1100)),
+    1100,
+  );
+  assert.equal(first.encounter.contributors.striker.lastContributedAt, 1100);
+  assert.deepEqual(first.events, []);
+
+  const replayValidation = validateChorusAction(request, context(first.encounter, "striker", 1200));
+  assert.equal(replayValidation.reason, "duplicate_action");
+  const replay = applyChorusAction(first.encounter, replayValidation, 1200);
+  assert.deepEqual(replay.encounter, first.encounter);
+  assert.deepEqual(replay.events, []);
+  assert.equal(replay.encounter.contributors.striker.lastContributedAt, 1100);
+});
+
+test("shared actions require bounded IDs before personal or shared validation", () => {
+  const encounter = anchorsEncounter();
+  const base = action(encounter, "a", "anchor-stabilize", 2000, {
+    fragmentId: "forest",
+    anchorId: "coast",
+  });
+  for (const invalidId of [undefined, "", "x".repeat(161), 7]) {
+    const request = { ...base, id: invalidId };
+    assert.deepEqual(validateChorusAction(request, context(encounter, "a", 2000)), {
+      ok: false,
+      reason: "invalid_action_id",
+      personalEvent: null,
+    });
+  }
+});
+
+test("processed action normalization keeps the newest 256 unique bounded IDs", () => {
+  const encounter = anchorsEncounter();
+  const chronologicalIds = Array.from({ length: 300 }, (_, index) => `action-${index}`);
+  const normalized = normalizeChorusEncounter({
+    ...encounter,
+    processedActionIds: [
+      "repeat",
+      "",
+      9,
+      "x".repeat(161),
+      ...chronologicalIds,
+      "repeat",
+    ],
+  });
+  assert.equal(normalized.processedActionIds.length, 256);
+  assert.equal(normalized.processedActionIds[0], "action-45");
+  assert.equal(normalized.processedActionIds.at(-1), "repeat");
+  assert.equal(normalized.processedActionIds.filter(id => id === "repeat").length, 1);
+
+  const fresh = action(normalized, "striker", "fragment-strike", 2000, { fragmentId: "forest" });
+  const applied = applyChorusAction(
+    normalized,
+    validateChorusAction(fresh, context(normalized, "striker", 2000)),
+    2000,
+  ).encounter;
+  assert.equal(applied.processedActionIds.length, 256);
+  assert.equal(applied.processedActionIds[0], "action-46");
+  assert.equal(applied.processedActionIds.at(-1), fresh.id);
+});
+
 test("wrong testimony is personal while expired or mismatched bond windows are shared no-ops", () => {
   let encounter = anchorsEncounter();
   for (const anchorId of ANCHOR_IDS) {
@@ -276,6 +364,12 @@ test("authority can be renewed by its epoch and taken over only after the five-s
   assert.equal(acquired.ok, true);
   assert.equal(acquired.encounter.authorityEpoch, 5);
   assert.equal(acquired.encounter.leaseUntil, 11000);
+  const withLedger = normalizeChorusEncounter({
+    ...acquired.encounter,
+    processedActionIds: ["host:4:1", "host:4:2"],
+  });
+  const retained = acquireChorusAuthority(withLedger, { uid: "third", now: 11000 });
+  assert.deepEqual(retained.encounter.processedActionIds, ["host:4:1", "host:4:2"]);
   assert.equal(renewChorusAuthority(acquired.encounter, {
     uid: "next", authorityEpoch: 4, now: 7000,
   }).reason, "authority_mismatch");
