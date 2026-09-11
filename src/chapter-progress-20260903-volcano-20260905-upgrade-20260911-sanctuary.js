@@ -4,6 +4,11 @@ import {
   getRegionDefinition,
   getRegionForMap,
 } from "./region-data-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import {
+  createInitialSanctuaryChapter,
+  normalizeSanctuaryChapter,
+  reduceSanctuaryChapter,
+} from "./sanctuary-progress-20260911-sanctuary.js";
 
 const COAST_DEVICE_IDS = Object.freeze([
   "coast-beach-transceiver",
@@ -110,6 +115,7 @@ export function createInitialWorldProgress() {
     chapters: {
       coast: createInitialCoastChapter(),
       volcano: createInitialVolcanoChapter(),
+      sanctuary: createInitialSanctuaryChapter(),
     },
   };
 }
@@ -129,6 +135,7 @@ function normalizeWorldProgressValue(value, { repairTerminal = true } = {}) {
   const initial = createInitialWorldProgress();
   const coast = recordValue(value.chapters?.coast);
   const volcano = recordValue(value.chapters?.volcano);
+  const sanctuary = normalizeSanctuaryChapter(value.chapters?.sanctuary);
 
   const coastCoreFragmentObtained = coast.coreFragmentObtained === true;
   const seraRescued = coast.seraRescued === true || coastCoreFragmentObtained;
@@ -186,6 +193,7 @@ function normalizeWorldProgressValue(value, { repairTerminal = true } = {}) {
         coreFragmentObtained: volcanoCoreFragmentObtained,
         sanctuaryUnlocked: volcanoCoreFragmentObtained,
       },
+      sanctuary,
     },
   };
 
@@ -205,6 +213,16 @@ function normalizeWorldProgressValue(value, { repairTerminal = true } = {}) {
       addUnique(normalized.unlockedMapIds, mapId);
     }
   }
+  if (repairTerminal && sanctuary.activatedCoreIds.length === 3) {
+    addUnique(normalized.unlockedMapIds, "sanctuary-memory-archive");
+  }
+  if (repairTerminal && sanctuary.falseReturnRejected) {
+    addUnique(normalized.unlockedMapIds, "sanctuary-return-record");
+  }
+  if (repairTerminal && sanctuary.chorusSeparated) {
+    addUnique(normalized.unlockedMapIds, "sanctuary-three-futures");
+  }
+  if (repairTerminal && sanctuary.completed) addUnique(normalized.completedRegionIds, "sanctuary");
   return normalized;
 }
 
@@ -223,6 +241,21 @@ function unlockMap(progress, effects, mapId) {
   if (progress.unlockedMapIds.includes(mapId)) return;
   progress.unlockedMapIds.push(mapId);
   effects.push({ type: "map-unlocked", mapId });
+}
+
+export function progressSanctuary(progress, action) {
+  return transition(progress, (next, effects) => {
+    const result = reduceSanctuaryChapter(next.chapters.sanctuary, action);
+    next.chapters.sanctuary = result.chapter;
+    effects.push(...result.effects);
+    if (result.chapter.activatedCoreIds.length === 3) unlockMap(next, effects, "sanctuary-memory-archive");
+    if (result.chapter.falseReturnRejected) unlockMap(next, effects, "sanctuary-return-record");
+    if (result.chapter.chorusSeparated) unlockMap(next, effects, "sanctuary-three-futures");
+    if (result.chapter.completed && !next.completedRegionIds.includes("sanctuary")) {
+      next.completedRegionIds.push("sanctuary");
+      effects.push({ type: "region-completed", regionId: "sanctuary" });
+    }
+  });
 }
 
 function hasAll(values, requiredValues) {

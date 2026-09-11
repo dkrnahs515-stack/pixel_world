@@ -1,0 +1,80 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
+  MEMORY_SOUND_IDS,
+  createInitialSanctuaryChapter,
+  normalizeSanctuaryChapter,
+  reduceSanctuaryChapter,
+} from "../src/sanctuary-progress-20260911-sanctuary.js";
+
+function memoryCollectedChapter() {
+  let chapter = createInitialSanctuaryChapter();
+  for (const memoryId of MEMORY_SOUND_IDS) {
+    chapter = reduceSanctuaryChapter(chapter, { type: "collect-memory", memoryId }).chapter;
+  }
+  return chapter;
+}
+
+test("sanctuary normalization rejects hostile types and dependent terminal flags", () => {
+  const chapter = normalizeSanctuaryChapter({
+    activatedCoreIds: "forest-core-casket",
+    memorySequence: ["departure-bell", "dawn-bird", "tide-bell", "mine-shift-bell"],
+    memoryOrderSolved: "true",
+    correctionLinked: true,
+    chorusSeparated: true,
+    endingChoice: "victory",
+    completed: true,
+  });
+  assert.deepEqual(chapter.activatedCoreIds, []);
+  assert.equal(chapter.memoryOrderSolved, false);
+  assert.equal(chapter.correctionLinked, false);
+  assert.equal(chapter.chorusSeparated, false);
+  assert.equal(chapter.endingChoice, null);
+  assert.equal(chapter.completed, false);
+});
+
+test("only the canonical memory order unlocks the truth sequence", () => {
+  const ready = memoryCollectedChapter();
+  assert.equal(reduceSanctuaryChapter(ready, {
+    type: "submit-memory-sequence",
+    sequence: ["dawn-bird", "departure-bell", "tide-bell", "mine-shift-bell"],
+  }).chapter.memoryOrderSolved, false);
+  assert.equal(reduceSanctuaryChapter(ready, {
+    type: "submit-memory-sequence",
+    sequence: MEMORY_SOUND_IDS,
+  }).chapter.memoryOrderSolved, true);
+});
+
+test("chorus separation only accepts the matching eligible contributor claim", () => {
+  const chapter = {
+    ...createInitialSanctuaryChapter(),
+    activatedCoreIds: ["forest-core-casket", "coast-core-casket", "volcano-core-casket"],
+    collectedMemoryIds: [...MEMORY_SOUND_IDS],
+    memorySequence: [...MEMORY_SOUND_IDS],
+    memoryOrderSolved: true,
+    coreTruthRevealed: true,
+    falseReturnRejected: true,
+    completedRecordFieldIds: ["departure", "witness", "seal"],
+    correctionLinked: true,
+  };
+  const rejected = reduceSanctuaryChapter(chapter, {
+    type: "separate-chorus",
+    uid: "player-a",
+    claim: { uid: "player-b", eligible: true, encounterId: "chorus-1" },
+  });
+  const accepted = reduceSanctuaryChapter(chapter, {
+    type: "separate-chorus",
+    uid: "player-a",
+    encounterId: "chorus-1",
+    claim: { uid: "player-a", eligible: true, encounterId: "chorus-1" },
+  });
+  const wrongEncounter = reduceSanctuaryChapter(chapter, {
+    type: "separate-chorus",
+    uid: "player-a",
+    encounterId: "chorus-2",
+    claim: { uid: "player-a", eligible: true, encounterId: "chorus-1" },
+  });
+  assert.equal(rejected.chapter.chorusSeparated, false);
+  assert.equal(wrongEncounter.chapter.chorusSeparated, false);
+  assert.equal(accepted.chapter.chorusSeparated, true);
+});
