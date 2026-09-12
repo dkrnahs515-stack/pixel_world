@@ -16,6 +16,11 @@ const FALSE_RETURN_IDS = ["false-return-garen-unscarred", "false-return-source-e
 const FIELD_IDS = ["vanguard-return-state", "core-division-cause", "delay-roan", "delay-sera", "delay-garen", "delay-lumen"];
 const OPINION_IDS = ["roan", "sera", "garen", "lumen", "echo"];
 
+test("entry document declares a self-contained favicon for strict browser diagnostics", async () => {
+  const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+  assert.match(html, /<link\s+rel="icon"\s+href="data:,"\s*\/?>/);
+});
+
 function sanctuaryProgress(overrides = {}) {
   return {
     unlockedMapIds: ["volcano", "sanctuary"],
