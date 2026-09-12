@@ -506,6 +506,48 @@ test("a rejected send promise restores the confirmed state without changing solo
   assert.equal(solo.snapshot.hp, 90);
 });
 
+test("a listener-confirmed local Chorus action never rolls personal state back on a duplicate publish rejection", async () => {
+  const game = Object.create(SanctuaryPixelRPG.prototype);
+  const confirmed = createChorusEncounter({ encounterId: "shared-e1", authorityUid: "host", now: 1_000 });
+  const notices = [];
+  let resolveSend;
+  let resolvePublish;
+  game.sessionMode = "online";
+  game.latestChorusSnapshot = structuredClone(confirmed);
+  game.updateChorusHud = () => {};
+  game.notify = message => notices.push(message);
+  game.reportBossCallbackError = () => {};
+  game.network = {
+    uid: "host",
+    chorus: {
+      sendAction: () => new Promise(resolve => { resolveSend = resolve; }),
+      publishState: () => new Promise(resolve => { resolvePublish = resolve; }),
+    },
+  };
+  game.chorusController = game.createChorusControllerForMode("online");
+  game.wireOnlineChorusController(game.chorusController);
+  game.chorusController.receiveSnapshot(confirmed);
+  game.chorusController.setMap("sanctuary-return-record", { correctionLinked: true });
+  game.chorusController.personalSnapshot.carriedFragmentId = "forest";
+  const request = {
+    id: "host-session:1:1:anchor-stabilize", encounterId: confirmed.encounterId,
+    authorityEpoch: 1, phase: "anchors", uid: "host", type: "anchor-stabilize",
+    fragmentId: "forest", anchorId: "forest", createdAt: 1_100,
+  };
+
+  const optimistic = game.chorusController.applyRequest(request, 1_100);
+  assert.equal(optimistic.ok, true);
+  game.chorusController.personalSnapshot.carriedFragmentId = null;
+  resolveSend({ ok: true, action: { ...request, sequence: 1 } });
+  await new Promise(resolve => setImmediate(resolve));
+  game.receiveChorusSnapshot(structuredClone(optimistic.snapshot));
+  resolvePublish({ ok: false, reason: "already_processed" });
+  await new Promise(resolve => setImmediate(resolve));
+
+  assert.equal(game.chorusController.personalSnapshot.carriedFragmentId, null);
+  assert.deepEqual(notices, []);
+});
+
 test("a duplicate listener action is acknowledged only after its id exists in Firebase-confirmed state", async () => {
   const game = Object.create(SanctuaryPixelRPG.prototype);
   const actionId = "host-session-action-1";

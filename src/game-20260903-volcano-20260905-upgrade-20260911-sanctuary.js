@@ -850,22 +850,28 @@ export class PixelRPG {
         if (Number.isInteger(sequence) && sequence > 0) {
           const appliedSnapshot = structuredClone(controller.snapshot);
            Promise.resolve(controller.network.sendAction({ ...request, sequence }))
-             .then(sent => {
-               if (sent?.ok && sent.action) {
-                 this.publishChorusStateIfAuthority(sent.action, appliedSnapshot, { confirmedBefore, ...rollbackContext });
-               } else {
-                 this.reconcileRejectedChorusAction(confirmedBefore, rollbackContext);
-               }
-             })
-             .catch(error => {
-               this.reconcileRejectedChorusAction(confirmedBefore, rollbackContext);
-               this.reportBossCallbackError("무명의 합창 행동 전송 실패", error);
-             });
+              .then(sent => {
+                if (sent?.ok && sent.action) {
+                  this.publishChorusStateIfAuthority(sent.action, appliedSnapshot, { confirmedBefore, ...rollbackContext });
+                } else if (!this.isChorusActionConfirmed(request)) {
+                  this.reconcileRejectedChorusAction(confirmedBefore, rollbackContext);
+                }
+              })
+              .catch(error => {
+                if (this.isChorusActionConfirmed(request)) return;
+                this.reconcileRejectedChorusAction(confirmedBefore, rollbackContext);
+                this.reportBossCallbackError("무명의 합창 행동 전송 실패", error);
+              });
         }
       }
       return result;
     };
     return controller;
+  }
+
+  isChorusActionConfirmed(action) {
+    return typeof action?.id === "string"
+      && this.latestChorusSnapshot?.processedActionIds?.includes(action.id) === true;
   }
 
   reconcileRejectedChorusAction(confirmedSnapshot = this.latestChorusSnapshot, rollbackContext = {}) {
@@ -1000,6 +1006,10 @@ export class PixelRPG {
     const publishOptions = processedAction ? { processedAction } : undefined;
     Promise.resolve(network.publishState(snapshot, publishOptions)).then(result => {
       if (!result?.ok || !result.encounter) {
+        if (this.isChorusActionConfirmed(processedAction)) {
+          this.lastPublishedChorusSignature = JSON.stringify(this.latestChorusSnapshot);
+          return;
+        }
         this.lastPublishedChorusSignature = null;
         this.reconcileRejectedChorusAction(rollbackContext.confirmedBefore, rollbackContext);
         return;
@@ -1016,6 +1026,10 @@ export class PixelRPG {
         });
       }
     }).catch(error => {
+      if (this.isChorusActionConfirmed(processedAction)) {
+        this.lastPublishedChorusSignature = JSON.stringify(this.latestChorusSnapshot);
+        return;
+      }
       this.lastPublishedChorusSignature = null;
       this.reconcileRejectedChorusAction(rollbackContext.confirmedBefore, rollbackContext);
       this.reportBossCallbackError("무명의 합창 상태 전송 실패", error);
