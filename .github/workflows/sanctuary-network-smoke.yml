@@ -1,0 +1,56 @@
+name: Sanctuary network smoke
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sanctuary-network-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Two-client Firebase sanctuary smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Install pinned smoke dependencies
+        run: |
+          npm install --no-save firebase-tools@15.26.0 firebase@12.6.0 playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Run two-client emulator smoke
+        shell: bash
+        run: |
+          python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/pixel-world-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          for attempt in {1..50}; do
+            if curl --fail --silent http://127.0.0.1:4173/ >/dev/null; then
+              break
+            fi
+            if [[ "$attempt" == "50" ]]; then
+              cat /tmp/pixel-world-server.log
+              exit 1
+            fi
+            sleep 0.2
+          done
+          npx firebase emulators:exec --only auth,database --project demo-pixel-world-rules \
+            "PIXEL_WORLD_URL=http://127.0.0.1:4173 node tests/sanctuary-network-browser-smoke.cjs"
