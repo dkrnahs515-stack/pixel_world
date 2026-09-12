@@ -65,6 +65,41 @@ function normalizeProcessedActionIds(value) {
   return newest;
 }
 
+function normalizeProcessedActionReceipt(value) {
+  const source = objectValue(value);
+  if (!source || !validActionId(source.id) || !validId(source.uid, 128)
+    || !Number.isSafeInteger(source.sequence) || source.sequence < 1
+    || !CHORUS_CONTRIBUTION_TYPES.includes(source.type)) return null;
+  const receipt = {
+    id: source.id,
+    uid: source.uid,
+    sequence: source.sequence,
+    type: source.type,
+  };
+  if (source.type === "fragment-strike") {
+    if (!ANCHOR_IDS.includes(source.fragmentId)) return null;
+    receipt.fragmentId = source.fragmentId;
+  } else if (source.type === "anchor-stabilize") {
+    if (!ANCHOR_IDS.includes(source.fragmentId) || !ANCHOR_IDS.includes(source.anchorId)) return null;
+    receipt.fragmentId = source.fragmentId;
+    receipt.anchorId = source.anchorId;
+  } else if (source.type === "testimony-resolve") {
+    if (!TESTIMONY_IDS.includes(source.testimonyId) || !TESTIMONY_VERDICTS.includes(source.verdict)) return null;
+    receipt.testimonyId = source.testimonyId;
+    receipt.verdict = source.verdict;
+  } else if (source.type === "record-activate") {
+    if (!RECORD_IDS.includes(source.recordId)) return null;
+    receipt.recordId = source.recordId;
+  } else if (source.type === "bond-cut") {
+    if (!BOND_IDS.includes(source.bondId)) return null;
+    receipt.bondId = source.bondId;
+  } else if (source.type === "lumen-assist") {
+    if (!ANCHOR_IDS.includes(source.anchorId)) return null;
+    receipt.anchorId = source.anchorId;
+  }
+  return receipt;
+}
+
 function allowedIds(value, allowed) {
   const candidates = Array.isArray(value)
     ? value
@@ -175,6 +210,7 @@ export function createChorusEncounter({
     processedActionId: null,
     processedActionUid: null,
     processedActionSequence: null,
+    processedActionReceipt: null,
     contributors: {},
     authorityUid,
     authorityEpoch: Math.max(1, Math.trunc(finite(authorityEpoch, 1))),
@@ -198,6 +234,13 @@ export function normalizeChorusEncounter(value) {
     && validId(source.processedActionUid, 128)
     && Number.isSafeInteger(source.processedActionSequence)
     && source.processedActionSequence >= 1;
+  const processedActionReceipt = hasProcessedActionReceipt
+    ? normalizeProcessedActionReceipt(source.processedActionReceipt)
+    : null;
+  const receiptMatchesIdentity = processedActionReceipt
+    && processedActionReceipt.id === source.processedActionId
+    && processedActionReceipt.uid === source.processedActionUid
+    && processedActionReceipt.sequence === source.processedActionSequence;
   return {
     encounterId: source.encounterId,
     bossId: CHORUS_BOSS_ID,
@@ -220,6 +263,7 @@ export function normalizeChorusEncounter(value) {
     processedActionId: hasProcessedActionReceipt ? source.processedActionId : null,
     processedActionUid: hasProcessedActionReceipt ? source.processedActionUid : null,
     processedActionSequence: hasProcessedActionReceipt ? source.processedActionSequence : null,
+    processedActionReceipt: receiptMatchesIdentity ? processedActionReceipt : null,
     contributors: normalizeContributors(source.contributors),
     authorityUid: source.authorityUid,
     authorityEpoch: Math.max(1, Math.trunc(finite(source.authorityEpoch, 1))),
@@ -238,6 +282,9 @@ function cloneEncounter(encounter) {
     resolvedTestimonyIds: [...encounter.resolvedTestimonyIds],
     severedBondIds: [...encounter.severedBondIds],
     processedActionIds: [...encounter.processedActionIds],
+    processedActionReceipt: encounter.processedActionReceipt
+      ? { ...encounter.processedActionReceipt }
+      : null,
     contributors: Object.fromEntries(Object.entries(encounter.contributors).map(([uid, contributor]) => [uid, {
       ...contributor,
       actionTypes: [...contributor.actionTypes],

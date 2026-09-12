@@ -735,3 +735,24 @@ test("an online viewer advances only from their own eligible Chorus completion c
   assert.equal(game.progress.worldProgress.chapters.sanctuary.chorusSeparated, true);
   assert.equal(game.persisted.length, 1);
 });
+
+test("retained Chorus completion delivery dedupe stays bounded across encounters", () => {
+  const game = endingGame();
+  game.network = { uid: "viewer" };
+  game.chorusController = { receiveCompletionClaims: () => true };
+
+  for (let index = 0; index < 12; index += 1) {
+    assert.equal(game.receiveSanctuaryChorusCompletionClaims({
+      viewer: {
+        uid: "viewer",
+        encounterId: `chorus-retained-${index}`,
+        eligible: true,
+        createdAt: index,
+      },
+    }), true);
+  }
+
+  assert.equal(game.processedChorusCompletionIds.size, 8);
+  assert.equal(game.processedChorusCompletionIds.has("chorus-retained-0:viewer"), false);
+  assert.equal(game.processedChorusCompletionIds.has("chorus-retained-11:viewer"), true);
+});

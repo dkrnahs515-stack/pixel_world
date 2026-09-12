@@ -44,6 +44,11 @@ function firebaseModulesFake(initial = {}) {
       updates.push({ path: ref.path, value: structuredClone(value) });
       const current = structuredClone(values.get(ref.path) || {});
       for (const [path, entry] of Object.entries(structuredClone(value))) {
+        if (ref.path === BASE_PATH) {
+          const absolutePath = `${BASE_PATH}/${path}`;
+          if (entry === null) values.delete(absolutePath);
+          else values.set(absolutePath, structuredClone(entry));
+        }
         const parts = path.split("/");
         let parent = current;
         for (const part of parts.slice(0, -1)) parent = parent[part] ||= {};
@@ -198,7 +203,7 @@ test("leaving the return-record map unsubscribes state actions and the user's cl
   fake.emit(`${BASE_PATH}/state`, state);
   assert.deepEqual([...fake.listeners.keys()].sort(), [
     `${BASE_PATH}/actions`,
-    `${BASE_PATH}/completionClaims/e1/a`,
+    `${BASE_PATH}/completionInbox/a`,
     `${BASE_PATH}/processedSequences`,
     `${BASE_PATH}/state`,
   ]);
@@ -232,10 +237,26 @@ test("only the active authority publishes state and removes applied actions", as
   assert.equal(fake.updates.at(-1).value["state/stabilizedAnchorIds/forest"], true);
   assert.equal(fake.updates.at(-1).value["state/combatRevision"], 1);
   assert.equal(fake.updates.at(-1).value["state/processedActionId"], action.id);
+  assert.deepEqual(fake.updates.at(-1).value["state/processedActionReceipt"], {
+    id: action.id,
+    uid: "b",
+    sequence: 8,
+    type: "anchor-stabilize",
+    fragmentId: "forest",
+    anchorId: "forest",
+  });
   assert.equal(fake.updates.at(-1).value["processedSequences/b"], 8);
   assert.equal(published.encounter.processedActionId, action.id);
   assert.equal(published.encounter.processedActionUid, "b");
   assert.equal(published.encounter.processedActionSequence, 8);
+  assert.deepEqual(published.encounter.processedActionReceipt, {
+    id: action.id,
+    uid: "b",
+    sequence: 8,
+    type: "anchor-stabilize",
+    fragmentId: "forest",
+    anchorId: "forest",
+  });
   assert.equal(fake.transactions.some(value => value.path === `${BASE_PATH}/state`), false);
   assert.equal((await a.acknowledgeAction("b", 7)).ok, true);
   assert.equal(fake.removes.includes(`${BASE_PATH}/actions/b/8`), true);
@@ -263,6 +284,10 @@ test("authority creates immutable contributor claims and each user acknowledges 
     status: "separated",
     phase: "separated",
     hp: 0,
+    contributors: {
+      a: { firstContributedAt: 9_100, lastContributedAt: 10_000, actionTypes: ["anchor-stabilize"] },
+      b: { firstContributedAt: 9_200, lastContributedAt: 10_000, actionTypes: ["bond-cut"] },
+    },
   };
   const fake = firebaseModulesFake({ [`${BASE_PATH}/state`]: separated });
   const a = createChorusNetwork(networkOptions(fake, "a"));
@@ -274,10 +299,23 @@ test("authority creates immutable contributor claims and each user acknowledges 
   };
 
   assert.equal((await a.writeCompletionClaims("e1", claims)).ok, true);
-  assert.deepEqual(fake.transactions.slice(-2).map(value => value.path), [
-    `${BASE_PATH}/completionClaims/e1/a`,
-    `${BASE_PATH}/completionClaims/e1/b`,
-  ]);
+  const claimUpdates = fake.updates.filter(value => value.path === BASE_PATH
+    && Object.keys(value.value).some(path => path.startsWith("completionClaims/")));
+  assert.equal(claimUpdates.length, 2);
+  for (const claimUid of ["a", "b"]) {
+    assert.deepEqual(claimUpdates.find(value => value.value[`completionClaims/e1/${claimUid}`])?.value, {
+      [`completionClaims/e1/${claimUid}`]: claims[claimUid],
+      [`completionInbox/${claimUid}`]: claims[claimUid],
+    });
+  }
+  assert.equal(fake.transactions.some(value => value.path.includes("completionClaims/")), false);
+  assert.deepEqual(fake.values.get(`${BASE_PATH}/completionInbox/a`), claims.a);
+  assert.deepEqual(fake.values.get(`${BASE_PATH}/completionInbox/b`), claims.b);
+  const nonContributor = await a.writeCompletionClaims("e1", {
+    late: { encounterId: "e1", uid: "late", eligible: true, createdAt: 10_000 },
+  });
+  assert.equal(nonContributor.ok, false);
+  assert.equal(fake.values.has(`${BASE_PATH}/completionInbox/late`), false);
 
   const bFake = firebaseModulesFake({
     [`${BASE_PATH}/state`]: separated,
@@ -289,6 +327,44 @@ test("authority creates immutable contributor claims and each user acknowledges 
   assert.equal(acknowledged.ok, true);
   assert.deepEqual(bFake.transactions.at(-1).next, { ...claims.b, acknowledgedAt: 12_345 });
   assert.equal(bFake.transactions.at(-1).path, `${BASE_PATH}/completionClaims/e1/b`);
+});
+
+test("a retained own completion inbox survives reform and delivers after reconnect", async () => {
+  const received = [];
+  const oldClaim = { encounterId: "e1", uid: "a", eligible: true, createdAt: 2_000 };
+  const terminal = {
+    ...activeEncounter("a", 1_000),
+    status: "separated",
+    phase: "separated",
+    hp: 0,
+    stabilizedAnchorIds: [...ANCHOR_IDS],
+    resolvedTestimonyIds: CHORUS_TESTIMONIES.map(value => value.id),
+    severedBondIds: [...BOND_IDS],
+    separatedAt: 2_000,
+    reformAt: 32_000,
+  };
+  const reformed = {
+    ...activeEncounter("late", 32_000),
+    encounterId: "sanctuary-chorus-32000-r3",
+    authorityEpoch: 3,
+  };
+  const fake = firebaseModulesFake({
+    [`${BASE_PATH}/state`]: reformed,
+    [`${BASE_PATH}/completionInbox/a`]: oldClaim,
+  });
+  const network = createChorusNetwork(networkOptions(fake, "a", 32_001, {
+    onCompletionClaimsChanged: claims => received.push(claims),
+  }));
+
+  await network.setMap("sanctuary-return-record");
+  fake.emit(`${BASE_PATH}/state`, terminal);
+  fake.emit(`${BASE_PATH}/state`, reformed);
+  fake.emit(`${BASE_PATH}/completionInbox/a`, oldClaim);
+
+  assert.equal(fake.listeners.has(`${BASE_PATH}/completionInbox/a`), true);
+  assert.equal([...fake.listeners.keys()].some(path => path.includes("completionClaims/")), false);
+  assert.deepEqual(received.at(-1), { a: oldClaim });
+  await network.stop();
 });
 
 test("a late non-contributor starts a fresh encounter after reformAt without inheriting the old claim", async () => {
@@ -764,6 +840,13 @@ test("sequence watermarks bound replay history and filter lower late actions", a
       "state/processedActionId": "player-session:2:900:fragment-strike",
       "state/processedActionUid": "player",
       "state/processedActionSequence": 900,
+      "state/processedActionReceipt": {
+        id: freshAction.id,
+        uid: "player",
+        sequence: 900,
+        type: "fragment-strike",
+        fragmentId: "forest",
+      },
       "processedSequences/player": 900,
     },
   });

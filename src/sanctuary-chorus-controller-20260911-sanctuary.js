@@ -25,6 +25,11 @@ const PATTERN_RECOVERY_MS = 350;
 const PATTERN_DAMAGE = 14;
 const CHORUS_CENTER = Object.freeze({ x: 1080, y: 820 });
 const CLASS_IDS = Object.freeze(["warrior", "archer", "mage"]);
+
+function validFirebaseKey(value, maxLength = 160) {
+  return typeof value === "string" && value.length > 0 && value.length <= maxLength
+    && /^[A-Za-z0-9:_-]+$/.test(value);
+}
 const BOND_CUT_PRESENTATIONS = Object.freeze({
   warrior: Object.freeze({
     presentationId: "warrior-sever",
@@ -212,6 +217,7 @@ class SanctuaryChorusController {
     this.processedPatternEventIds = new Set();
     this.pendingEvents = [];
     this.completionClaims = {};
+    this.confirmedCompletionClaim = null;
     this.lastPlayer = null;
     this.falseOrderInterruptEncounterId = null;
     this.lastAttackPresentation = null;
@@ -599,7 +605,9 @@ class SanctuaryChorusController {
     if (!snapshot || (this.snapshot && snapshot.encounterId !== this.snapshot.encounterId
       && !isExpectedReformedEncounter(this.snapshot, snapshot))) return false;
     if (snapshot.status === "active") {
-      this.completionClaims = {};
+      this.completionClaims = this.confirmedCompletionClaim
+        ? { [this.uid]: { ...this.confirmedCompletionClaim } }
+        : {};
       this.pendingEvents = this.pendingEvents.filter(event => event?.type !== "chorus-completion-claim");
     }
     this.savedSnapshot = snapshot;
@@ -622,8 +630,12 @@ class SanctuaryChorusController {
   receiveCompletionClaims(value) {
     const claims = value && typeof value === "object" ? value : {};
     const own = claims[this.uid];
-    if (!own || own.uid !== this.uid || own.encounterId !== this.snapshot?.encounterId || own.eligible !== true) return false;
-    this.completionClaims = { ...this.completionClaims, [this.uid]: { ...own } };
+    if (!own || own.uid !== this.uid || !validFirebaseKey(own.encounterId)
+      || own.eligible !== true || !Number.isFinite(own.createdAt)
+      || own.createdAt < 0 || (this.confirmedCompletionClaim
+        && own.createdAt < this.confirmedCompletionClaim.createdAt)) return false;
+    this.confirmedCompletionClaim = { ...own };
+    this.completionClaims = { [this.uid]: { ...own } };
     return true;
   }
 
@@ -633,6 +645,7 @@ class SanctuaryChorusController {
     this.activePattern = null;
     this.pendingEvents = [];
     this.completionClaims = {};
+    this.confirmedCompletionClaim = null;
     this.processedPatternEventIds.clear();
     this.personalSnapshot = createPersonalChorusState();
     this.falseOrderInterruptEncounterId = null;

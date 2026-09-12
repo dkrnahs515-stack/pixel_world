@@ -556,3 +556,58 @@ test("an authoritative active rollback clears optimistic claims before the real 
   assert.deepEqual(Object.keys(controller.completionClaims).sort(), ["actual", "later", "local-player"]);
   assert.equal(controller.completionClaims.optimistic, undefined);
 });
+
+test("a retained own server claim survives the expected reform snapshot", () => {
+  let separated = encounterAt("onslaught");
+  for (const bondId of BOND_IDS) {
+    separated = advance(separated, "record-activate", { recordId: bondId });
+    separated = advance(separated, "bond-cut", { bondId });
+  }
+  const claim = {
+    encounterId: separated.encounterId,
+    uid: "local-player",
+    eligible: true,
+    createdAt: separated.separatedAt,
+  };
+  const controller = createSanctuaryChorusController({
+    uid: "local-player",
+    mode: "online",
+    seedSnapshot: separated,
+    now: () => separated.reformAt,
+  });
+  controller.setMap("sanctuary-return-record", { correctionLinked: true });
+  assert.equal(controller.receiveCompletionClaims({ "local-player": claim }), true);
+
+  const fresh = createReformedChorusEncounter(separated, {
+    uid: "late-player",
+    now: separated.reformAt,
+  });
+  assert.equal(controller.receiveSnapshot(fresh), true);
+  assert.deepEqual(controller.completionClaims, { "local-player": claim });
+});
+
+test("a reloaded controller accepts only its own retained server claim after reform", () => {
+  const fresh = createChorusEncounter({
+    encounterId: "sanctuary-chorus-32000-r3",
+    authorityUid: "late-player",
+    authorityEpoch: 3,
+    now: 32_000,
+  });
+  const controller = createSanctuaryChorusController({
+    uid: "returning-player",
+    mode: "online",
+    seedSnapshot: fresh,
+    now: () => 32_001,
+  });
+  controller.setMap("sanctuary-return-record", { correctionLinked: true });
+  const ownClaim = {
+    encounterId: "old-encounter",
+    uid: "returning-player",
+    eligible: true,
+    createdAt: 2_000,
+  };
+
+  assert.equal(controller.receiveCompletionClaims({ other: { ...ownClaim, uid: "other" } }), false);
+  assert.equal(controller.receiveCompletionClaims({ "returning-player": ownClaim }), true);
+  assert.deepEqual(controller.completionClaims, { "returning-player": ownClaim });
+});

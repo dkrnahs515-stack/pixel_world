@@ -149,6 +149,14 @@ import {
 const PLAYER_RADIUS = 14;
 const PROJECTILE_SPAWN_OFFSET = PLAYER_RADIUS + 18;
 const MINIMAP_FRAME_MS = 100;
+const CHORUS_COMPLETION_DEDUPE_LIMIT = 8;
+
+function rememberChorusCompletionId(ids, claimId) {
+  ids.add(claimId);
+  while (ids.size > CHORUS_COMPLETION_DEDUPE_LIMIT) {
+    ids.delete(ids.values().next().value);
+  }
+}
 
 export { advanceHitEffects, createHitEffect, drawHitEffects, hitShakeOffset } from "./combat-effects-20260905-upgrade-20260911-sanctuary.js";
 
@@ -1487,7 +1495,7 @@ export class PixelRPG {
       } else if (event?.type === "chorus-completion-claim" && event.claimId) {
         if (this.processedChorusCompletionIds.has(event.claimId)) continue;
         if (!this.applySanctuaryChorusCompletionClaim(event)) continue;
-        this.processedChorusCompletionIds.add(event.claimId);
+        rememberChorusCompletionId(this.processedChorusCompletionIds, event.claimId);
         if (this.sessionMode === "online"
           && this.chorusController?.snapshot?.authorityUid === this.network?.uid) {
           Promise.resolve(this.writeChorusCompletionClaimsIfAuthority()).catch(error => {
@@ -1548,7 +1556,7 @@ export class PixelRPG {
     this.processedChorusCompletionIds ||= new Set();
     if (this.processedChorusCompletionIds.has(claimId)) return true;
     if (!this.applySanctuaryChorusCompletionClaim(claim)) return false;
-    this.processedChorusCompletionIds.add(claimId);
+    rememberChorusCompletionId(this.processedChorusCompletionIds, claimId);
     return true;
   }
 

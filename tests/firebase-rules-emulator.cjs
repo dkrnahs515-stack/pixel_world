@@ -125,6 +125,19 @@ function chorusAction(uid, sequence, overrides = {}) {
   };
 }
 
+function chorusActionReceipt(action) {
+  const receipt = {
+    id: action.id,
+    uid: action.uid,
+    sequence: action.sequence,
+    type: action.type,
+  };
+  for (const field of ["fragmentId", "anchorId", "testimonyId", "verdict", "recordId", "bondId"]) {
+    if (action[field] != null) receipt[field] = action[field];
+  }
+  return receipt;
+}
+
 function separatedChorusState(overrides = {}) {
   const timestamp = Date.now();
   return chorusEncounter({
@@ -267,6 +280,7 @@ async function publishBoundChorusAction({
     "state/processedActionId": action.id,
     "state/processedActionUid": "player",
     "state/processedActionSequence": sequence,
+    "state/processedActionReceipt": chorusActionReceipt(action),
     "processedSequences/player": sequence,
   }));
   await assertSucceeds(remove(ref(hostDb, `${chorusPath}/actions/player/${sequence}`)));
@@ -698,10 +712,23 @@ test("Realtime Database 규칙은 sanctuary chorus 공유 경계와 canonical cl
       "state/processedActionId": queuedAnchor.id,
       "state/processedActionUid": "player",
       "state/processedActionSequence": 2,
+      "state/processedActionReceipt": chorusActionReceipt(queuedAnchor),
       "state/updatedAt": queuedAnchor.createdAt,
       "processedSequences/player": 2,
     }));
     await assertSucceeds(remove(ref(hostDb, `${chorusPath}/actions/player/2`)));
+    const retainedReceipt = (await get(ref(hostDb, `${chorusStatePath}/processedActionReceipt`))).val();
+    assert.deepEqual(retainedReceipt, chorusActionReceipt(queuedAnchor));
+    await assertFails(set(ref(playerDb, `${chorusPath}/actions/player/2`), {
+      ...queuedAnchor,
+      id: "player:1:2:anchor-reinserted",
+      createdAt: Date.now(),
+    }));
+    await assertFails(set(ref(playerDb, `${chorusPath}/actions/player/2`), {
+      ...queuedAnchor,
+      anchorId: "coast",
+      createdAt: Date.now(),
+    }));
 
     await assertSucceeds(runTransaction(ref(playerDb, `${chorusPath}/actionSequences/player`), current => current + 1));
     await assertSucceeds(set(ref(playerDb, `${chorusPath}/actions/player/3`), chorusAction("player", 3, {
@@ -821,7 +848,17 @@ test("Realtime Database 규칙은 sanctuary chorus 공유 경계와 canonical cl
       ...claim, uid: "other",
     }));
     await assertFails(set(ref(hostDb, claimPath), { ...claim, acknowledgedAt: Date.now() }));
-    await assertSucceeds(set(ref(hostDb, claimPath), claim));
+    const inboxPath = `${chorusPath}/completionInbox/player`;
+    await assertSucceeds(update(ref(hostDb, chorusPath), {
+      "completionClaims/chorus-emulator-1/player": claim,
+      "completionInbox/player": claim,
+    }));
+    await assertFails(set(ref(otherDb, `${chorusPath}/completionInbox/other`), {
+      ...claim, uid: "other",
+    }));
+    await assertFails(set(ref(playerDb, inboxPath), {
+      ...claim, encounterId: "fabricated-encounter", createdAt: Date.now() + 1,
+    }));
     await assertFails(set(ref(otherDb, claimPath), { ...claim, acknowledgedAt: Date.now() }));
     await assertFails(set(ref(playerDb, claimPath), {
       ...claim, eligible: false, acknowledgedAt: Date.now(),
@@ -1403,6 +1440,7 @@ test("Round 2 pressure는 receipt와 contributor history를 add-only로 보존�
         "state/processedActionId": "player:1:2:fragment-strike",
         "state/processedActionUid": "player",
         "state/processedActionSequence": 2,
+        "state/processedActionReceipt": chorusActionReceipt(chorusAction("player", 2, { createdAt: timestamp })),
         "state/contributors/player/lastContributedAt": timestamp,
         "state/contributors/player/actionTypes/fragment-strike": true,
         "state/combatRevision": 2,
@@ -1535,6 +1573,7 @@ test("Round 3 pressure는 replay receipt를 per-UID sequence watermark로 제한
         "state/processedActionId": action.id,
         "state/processedActionUid": "player",
         "state/processedActionSequence": 10_000,
+        "state/processedActionReceipt": chorusActionReceipt(action),
         "state/contributors/player/firstContributedAt": timestamp,
         "state/contributors/player/lastContributedAt": timestamp,
         "state/contributors/player/actionTypes/fragment-strike": true,
@@ -1815,6 +1854,7 @@ test("separated state는 action-bound canonical reformAt만 기록한다", async
         "state/processedActionId": action.id,
         "state/processedActionUid": "player",
         "state/processedActionSequence": 13,
+        "state/processedActionReceipt": chorusActionReceipt(action),
         "state/updatedAt": timestamp,
         "processedSequences/player": 13,
       });
@@ -1865,6 +1905,7 @@ test("만료된 separated encounter는 watermark와 기존 claim을 보존한 fr
             completionClaims: {
               [terminalBeforeExpiry.encounterId]: { player: oldClaim },
             },
+            completionInbox: { player: oldClaim },
           },
         },
       });
@@ -1909,6 +1950,7 @@ test("만료된 separated encounter는 watermark와 기존 claim을 보존한 fr
     }));
     await assertSucceeds(set(ref(lateDb, chorusStatePath), fresh));
     assert.equal((await get(ref(lateDb, `${chorusPath}/completionClaims/${expired.encounterId}/player`))).val().uid, "player");
+    assert.deepEqual((await get(ref(lateDb, `${chorusPath}/completionInbox/player`))).val(), oldClaim);
     assert.equal((await get(ref(lateDb, `${chorusPath}/completionClaims/${fresh.encounterId}/other`))).exists(), false);
     await assertSucceeds(remove(ref(lateDb, `${chorusPath}/actions/player/1`)));
   } finally {
@@ -1980,6 +2022,7 @@ test("Round 4 pressure는 confirmed action을 현재 authority가 정리한다",
         "state/processedActionId": action.id,
         "state/processedActionUid": "player",
         "state/processedActionSequence": 10,
+        "state/processedActionReceipt": chorusActionReceipt(action),
         "state/contributors/player/firstContributedAt": publishAt,
         "state/contributors/player/lastContributedAt": publishAt,
         "state/contributors/player/actionTypes/fragment-strike": true,

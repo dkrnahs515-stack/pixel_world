@@ -175,6 +175,19 @@ function sameQueuedAction(left, right) {
   return canonical(left) === canonical(right);
 }
 
+function actionReceipt(action) {
+  const receipt = {
+    id: action.id,
+    uid: action.uid,
+    sequence: action.sequence,
+    type: action.type,
+  };
+  for (const field of ["fragmentId", "anchorId", "testimonyId", "verdict", "recordId", "bondId"]) {
+    if (action[field] !== undefined) receipt[field] = action[field];
+  }
+  return receipt;
+}
+
 function actionlessRevisionIsMaintenance(current, incoming) {
   return incoming.status === current.status
     && incoming.phase === current.phase
@@ -224,6 +237,7 @@ function statePatch(current, next, processedAction = null) {
     patch.processedActionId = processedAction.id;
     patch.processedActionUid = processedAction.uid;
     patch.processedActionSequence = processedAction.sequence;
+    patch.processedActionReceipt = actionReceipt(processedAction);
   }
   return withoutUndefined(patch);
 }
@@ -250,7 +264,6 @@ export function createChorusNetwork({
   let stopped = false;
   let unsubscribers = [];
   let claimUnsubscriber = null;
-  let claimEncounterId = null;
   let renewalTimer = null;
   let renewalEpoch = null;
   let reformTimer = null;
@@ -298,28 +311,25 @@ export function createChorusNetwork({
     unsubscribers = [];
     if (claimUnsubscriber) claimUnsubscriber();
     claimUnsubscriber = null;
-    claimEncounterId = null;
     clearRenewal();
     clearReform();
   };
 
-  const subscribeToOwnClaim = encounterId => {
-    const nextEncounterId = validKey(encounterId) ? encounterId : null;
-    if (nextEncounterId === claimEncounterId) return;
-    if (claimUnsubscriber) claimUnsubscriber();
-    claimUnsubscriber = null;
-    claimEncounterId = nextEncounterId;
-    if (!active() || !nextEncounterId) {
-      onCompletionClaimsChanged({});
+  const subscribeToOwnClaim = () => {
+    if (claimUnsubscriber || !active()) {
+      if (!active()) onCompletionClaimsChanged({});
       return;
     }
     claimUnsubscriber = dbModule.onValue(
-      pathRef(`completionClaims/${nextEncounterId}/${uid}`),
+      pathRef(`completionInbox/${uid}`),
       snapshot => {
         const claim = snapshot.val();
-        onCompletionClaimsChanged(claim ? { [uid]: claim } : {});
+        onCompletionClaimsChanged(claim?.uid === uid ? { [uid]: claim } : {});
       },
     );
+    if (!claimUnsubscriber) {
+      onCompletionClaimsChanged({});
+    }
   };
 
   const active = () => !stopped && mapId === CHORUS_MAP_ID;
@@ -416,7 +426,6 @@ export function createChorusNetwork({
     const encounter = normalizeChorusEncounter(decodeWireEncounter(value, localProcessedActionIds));
     latestState = encounter;
     stateSnapshotReady = true;
-    subscribeToOwnClaim(encounter?.encounterId);
     if (encounter?.status === "separated") {
       clearRenewal();
       if (reformEncounterId !== encounter.encounterId || reformTimer === null) scheduleReform(encounter);
@@ -477,6 +486,7 @@ export function createChorusNetwork({
         }
         receiveActionsSnapshot(actions);
       }));
+      subscribeToOwnClaim();
       return true;
     },
 
@@ -505,7 +515,6 @@ export function createChorusNetwork({
             const wire = transaction.snapshot.val();
             latestState = normalizeChorusEncounter(decodeWireEncounter(wire));
             stateSnapshotReady = true;
-            subscribeToOwnClaim(latestState.encounterId);
             clearReform();
             scheduleRenewal(latestState.authorityEpoch);
             onStateChanged(latestState);
@@ -647,6 +656,7 @@ export function createChorusNetwork({
             processedActionId: processedAction.id,
             processedActionUid: processedAction.uid,
             processedActionSequence: processedAction.sequence,
+            processedActionReceipt: actionReceipt(processedAction),
           });
         }
         const stateChanges = statePatch(current, next, processedAction);
@@ -720,21 +730,32 @@ export function createChorusNetwork({
       }
       const results = await Promise.all(Object.entries(claims || {}).map(async ([claimUid, claim]) => {
         if (!validKey(claimUid, 128) || claim?.uid !== claimUid
-          || claim?.encounterId !== encounterId || claim?.eligible !== true) {
+          || claim?.encounterId !== encounterId || claim?.eligible !== true
+          || !latestState.contributors?.[claimUid]) {
           return { uid: claimUid, ok: false, reason: "invalid_claim" };
         }
-        let outcome = { ok: false, reason: "transaction_aborted" };
-        const transaction = await dbModule.runTransaction(pathRef(`completionClaims/${encounterId}/${claimUid}`), current => {
-          if (current != null) {
-            outcome = sameClaim(current, claim)
-              ? { ok: true, reason: "already_exists" }
-              : { ok: false, reason: "claim_conflict" };
-            return undefined;
-          }
-          outcome = { ok: true, reason: "created" };
-          return withoutUndefined(claim);
-        });
-        return { uid: claimUid, ...outcome, transaction };
+        const [historicalSnapshot, inboxSnapshot] = await Promise.all([
+          dbModule.get(pathRef(`completionClaims/${encounterId}/${claimUid}`)),
+          dbModule.get(pathRef(`completionInbox/${claimUid}`)),
+        ]);
+        const historical = historicalSnapshot.val();
+        const inbox = inboxSnapshot.val();
+        if (historical != null && !sameClaim(historical, claim)) {
+          return { uid: claimUid, ok: false, reason: "claim_conflict" };
+        }
+        if (inbox != null && !sameClaim(inbox, claim)
+          && Number(inbox.createdAt) >= Number(claim.createdAt)) {
+          return { uid: claimUid, ok: false, reason: "newer_claim_exists" };
+        }
+        const patch = {};
+        if (historical == null) patch[`completionClaims/${encounterId}/${claimUid}`] = withoutUndefined(claim);
+        if (!sameClaim(inbox, claim)) patch[`completionInbox/${claimUid}`] = withoutUndefined(claim);
+        if (Object.keys(patch).length > 0) await dbModule.update(pathRef(""), patch);
+        return {
+          uid: claimUid,
+          ok: true,
+          reason: Object.keys(patch).length > 0 ? "stored" : "already_exists",
+        };
       }));
       return {
         ok: results.every(result => result.ok),
