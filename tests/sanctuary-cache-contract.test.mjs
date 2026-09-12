@@ -5,7 +5,9 @@ import { getVolcanoChapterObjective } from "../src/world-20260903-volcano-202609
 import { getSanctuaryChapterObjective } from "../src/sanctuary-story-data-20260911-sanctuary.js";
 import { createChorusEncounter } from "../src/sanctuary-chorus-state-20260911-sanctuary.js";
 import { TESTIMONY_IDS as CHORUS_TESTIMONY_IDS } from "../src/sanctuary-chorus-data-20260911-sanctuary.js";
-import { PixelRPG } from "../src/game-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import * as sanctuaryGameModule from "../src/game-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+
+const { PixelRPG } = sanctuaryGameModule;
 
 const CORE_IDS = ["forest-core-casket", "coast-core-casket", "volcano-core-casket"];
 const SOUND_IDS = ["departure-bell", "dawn-bird", "tide-bell", "mine-shift-bell"];
@@ -79,6 +81,78 @@ test("sanctuary objective advances through the approved gates", () => {
 
 test("volcano completion delegates to the sanctuary entrance objective", () => {
   assert.deepEqual(getVolcanoChapterObjective(sanctuaryProgress()), getSanctuaryChapterObjective(sanctuaryProgress()));
+});
+
+test("sanctuary diagnostics are gated to an explicit local Firebase emulator page", () => {
+  assert.equal(typeof sanctuaryGameModule.isSanctuaryNetworkDiagnosticsEnabled, "function");
+  const enabled = sanctuaryGameModule.isSanctuaryNetworkDiagnosticsEnabled;
+  assert.equal(enabled("127.0.0.1", "?firebaseEmulator=1"), true);
+  assert.equal(enabled("localhost", "?mode=online&firebaseEmulator=1"), true);
+  assert.equal(enabled("127.0.0.1", "?firebaseEmulator=0"), false);
+  assert.equal(enabled("pixel-world-8cb9b.web.app", "?firebaseEmulator=1"), false);
+});
+
+test("sanctuary diagnostics expose detached gameplay snapshots and observed input only", () => {
+  const game = Object.create(PixelRPG.prototype);
+  Object.assign(game, {
+    sanctuaryNetworkDiagnosticsEnabled: true,
+    sanctuaryNetworkInputCodes: ["KeyF", "ControlLeft"],
+    running: true,
+    inputEnabled: true,
+    sessionMode: "online",
+    mapId: "sanctuary-return-record",
+    network: {
+      uid: "uid-a",
+      mode: "firebase",
+      chorus: { latestState: { encounterId: "encounter-a", authorityUid: "uid-a", phase: "anchors" } },
+    },
+    player: { x: 100, y: 200, dir: "up", hp: 90, respawnTimer: 0 },
+    progress: { worldProgress: { chapters: { sanctuary: { endingChoice: null } } } },
+    nearbyStoryInteraction: { id: "vanguard-return-state" },
+    nearbyChorusInteraction: { type: "anchor", anchorId: "forest" },
+    attackState: { type: "basic" },
+    chorusController: {
+      snapshot: { phase: "anchors", hp: 100 },
+      personalSnapshot: { contamination: 10, carriedFragmentId: "forest" },
+      completionClaims: { "uid-a": { eligible: true } },
+      renderModel: () => ({ telegraph: null }),
+      canAttack: () => true,
+    },
+  });
+
+  assert.equal(typeof game.readSanctuaryNetworkDiagnostics, "function");
+  const diagnostics = game.readSanctuaryNetworkDiagnostics();
+  assert.deepEqual(diagnostics, {
+    running: true,
+    inputEnabled: true,
+    sessionMode: "online",
+    mapId: "sanctuary-return-record",
+    uid: "uid-a",
+    networkMode: "firebase",
+    player: { x: 100, y: 200, dir: "up", hp: 90, respawnTimer: 0 },
+    progress: { worldProgress: { chapters: { sanctuary: { endingChoice: null } } } },
+    nearbyStoryId: "vanguard-return-state",
+    nearbyChorus: { type: "anchor", anchorId: "forest" },
+    attackActive: true,
+    inputCodes: ["KeyF", "ControlLeft"],
+    chorus: {
+      shared: { phase: "anchors", hp: 100 },
+      firebaseState: { encounterId: "encounter-a", authorityUid: "uid-a", phase: "anchors" },
+      personal: { contamination: 10, carriedFragmentId: "forest" },
+      claims: { "uid-a": { eligible: true } },
+      render: { telegraph: null },
+      canAttack: true,
+    },
+  });
+
+  diagnostics.player.x = 999;
+  diagnostics.progress.worldProgress.chapters.sanctuary.endingChoice = "release";
+  diagnostics.chorus.shared.hp = 0;
+  diagnostics.inputCodes.push("KeyR");
+  assert.equal(game.player.x, 100);
+  assert.equal(game.progress.worldProgress.chapters.sanctuary.endingChoice, null);
+  assert.equal(game.chorusController.snapshot.hp, 100);
+  assert.deepEqual(game.sanctuaryNetworkInputCodes, ["KeyF", "ControlLeft"]);
 });
 
 function chorusSnapshot(overrides = {}) {

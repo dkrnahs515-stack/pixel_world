@@ -1,6 +1,10 @@
 import { bindRewardCodeEntry } from "./reward-code-entry-20260905-upgrade-20260911-sanctuary.js";
 import { loadProgress as loadCodeProgress, saveProgress as saveCodeProgress } from "./progress-storage-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
-import { PixelRPG, interactionKeyAction } from "./game-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import {
+  PixelRPG,
+  interactionKeyAction,
+  isSanctuaryNetworkDiagnosticsEnabled,
+} from "./game-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 import { chatKeyAction } from "./chat-controller-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 import { drawClassPreview } from "./class-rendering-20260905-upgrade-20260911-sanctuary.js";
 import { renderCommunicationLog } from "./communication-log-20260829-coast-20260905-upgrade-20260911-sanctuary.js";
@@ -15,9 +19,14 @@ import { readStoredPlayMode, storePlayMode } from "./play-mode-20260905-upgrade-
 import { isQaMode } from "./qa-mode-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 
 const qaEnabled = isQaMode(location.search);
+const sanctuaryNetworkDiagnosticsEnabled = isSanctuaryNetworkDiagnosticsEnabled(
+  location.hostname,
+  location.search,
+);
 
 const elements = {
   qaEnabled,
+  sanctuaryNetworkDiagnosticsEnabled,
   canvas: document.querySelector("#game"),
   minimap: document.querySelector("#minimap"),
   hpBar: document.querySelector("#hpBar"),
@@ -146,6 +155,14 @@ const elements = {
 elements.qaButton.hidden = !qaEnabled;
 
 const game = new PixelRPG(elements);
+if (sanctuaryNetworkDiagnosticsEnabled) {
+  Object.defineProperty(globalThis, "__sanctuaryNetworkRead", {
+    configurable: false,
+    enumerable: false,
+    writable: false,
+    value: () => game.readSanctuaryNetworkDiagnostics(),
+  });
+}
 const hud = document.querySelector("#hud");
 const entryOverlay = document.querySelector("#entryOverlay");
 const exitOverlay = document.querySelector("#exitOverlay");

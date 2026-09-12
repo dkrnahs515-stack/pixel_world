@@ -320,6 +320,11 @@ function blacksmithFailureMessage(reason, weapon) {
   return "무기 정보를 찾을 수 없습니다.";
 }
 
+export function isSanctuaryNetworkDiagnosticsEnabled(hostname = "", search = "") {
+  const localHost = hostname === "127.0.0.1" || hostname === "localhost" || hostname === "[::1]";
+  return localHost && new URLSearchParams(search).get("firebaseEmulator") === "1";
+}
+
 export class PixelRPG {
   constructor(elements) {
     this.canvas = elements.canvas;
@@ -394,6 +399,8 @@ export class PixelRPG {
     this.chatMessages = [];
     this.chatInputActive = false;
     this.qaEnabled = Boolean(elements.qaEnabled);
+    this.sanctuaryNetworkDiagnosticsEnabled = Boolean(elements.sanctuaryNetworkDiagnosticsEnabled);
+    this.sanctuaryNetworkInputCodes = [];
     this.progress = createInitialProgress();
     this.npcs = getNpcsForWorld(this.mapId, this.progress?.worldProgress);
     this.nearbyNpc = null;
@@ -668,6 +675,40 @@ export class PixelRPG {
 
   isRunning() {
     return this.running;
+  }
+
+  readSanctuaryNetworkDiagnostics() {
+    if (!this.sanctuaryNetworkDiagnosticsEnabled) return null;
+    const clone = value => value == null ? value : structuredClone(value);
+    const chorus = this.chorusController;
+    return {
+      running: this.running,
+      inputEnabled: this.inputEnabled,
+      sessionMode: this.sessionMode,
+      mapId: this.mapId,
+      uid: this.network?.uid || null,
+      networkMode: this.network?.mode || null,
+      player: {
+        x: this.player.x,
+        y: this.player.y,
+        dir: this.player.dir,
+        hp: this.player.hp,
+        respawnTimer: this.player.respawnTimer,
+      },
+      progress: clone(this.progress),
+      nearbyStoryId: this.nearbyStoryInteraction?.id || null,
+      nearbyChorus: clone(this.nearbyChorusInteraction || null),
+      attackActive: Boolean(this.attackState),
+      inputCodes: [...this.sanctuaryNetworkInputCodes],
+      chorus: chorus ? {
+        shared: clone(chorus.snapshot),
+        firebaseState: clone(this.network?.chorus?.latestState || null),
+        personal: clone(chorus.personalSnapshot),
+        claims: clone(chorus.completionClaims),
+        render: clone(chorus.renderModel?.() || null),
+        canAttack: chorus.canAttack?.(Date.now()) !== false,
+      } : null,
+    };
   }
 
   setSessionMode(mode, reason = "selected") {
@@ -1025,6 +1066,10 @@ export class PixelRPG {
     addEventListener("resize", () => this.resize(), { passive: true });
     addEventListener("blur", () => this.keys.clear());
     addEventListener("keydown", event => {
+      if (this.sanctuaryNetworkDiagnosticsEnabled && typeof event.code === "string") {
+        this.sanctuaryNetworkInputCodes.push(event.code);
+        if (this.sanctuaryNetworkInputCodes.length > 2048) this.sanctuaryNetworkInputCodes.shift();
+      }
       if (!this.running || this.chatInputActive || isTypingTarget(event.target)) return;
 
       if (event.code === "KeyI" && !event.repeat && !event.ctrlKey && !event.metaKey && !event.altKey) {
