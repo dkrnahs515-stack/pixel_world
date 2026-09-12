@@ -59,7 +59,7 @@ test("initial world progress keeps only allow-listed serializable state", () => 
       },
       sanctuary: {
         activatedCoreIds: [], collectedMemoryIds: [], memorySequence: [], memoryOrderSolved: false,
-        coreTruthRevealed: false, falseReturnRejected: false, completedRecordFieldIds: [],
+        examinedTruthRecordIds: [], coreTruthRevealed: false, falseReturnRejected: false, completedRecordFieldIds: [],
         correctionLinked: false, chorusSeparated: false, collectedTestimonyIds: [],
         previewedFutureIds: [], endingChoice: null, completed: false,
       },
@@ -99,7 +99,7 @@ test("initial world progress keeps only allow-listed serializable state", () => 
       },
       sanctuary: {
         activatedCoreIds: [], collectedMemoryIds: [], memorySequence: [], memoryOrderSolved: false,
-        coreTruthRevealed: false, falseReturnRejected: false, completedRecordFieldIds: [],
+        examinedTruthRecordIds: [], coreTruthRevealed: false, falseReturnRejected: false, completedRecordFieldIds: [],
         correctionLinked: false, chorusSeparated: false, collectedTestimonyIds: [],
         previewedFutureIds: [], endingChoice: null, completed: false,
       },
