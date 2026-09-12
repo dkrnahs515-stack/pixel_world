@@ -8,6 +8,8 @@ const { connectAuthEmulator, getAuth, signInAnonymously, signOut } = require("fi
 const { connectDatabaseEmulator, get, getDatabase, goOffline, ref } = require("firebase/database");
 const {
   FIREBASE_DATABASE_NAMESPACE,
+  getPostReconnectDiagnostics,
+  getReconnectWindowDiagnostics,
   isExpectedReconnectLongPollAbort,
 } = require("../scripts/sanctuary-network-diagnostics.cjs");
 
@@ -290,8 +292,12 @@ function assertExpectedOfflineDiagnostics(diagnostics, window) {
 }
 
 function assertExpectedReconnectDiagnostics(diagnostics, window) {
-  const reconnectConsoleDetails = diagnostics.consoleErrorDetails.slice(window.consoleStart);
-  const reconnectRequestFailures = diagnostics.requestFailures.slice(window.requestStart);
+  const {
+    pageErrors: reconnectPageErrors,
+    consoleErrorDetails: reconnectConsoleDetails,
+    requestFailures: reconnectRequestFailures,
+  } = getReconnectWindowDiagnostics(diagnostics, window);
+  assert.deepEqual(reconnectPageErrors, [], `${diagnostics.label} page errors during reconnect`);
   for (const detail of reconnectConsoleDetails) {
     assert.equal(detail.text, "Failed to load resource: net::ERR_ABORTED",
       `${diagnostics.label} emitted an unrelated console error after reconnect: ${detail.text}`);
@@ -952,6 +958,7 @@ async function captureFailure(pageA, pageB, reader, error, diagnostics = []) {
     offlineDiagnosticWindowA.consoleEnd = diagnosticsA.consoleErrors.length;
     offlineDiagnosticWindowA.requestEnd = diagnosticsA.requestFailures.length;
     const reconnectDiagnosticWindowA = {
+      pageStart: diagnosticsA.pageErrors.length,
       consoleStart: offlineDiagnosticWindowA.consoleEnd,
       requestStart: offlineDiagnosticWindowA.requestEnd,
     };
@@ -969,6 +976,9 @@ async function captureFailure(pageA, pageB, reader, error, diagnostics = []) {
       return state.chorus.claims?.[expectedUid]?.eligible === true
         && state.progress.worldProgress.chapters.sanctuary.chorusSeparated === true;
     }, uidA, { timeout: 15_000 });
+    reconnectDiagnosticWindowA.pageEnd = diagnosticsA.pageErrors.length;
+    reconnectDiagnosticWindowA.consoleEnd = diagnosticsA.consoleErrors.length;
+    reconnectDiagnosticWindowA.requestEnd = diagnosticsA.requestFailures.length;
 
     console.log("[sanctuary-network] isolated endings");
     await Promise.all([finishThreeFutures(pageA), finishThreeFutures(pageB)]);
@@ -1001,6 +1011,10 @@ async function captureFailure(pageA, pageB, reader, error, diagnostics = []) {
     assert.equal(finalB.chorus.personal.contamination, 0);
     const offlineDiagnostics = assertExpectedOfflineDiagnostics(diagnosticsA, offlineDiagnosticWindowA);
     const reconnectDiagnostics = assertExpectedReconnectDiagnostics(diagnosticsA, reconnectDiagnosticWindowA);
+    const postReconnectDiagnostics = getPostReconnectDiagnostics(diagnosticsA, reconnectDiagnosticWindowA);
+    assert.deepEqual(postReconnectDiagnostics.pageErrors, [], "A page errors after reconnect recovery");
+    assert.deepEqual(postReconnectDiagnostics.consoleErrors, [], "A console errors after reconnect recovery");
+    assert.deepEqual(postReconnectDiagnostics.requestFailures, [], "A request failures after reconnect recovery");
     assert.deepEqual(diagnosticsB.pageErrors, [], "B page errors");
     assert.deepEqual(diagnosticsB.consoleErrors, [], "B console errors");
     assert.deepEqual(diagnosticsB.requestFailures, [], "B request failures");

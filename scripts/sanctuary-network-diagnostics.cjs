@@ -14,7 +14,27 @@ function isExpectedReconnectLongPollAbort(url, errorText) {
   }
 }
 
+function getReconnectWindowDiagnostics(diagnostics, window) {
+  return {
+    pageErrors: diagnostics.pageErrors.slice(window.pageStart, window.pageEnd),
+    consoleErrors: diagnostics.consoleErrors.slice(window.consoleStart, window.consoleEnd),
+    consoleErrorDetails: diagnostics.consoleErrorDetails.slice(window.consoleStart, window.consoleEnd),
+    requestFailures: diagnostics.requestFailures.slice(window.requestStart, window.requestEnd),
+  };
+}
+
+function getPostReconnectDiagnostics(diagnostics, window) {
+  return {
+    pageErrors: diagnostics.pageErrors.slice(window.pageEnd),
+    consoleErrors: diagnostics.consoleErrors.slice(window.consoleEnd),
+    consoleErrorDetails: diagnostics.consoleErrorDetails.slice(window.consoleEnd),
+    requestFailures: diagnostics.requestFailures.slice(window.requestEnd),
+  };
+}
+
 module.exports = {
   FIREBASE_DATABASE_NAMESPACE,
+  getPostReconnectDiagnostics,
+  getReconnectWindowDiagnostics,
   isExpectedReconnectLongPollAbort,
 };
