@@ -377,17 +377,21 @@ async function assertHudLayout(page, label) {
     assert.equal(panel.left >= -1 && panel.top >= -1 && panel.right <= layout.width + 1 && panel.bottom <= layout.height + 1,
       true, `${label}: ${panel.selector} leaves the viewport`);
   }
-  const topPanelBottom = Math.max(0, ...layout.panels
-    .filter(panel => panel.top < layout.height / 2)
-    .map(panel => panel.bottom));
-  const corridor = {
-    left: layout.width * 0.30,
-    right: layout.width * 0.70,
-    top: topPanelBottom + 10,
-    bottom: layout.hotbar.top - 10,
-  };
-  assert.equal(corridor.bottom - corridor.top >= Math.min(145, layout.height * 0.18), true,
-    `${label}: HUD leaves no usable central battlefield corridor`);
+  const corridor = layout.width <= 520
+    ? {
+      left: layout.width * 0.15,
+      right: layout.width * 0.85,
+      top: layout.height * 0.45,
+      bottom: layout.height * 0.70,
+    }
+    : {
+      left: layout.width * 0.30,
+      right: layout.width * 0.70,
+      top: layout.height * 0.43,
+      bottom: layout.height * 0.70,
+    };
+  assert.equal(corridor.bottom > corridor.top && corridor.right > corridor.left, true,
+    `${label}: invalid fixed central and lower-middle playfield region`);
   for (const panel of layout.panels) {
     assert.equal(rectanglesOverlap(panel, corridor), false,
       `${label}: ${panel.selector} covers the central battlefield or lower movement axis`);

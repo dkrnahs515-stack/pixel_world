@@ -16,10 +16,13 @@ function mediaBlock(maxWidth) {
   return css.slice(start, next === -1 ? css.length : next);
 }
 
-test("mobile chorus HUD reserves a separate vertical slot below the player panel", () => {
+test("mobile chorus HUD keeps the movement axis clear with a compact quest row", () => {
   const mobile = mediaBlock(520);
   assert.match(mobile, /\.chorus-hud\s*\{[^}]*top:\s*var\(--player-panel-stack-top\)/);
-  assert.match(mobile, /\.hud:has\(\.chorus-hud:not\(\[hidden\]\)\) \.quest-tracker\s*\{[^}]*top:\s*calc\(var\(--player-panel-stack-top\) \+ 124px\)/);
+  assert.match(mobile, /\.hud:has\(\.chorus-hud:not\(\[hidden\]\)\) \.quest-tracker\s*\{[^}]*top:\s*calc\(var\(--player-panel-stack-top\) \+ 114px\)/);
+  assert.match(mobile, /\.quest-tracker\s*\{[^}]*grid-template-columns:\s*auto minmax\(0,1fr\) auto/);
+  assert.match(mobile, /\.quest-tracker small, \.quest-tracker #questProgress\s*\{\s*display:\s*none/);
+  assert.match(mobile, /\.quest-tracker \.chapter-objective\s*\{[^}]*text-overflow:\s*ellipsis/);
 });
 
 test("the 521 to 620 pixel range also stacks the quest below an active chorus HUD", () => {
