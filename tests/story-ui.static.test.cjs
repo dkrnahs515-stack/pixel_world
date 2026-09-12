@@ -141,6 +141,7 @@ function wholeDocumentResourceAssignments(markup) {
 }
 
 const permittedInitialResourceAssignments = [
+  { name: "href", value: "../favicon.svg" },
   { name: "href", value: "./story.css" },
   { name: "href", value: "../" },
   { name: "href", value: "../" },
@@ -423,7 +424,7 @@ test("제1장 스토리 셸은 독립된 조사 화면의 시맨틱 훅을 제�
   assert.deepEqual(
     wholeDocumentResourceAssignments(html),
     permittedInitialResourceAssignments,
-    "the independent shell has exactly one controller src, one stylesheet href, and three root-back href values",
+    "the independent shell has one local favicon, one controller src, one stylesheet href, and three root-back href values",
   );
   assert.equal(hasExactInitialResourceAllowlist(html), true, "only the exact initial stylesheet and controller resources are allowed");
   assert.deepEqual(cssUrls(css), [], "story CSS must not request assets before Task 6 chooses current artwork");
