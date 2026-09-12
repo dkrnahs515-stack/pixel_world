@@ -3,7 +3,7 @@ const {chromium}=require("playwright");
 const http=require('node:http'),fs=require('node:fs');
 const server=http.createServer((req,res)=>{const file='.'+(req.url.split('?')[0]==='/'?'/index.html':req.url.split('?')[0]);try{res.setHeader('Content-Type',file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':'text/html');res.end(fs.readFileSync(file));}catch{res.statusCode=404;res.end();}});
 async function installReadAccess(page){
- await page.route('**/main-20260903-volcano-20260905-upgrade.js',async route=>{const response=await route.fetch();await route.fulfill({response,body:(await response.text())+'\nwindow.__rewardRead=()=>({mapId:game.mapId,player:{...game.player},progress:structuredClone(game.progress),bosses:(game.coopBossController?.renderableBosses?.()||[game.coopBossController?.renderableBoss?.()].filter(Boolean)).map(b=>({id:b.id,hp:b.hp,x:b.x,y:b.y}))});\n'});});
+ await page.route('**/main-20260911-story.js',async route=>{const response=await route.fetch();await route.fulfill({response,body:(await response.text())+'\nwindow.__rewardRead=()=>({mapId:game.mapId,player:{...game.player},progress:structuredClone(game.progress),bosses:(game.coopBossController?.renderableBosses?.()||[game.coopBossController?.renderableBoss?.()].filter(Boolean)).map(b=>({id:b.id,hp:b.hp,x:b.x,y:b.y}))});\n'});});
 }
 (async()=>{
  await new Promise(resolve=>server.listen(4186,'127.0.0.1',resolve));
@@ -14,6 +14,8 @@ async function installReadAccess(page){
   // Test-only read access. All mutations below use the production entry/QA/keyboard UI.
   await installReadAccess(page);
   await page.goto('http://127.0.0.1:4186/?qa=1');
+  await page.locator('#rpgExperienceButton').click();
+  await page.locator('#entryOverlay').waitFor({state:'visible'});
   await page.locator('#nicknameInput').fill('특별보상검증');
   await page.locator('[data-class-id="warrior"]').click();await page.locator('[data-play-mode="solo"]').click();
   await page.locator('.reward-code-panel summary').click();
@@ -49,7 +51,7 @@ async function installReadAccess(page){
   const classResults=[];
   for(const classId of ['archer','mage']) {
     const peer=await browser.newPage({viewport:{width:1440,height:900}});peer.on('pageerror',e=>errors.push(e.message));await installReadAccess(peer);
-    await peer.goto('http://127.0.0.1:4186/?qa=1');await peer.locator('#nicknameInput').fill(`전투${classId}`);
+    await peer.goto('http://127.0.0.1:4186/?qa=1');await peer.locator('#rpgExperienceButton').click();await peer.locator('#entryOverlay').waitFor({state:'visible'});await peer.locator('#nicknameInput').fill(`전투${classId}`);
     await peer.locator(`[data-class-id="${classId}"]`).click();await peer.locator('[data-play-mode="solo"]').click();
     await peer.locator('.reward-code-panel summary').click();await peer.locator('#rewardCodeInput').fill('MINAH NOISE');await peer.locator('#rewardCodePreview').click();await peer.locator('#rewardCodeRedeem').click();
     await peer.locator('#enterButton').click();await peer.locator('#hud').waitFor({state:'visible'});await peer.locator('.quest-banner button').click();

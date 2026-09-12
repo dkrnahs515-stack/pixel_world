@@ -3,10 +3,11 @@ import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 
 test("PR과 main 변경은 전체 게임 테스트와 JavaScript 문법 검사를 자동 실행한다", async () => {
-  const workflow = await readFile(
+  const rawWorkflow = await readFile(
     new URL("../.github/workflows/verify-game.yml", import.meta.url),
     "utf8",
   );
+  const workflow = rawWorkflow.replace(/\r\n/g, "\n");
 
   assert.match(
     workflow,
