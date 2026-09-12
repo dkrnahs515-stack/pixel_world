@@ -18,7 +18,7 @@ jobs:
   smoke:
     name: Solo and online browser smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -44,3 +44,4 @@ jobs:
           PIXEL_WORLD_URL=http://127.0.0.1:4173 node tests/volcano-browser-smoke.cjs
           PIXEL_WORLD_URL=http://127.0.0.1:4173 node tests/combat-growth-browser.cjs
           node tests/reward-browser-smoke.cjs
+          PIXEL_WORLD_URL=http://127.0.0.1:4173 node tests/sanctuary-browser-smoke.cjs
