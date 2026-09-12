@@ -1,11 +1,20 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { readFileSync } = require("node:fs");
+const { existsSync, readFileSync } = require("node:fs");
 const path = require("node:path");
 
 const html = readFileSync(path.join(__dirname, "../index.html"), "utf8");
+const storyHtml = readFileSync(path.join(__dirname, "../story/index.html"), "utf8");
 const css = readFileSync(path.join(__dirname, "../styles-20260911-story.css"), "utf8");
 const main = readFileSync(path.join(__dirname, "../src/main-20260911-story.js"), "utf8");
+const faviconPath = path.join(__dirname, "../favicon.svg");
+
+test("첫 화면과 스토리 화면은 배포 경로 안의 파비콘을 명시한다", () => {
+  assert.match(html, /<link\s+rel="icon"\s+href="\.\/favicon\.svg"\s+type="image\/svg\+xml"\s*\/?>/);
+  assert.match(storyHtml, /<link\s+rel="icon"\s+href="\.\.\/favicon\.svg"\s+type="image\/svg\+xml"\s*\/?>/);
+  assert.equal(existsSync(faviconPath), true, "favicon.svg must be deployed with both entry pages");
+  assert.match(readFileSync(faviconPath, "utf8"), /<svg\b[^>]*xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
+});
 
 test("입장 화면은 접근 가능한 세 직업 단일 선택 카드와 오류 연결을 제공한다", () => {
   assert.match(html, /id="classSelection"[^>]*role="radiogroup"[^>]*aria-labelledby="classSelectionLabel"/);
