@@ -1956,6 +1956,61 @@ test("chorus action receipt는 exact action payload가 만든 state delta에 결
   }
 });
 
+test("Round 5 receipt partial update는 unchanged type validator를 우회하지 못한다", async () => {
+  const environment = await initializeTestEnvironment({
+    projectId,
+    database: { rules: readFileSync("database.rules.json", "utf8") },
+  });
+  try {
+    const timestamp = Date.now();
+    const hostDb = environment.authenticatedContext("host").database();
+    const playerDb = environment.authenticatedContext("player").database();
+    const previousAction = chorusAction("player", 1, {
+      id: "player:1:1:anchor-stabilize",
+      type: "anchor-stabilize",
+      anchorId: "forest",
+      createdAt: timestamp - 100,
+    });
+    const current = oneAnchorChorusState({
+      leaseUntil: timestamp + 6_000,
+      processedActionReceipt: chorusActionReceipt(previousAction),
+      updatedAt: timestamp - 100,
+      contributors: {
+        player: {
+          firstContributedAt: timestamp - 1_000,
+          lastContributedAt: timestamp - 100,
+          actionTypes: ["anchor-stabilize"],
+        },
+      },
+    });
+    await seedChorus(environment, current, { sequence: 2 });
+    await environment.withSecurityRulesDisabled(async context => {
+      await set(ref(context.database(), `${chorusPath}/processedSequences/player`), 1);
+    });
+    const repeatedAction = chorusAction("player", 2, {
+      id: "player:1:2:anchor-stabilize",
+      type: "anchor-stabilize",
+      anchorId: "forest",
+      createdAt: timestamp,
+    });
+    await assertSucceeds(set(ref(playerDb, `${chorusPath}/actions/player/2`), repeatedAction));
+
+    await assertFails(update(ref(hostDb, chorusPath), {
+      "state/combatRevision": 2,
+      "state/contributors/player/lastContributedAt": timestamp,
+      "state/processedSequenceByUid/player": 2,
+      "state/processedActionId": repeatedAction.id,
+      "state/processedActionSequence": 2,
+      "state/processedActionReceipt/id": repeatedAction.id,
+      "state/processedActionReceipt/sequence": 2,
+      "state/updatedAt": timestamp,
+      "processedSequences/player": 2,
+    }));
+  } finally {
+    await environment.cleanup();
+  }
+});
+
 test("Round 4 receipt는 완료된 objective나 누락된 reducer side effect를 처리할 수 없다", async t => {
   const environment = await initializeTestEnvironment({
     projectId,
