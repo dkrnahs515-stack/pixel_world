@@ -1035,6 +1035,11 @@ export class PixelRPG {
       }
 
       if (event.code === "KeyF" && !event.repeat && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        if (this.isSanctuaryEndingOpen() && this.pendingSanctuaryRewardChoice) {
+          void this.recoverSanctuaryEndingReward();
+          event.preventDefault();
+          return;
+        }
         const action = npcInteractionKeyAction({
           saleConfirmOpen: this.isSaleConfirmOpen(),
           blacksmithOpen: this.isBlacksmithOpen(),

@@ -291,6 +291,54 @@ test("a failed reward save rolls memory back to the saved choice and leaves reco
   assert.deepEqual(game.progress, afterRecovery);
 });
 
+test("global F retries a pending ending reward while the cutscene is open", async () => {
+  const game = endingGame();
+  const previousDocument = globalThis.document;
+  const previousAddEventListener = globalThis.addEventListener;
+  const previousInputElement = globalThis.HTMLInputElement;
+  const previousTextAreaElement = globalThis.HTMLTextAreaElement;
+  const previousSelectElement = globalThis.HTMLSelectElement;
+  let keydown;
+  globalThis.HTMLInputElement = class HTMLInputElement {};
+  globalThis.HTMLTextAreaElement = class HTMLTextAreaElement {};
+  globalThis.HTMLSelectElement = class HTMLSelectElement {};
+  globalThis.document = {
+    activeElement: game.ui.endingCloseButton,
+    querySelectorAll() { return []; },
+  };
+  globalThis.addEventListener = (type, listener) => {
+    if (type === "keydown") keydown = listener;
+  };
+  try {
+    game.progress = endingReadyProgress("release");
+    game.pendingSanctuaryRewardChoice = "release";
+    game.presentSanctuaryEnding("release");
+    game.isSaleConfirmOpen = () => false;
+    game.isBlacksmithOpen = () => false;
+    game.isQaOpen = () => false;
+    game.isInventoryOpen = () => false;
+    game.isShopOpen = () => false;
+    game.isDialogueOpen = () => false;
+    game.bindEvents();
+
+    keydown({
+      code: "KeyF", repeat: false, ctrlKey: false, metaKey: false, altKey: false,
+      target: null, preventDefault() {},
+    });
+    await advanceUntil(() => game.pendingSanctuaryRewardChoice === null);
+
+    assert.deepEqual(missingSanctuaryRewardComponents(game.progress, "release"), []);
+    assert.equal(game.progress.gold, 200);
+    assert.deepEqual(game.progress.earnedTitleIds, ["sanctuary-title-release"]);
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.addEventListener = previousAddEventListener;
+    globalThis.HTMLInputElement = previousInputElement;
+    globalThis.HTMLTextAreaElement = previousTextAreaElement;
+    globalThis.HTMLSelectElement = previousSelectElement;
+  }
+});
+
 test("first-step Escape defers without a write and reopening near the core works", () => {
   const game = endingGame();
   game.nearbyStoryInteraction = { type: "sanctuary-ending-console" };
