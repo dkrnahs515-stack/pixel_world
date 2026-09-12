@@ -119,6 +119,20 @@ test("chorus network uses only the dedicated sanctuary path", async () => {
   await a.stop();
 });
 
+test("an empty state snapshot is safe before any encounter exists", async () => {
+  const received = [];
+  const fake = firebaseModulesFake();
+  const network = createChorusNetwork(networkOptions(fake, "a", 10_000, {
+    onStateChanged: value => received.push(value),
+  }));
+
+  await network.setMap("sanctuary-return-record");
+  assert.doesNotThrow(() => fake.emit(`${BASE_PATH}/state`, null));
+  assert.equal(network.latestState, null);
+  assert.deepEqual(received, [null]);
+  await network.stop();
+});
+
 test("expired authority transfers without replaying acknowledged actions", async () => {
   const expired = {
     ...activeEncounter("a", 1_000),

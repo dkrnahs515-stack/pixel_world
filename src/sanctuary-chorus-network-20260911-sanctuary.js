@@ -338,7 +338,7 @@ export function createChorusNetwork({
   };
 
   const rememberState = value => {
-    const localProcessedActionIds = latestState?.encounterId === value?.encounterId
+    const localProcessedActionIds = latestState && latestState.encounterId === value?.encounterId
       ? latestState.processedActionIds
       : [];
     processedSequenceByUid = normalizeProcessedSequences(value?.processedSequenceByUid);
