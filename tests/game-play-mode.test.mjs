@@ -506,7 +506,7 @@ test("a rejected send promise restores the confirmed state without changing solo
   assert.equal(solo.snapshot.hp, 90);
 });
 
-test("a listener-confirmed local Chorus action never rolls personal state back on a duplicate publish rejection", async () => {
+test("a transport-confirmed local Chorus action never rolls personal state back on a duplicate publish rejection", async () => {
   const game = Object.create(SanctuaryPixelRPG.prototype);
   const confirmed = createChorusEncounter({ encounterId: "shared-e1", authorityUid: "host", now: 1_000 });
   const notices = [];
@@ -517,13 +517,12 @@ test("a listener-confirmed local Chorus action never rolls personal state back o
   game.updateChorusHud = () => {};
   game.notify = message => notices.push(message);
   game.reportBossCallbackError = () => {};
-  game.network = {
-    uid: "host",
-    chorus: {
-      sendAction: () => new Promise(resolve => { resolveSend = resolve; }),
-      publishState: () => new Promise(resolve => { resolvePublish = resolve; }),
-    },
+  const chorusNetwork = {
+    latestState: structuredClone(confirmed),
+    sendAction: () => new Promise(resolve => { resolveSend = resolve; }),
+    publishState: () => new Promise(resolve => { resolvePublish = resolve; }),
   };
+  game.network = { uid: "host", chorus: chorusNetwork };
   game.chorusController = game.createChorusControllerForMode("online");
   game.wireOnlineChorusController(game.chorusController);
   game.chorusController.receiveSnapshot(confirmed);
@@ -540,7 +539,7 @@ test("a listener-confirmed local Chorus action never rolls personal state back o
   game.chorusController.personalSnapshot.carriedFragmentId = null;
   resolveSend({ ok: true, action: { ...request, sequence: 1 } });
   await new Promise(resolve => setImmediate(resolve));
-  game.receiveChorusSnapshot(structuredClone(optimistic.snapshot));
+  chorusNetwork.latestState = structuredClone(optimistic.snapshot);
   resolvePublish({ ok: false, reason: "already_processed" });
   await new Promise(resolve => setImmediate(resolve));
 

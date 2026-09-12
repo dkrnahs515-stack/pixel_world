@@ -873,6 +873,8 @@ async function captureFailure(pageA, pageB, reader, error, diagnostics = []) {
     assert.equal(claims?.[uidB]?.eligible, true, "authority must create B's completion claim");
     assert.equal(claims[uidA].uid, uidA);
     assert.equal(claims[uidB].uid, uidB);
+    assert.doesNotMatch(await pageB.locator("#message").textContent(), /온라인 동기화가 거절/,
+      "a Firebase-confirmed separation must not show retry feedback");
     screenshots.push(await capture(pageB, "03-separated-by-B.png"));
 
     const savedBeforeReconnectA = await storedProgress(pageA);

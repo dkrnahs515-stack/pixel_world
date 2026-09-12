@@ -870,8 +870,9 @@ export class PixelRPG {
   }
 
   isChorusActionConfirmed(action) {
-    return typeof action?.id === "string"
-      && this.latestChorusSnapshot?.processedActionIds?.includes(action.id) === true;
+    if (typeof action?.id !== "string") return false;
+    return [this.latestChorusSnapshot, this.network?.chorus?.latestState]
+      .some(snapshot => snapshot?.processedActionIds?.includes(action.id) === true);
   }
 
   reconcileRejectedChorusAction(confirmedSnapshot = this.latestChorusSnapshot, rollbackContext = {}) {
