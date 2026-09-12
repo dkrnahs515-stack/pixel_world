@@ -63,11 +63,12 @@ function decodeWireEncounter(value, localProcessedActionIds = []) {
   for (const field of OBJECTIVE_MEMBERSHIP_FIELDS) decoded[field] = membershipValues(value[field]);
   decoded.processedActionIds = mergeProcessedActionIds(
     localProcessedActionIds,
-    membershipValues(value.processedActionIds, validActionId),
+    [
+      ...membershipValues(value.processedActionIds, validActionId),
+      ...(validActionId(value.processedActionId) ? [value.processedActionId] : []),
+    ],
   );
   delete decoded.processedSequenceByUid;
-  delete decoded.processedActionUid;
-  delete decoded.processedActionSequence;
   decoded.contributors = Object.fromEntries(Object.entries(value.contributors || {}).map(([contributorUid, contributor]) => [
     contributorUid,
     {
@@ -87,8 +88,14 @@ function encodeWireEncounter(value) {
   }
   delete wire.processedActionIds;
   delete wire.processedSequenceByUid;
-  delete wire.processedActionUid;
-  delete wire.processedActionSequence;
+  if (!validActionId(wire.processedActionId)
+    || !validKey(wire.processedActionUid, 128)
+    || !Number.isSafeInteger(wire.processedActionSequence)
+    || wire.processedActionSequence < 1) {
+    delete wire.processedActionId;
+    delete wire.processedActionUid;
+    delete wire.processedActionSequence;
+  }
   const contributors = Object.fromEntries(Object.entries(value?.contributors || {}).map(([contributorUid, contributor]) => [
     contributorUid,
     {
@@ -214,6 +221,7 @@ function statePatch(current, next, processedAction = null) {
   }
   if (processedAction) {
     patch[`processedSequenceByUid/${processedAction.uid}`] = processedAction.sequence;
+    patch.processedActionId = processedAction.id;
     patch.processedActionUid = processedAction.uid;
     patch.processedActionSequence = processedAction.sequence;
   }
@@ -245,6 +253,8 @@ export function createChorusNetwork({
   let claimEncounterId = null;
   let renewalTimer = null;
   let renewalEpoch = null;
+  let reformTimer = null;
+  let reformEncounterId = null;
   let latestState = null;
   let latestActions = {};
   let processedSequenceByUid = {};
@@ -277,6 +287,12 @@ export function createChorusNetwork({
     renewalEpoch = null;
   };
 
+  const clearReform = () => {
+    if (reformTimer !== null) clearTimer(reformTimer);
+    reformTimer = null;
+    reformEncounterId = null;
+  };
+
   const clearSubscriptions = () => {
     for (const unsubscribe of unsubscribers) unsubscribe();
     unsubscribers = [];
@@ -284,6 +300,7 @@ export function createChorusNetwork({
     claimUnsubscriber = null;
     claimEncounterId = null;
     clearRenewal();
+    clearReform();
   };
 
   const subscribeToOwnClaim = encounterId => {
@@ -353,7 +370,7 @@ export function createChorusNetwork({
 
   const scheduleRenewal = epoch => {
     clearRenewal();
-    if (!active()) return;
+    if (!active() || latestState?.status !== "active") return;
     renewalEpoch = epoch;
     const tick = async () => {
       if (!active() || renewalEpoch !== epoch) return;
@@ -365,6 +382,27 @@ export function createChorusNetwork({
       renewalTimer = setTimer(tick, CHORUS_AUTHORITY_RENEW_MS);
     };
     renewalTimer = setTimer(tick, CHORUS_AUTHORITY_RENEW_MS);
+  };
+
+  const scheduleReform = encounter => {
+    clearReform();
+    if (!active() || encounter?.status !== "separated"
+      || !Number.isFinite(encounter.reformAt)) return;
+    reformEncounterId = encounter.encounterId;
+    const tick = async () => {
+      reformTimer = null;
+      if (!active() || latestState?.encounterId !== reformEncounterId
+        || latestState?.status !== "separated") return;
+      try {
+        await api.ensureEncounter();
+      } catch {
+        if (active() && latestState?.encounterId === reformEncounterId
+          && latestState?.status === "separated") {
+          reformTimer = setTimer(tick, 1_000);
+        }
+      }
+    };
+    reformTimer = setTimer(tick, Math.max(0, encounter.reformAt - now()));
   };
 
   const rememberState = value => {
@@ -379,10 +417,15 @@ export function createChorusNetwork({
     latestState = encounter;
     stateSnapshotReady = true;
     subscribeToOwnClaim(encounter?.encounterId);
-    if (isAuthority(encounter) && renewalEpoch !== encounter.authorityEpoch) {
+    if (encounter?.status === "separated") {
+      clearRenewal();
+      if (reformEncounterId !== encounter.encounterId || reformTimer === null) scheduleReform(encounter);
+    } else if (isAuthority(encounter) && renewalEpoch !== encounter.authorityEpoch) {
+      clearReform();
       scheduleRenewal(encounter.authorityEpoch);
     } else if (!isAuthority(encounter)) {
       clearRenewal();
+      clearReform();
     }
     onStateChanged(encounter);
     if (pendingActions && sequenceSnapshotReady) {
@@ -463,6 +506,7 @@ export function createChorusNetwork({
             latestState = normalizeChorusEncounter(decodeWireEncounter(wire));
             stateSnapshotReady = true;
             subscribeToOwnClaim(latestState.encounterId);
+            clearReform();
             scheduleRenewal(latestState.authorityEpoch);
             onStateChanged(latestState);
             cleanupConfirmedActions();
@@ -481,6 +525,7 @@ export function createChorusNetwork({
         await dbModule.update(pathRef("state"), encodeWireEncounter(encounter));
         if (encounter) {
           latestState = encounter;
+          clearReform();
           if (isAuthority(encounter)) scheduleRenewal(encounter.authorityEpoch);
         }
         return encounter;
@@ -587,7 +632,7 @@ export function createChorusNetwork({
           && !actionlessRevisionIsMaintenance(current, incoming)) {
           return { ok: false, reason: "processed_action_required" };
         }
-        const next = normalizeChorusEncounter(withoutUndefined({
+        let next = normalizeChorusEncounter(withoutUndefined({
           ...incoming,
           leaseUntil: Math.max(current.leaseUntil, incoming.leaseUntil),
           updatedAt: incoming.combatRevision > current.combatRevision
@@ -596,6 +641,14 @@ export function createChorusNetwork({
           processedActionIds: mergeProcessedActionIds(current.processedActionIds, incoming.processedActionIds),
           contributors: mergeContributors(current.contributors, incoming.contributors),
         }));
+        if (processedAction) {
+          next = normalizeChorusEncounter({
+            ...next,
+            processedActionId: processedAction.id,
+            processedActionUid: processedAction.uid,
+            processedActionSequence: processedAction.sequence,
+          });
+        }
         const stateChanges = statePatch(current, next, processedAction);
         const patch = Object.fromEntries(Object.entries(stateChanges)
           .map(([field, fieldValue]) => [`state/${field}`, fieldValue]));
@@ -603,6 +656,10 @@ export function createChorusNetwork({
         if (Object.keys(patch).length > 0) await dbModule.update(pathRef(""), patch);
         if (processedAction) processedSequenceByUid[processedAction.uid] = processedAction.sequence;
         latestState = next;
+        if (latestState.status === "separated") {
+          clearRenewal();
+          scheduleReform(latestState);
+        }
         cleanupConfirmedActions();
         return {
           ok: true,

@@ -172,6 +172,9 @@ export function createChorusEncounter({
     lumenAssistUsed: false,
     combatRevision: 0,
     processedActionIds: [],
+    processedActionId: null,
+    processedActionUid: null,
+    processedActionSequence: null,
     contributors: {},
     authorityUid,
     authorityEpoch: Math.max(1, Math.trunc(finite(authorityEpoch, 1))),
@@ -190,6 +193,11 @@ export function normalizeChorusEncounter(value) {
   const objectives = objectiveState(source);
   const onslaught = objectives.phase === "onslaught";
   const separated = objectives.phase === "separated";
+  const separatedAt = separated ? nonNegativeTime(source.separatedAt, source.updatedAt) : null;
+  const hasProcessedActionReceipt = validActionId(source.processedActionId)
+    && validId(source.processedActionUid, 128)
+    && Number.isSafeInteger(source.processedActionSequence)
+    && source.processedActionSequence >= 1;
   return {
     encounterId: source.encounterId,
     bossId: CHORUS_BOSS_ID,
@@ -209,14 +217,17 @@ export function normalizeChorusEncounter(value) {
     lumenAssistUsed: source.lumenAssistUsed === true,
     combatRevision: nonNegativeInteger(source.combatRevision),
     processedActionIds: normalizeProcessedActionIds(source.processedActionIds),
+    processedActionId: hasProcessedActionReceipt ? source.processedActionId : null,
+    processedActionUid: hasProcessedActionReceipt ? source.processedActionUid : null,
+    processedActionSequence: hasProcessedActionReceipt ? source.processedActionSequence : null,
     contributors: normalizeContributors(source.contributors),
     authorityUid: source.authorityUid,
     authorityEpoch: Math.max(1, Math.trunc(finite(source.authorityEpoch, 1))),
     leaseUntil: nonNegativeTime(source.leaseUntil),
     spawnedAt: nonNegativeTime(source.spawnedAt),
     updatedAt: nonNegativeTime(source.updatedAt),
-    separatedAt: separated ? nonNegativeTime(source.separatedAt, source.updatedAt) : null,
-    reformAt: separated && Number.isFinite(source.reformAt) ? nonNegativeTime(source.reformAt) : null,
+    separatedAt,
+    reformAt: separated ? separatedAt + CHORUS_REFORM_DELAY_MS : null,
   };
 }
 
@@ -444,6 +455,7 @@ export function reducePersonalChorusState(value, event, now = Date.now()) {
 export function acquireChorusAuthority(value, { uid, now = Date.now() } = {}) {
   const encounter = normalizeChorusEncounter(value);
   if (!encounter || !validId(uid, 128) || !Number.isFinite(now)) return rejection("invalid_authority");
+  if (encounter.status !== "active") return rejection("terminal_state");
   if (encounter.authorityUid !== uid && encounter.leaseUntil > now) return rejection("lease_active");
   const startsNewEpoch = encounter.authorityUid !== uid || encounter.leaseUntil <= now;
   return {
@@ -462,6 +474,7 @@ export function renewChorusAuthority(value, { uid, authorityEpoch, now = Date.no
   const encounter = normalizeChorusEncounter(value);
   if (!encounter || encounter.authorityUid !== uid || encounter.authorityEpoch !== authorityEpoch
     || !Number.isFinite(now)) return rejection("authority_mismatch");
+  if (encounter.status !== "active") return rejection("terminal_state");
   if (encounter.leaseUntil <= now) return rejection("lease_expired");
   return {
     ok: true,
@@ -479,7 +492,7 @@ export function createReformedChorusEncounter(value, { uid, now = Date.now() } =
     || !Number.isFinite(now) || now < terminal.reformAt
     || !validId(uid, 128)) return null;
   return createChorusEncounter({
-    encounterId: `sanctuary-chorus-${Math.trunc(terminal.reformAt)}-${uid.slice(0, 12)}-r${terminal.authorityEpoch + 1}`,
+    encounterId: `sanctuary-chorus-${Math.trunc(terminal.reformAt)}-r${terminal.authorityEpoch + 1}`,
     authorityUid: uid,
     authorityEpoch: terminal.authorityEpoch + 1,
     now,

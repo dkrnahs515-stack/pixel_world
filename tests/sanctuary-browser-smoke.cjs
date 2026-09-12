@@ -375,8 +375,8 @@ async function dismissQuestBanners(page) {
     "quest banner queue did not close through visible browser input");
 }
 
-async function assertHudLayout(page, label) {
-  await dismissQuestBanners(page);
+async function assertHudLayout(page, label, { dismissBanners = true } = {}) {
+  if (dismissBanners) await dismissQuestBanners(page);
   const layout = await page.evaluate(() => {
     const box = selector => {
       const element = document.querySelector(selector);
@@ -421,8 +421,8 @@ async function assertHudLayout(page, label) {
   assert.equal(rectanglesOverlap(viewport, corridor), true, `${label}: invalid battlefield corridor`);
 }
 
-async function saveShot(page, scenario, name) {
-  await dismissQuestBanners(page);
+async function saveShot(page, scenario, name, { dismissBanners = true } = {}) {
+  if (dismissBanners) await dismissQuestBanners(page);
   const message = page.locator("#message.show");
   if (await message.isVisible().catch(() => false)) {
     await message.waitFor({ state: "hidden", timeout: 3000 });
@@ -434,6 +434,58 @@ async function saveShot(page, scenario, name) {
   const stat = await fs.stat(filenamePath);
   assert.ok(stat.size > 1000, `${filename} is empty`);
   return { filename, path: filenamePath, bytes: stat.size };
+}
+
+async function assertNaturalSeparatedPresentation(page, label) {
+  const expectedLines = [
+    "무명의 합창의 결속이 풀렸습니다.",
+    "기억들은 아직 어느 곳에도 귀속되지 않았습니다.",
+    "이제 남겨진 기억의 운명을 결정해야 합니다.",
+  ];
+  const presentation = await page.evaluate(() => {
+    const box = selector => {
+      const element = document.querySelector(selector);
+      if (!element || element.hidden || getComputedStyle(element).display === "none") return null;
+      const rect = element.getBoundingClientRect();
+      return { selector, left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
+    };
+    const state = window.__sanctuarySmokeRead();
+    const width = innerWidth;
+    const height = innerHeight;
+    const panelWidth = Math.min(680, Math.max(320, width - 32));
+    const top = width <= 520
+      ? Math.min(Math.max(220, height * 0.29), Math.max(220, height - 262))
+      : Math.max(84, height * 0.16);
+    return {
+      width,
+      height,
+      message: state.chorus.render.message,
+      messagePanel: {
+        left: width / 2 - panelWidth / 2,
+        top,
+        right: width / 2 + panelWidth / 2,
+        bottom: top + 148,
+      },
+      questBanner: box(".quest-banner:not(.hidden)"),
+      chorusHud: box("#chorusHud"),
+      questTracker: box("#questTracker"),
+      playerPanel: box(".player-panel"),
+      hotbar: box(".hotbar"),
+    };
+  });
+  assert.deepEqual(presentation.message.split("\n"), expectedLines, `${label}: separated copy changed`);
+  assert.equal(presentation.questBanner, null,
+    `${label}: quest-complete banner naturally covers the separated message`);
+  assert.equal(presentation.chorusHud, null, `${label}: terminal Chorus HUD should be suppressed`);
+  assert.equal(presentation.questTracker, null, `${label}: terminal quest HUD should be suppressed`);
+  assert.equal(presentation.messagePanel.left >= 0 && presentation.messagePanel.top >= 0
+    && presentation.messagePanel.right <= presentation.width
+    && presentation.messagePanel.bottom <= presentation.height, true,
+  `${label}: all three separated lines must fit inside the viewport`);
+  for (const overlay of [presentation.playerPanel, presentation.hotbar].filter(Boolean)) {
+    assert.equal(rectanglesOverlap(overlay, presentation.messagePanel), false,
+      `${label}: ${overlay.selector} covers the separated message panel`);
+  }
 }
 
 async function enterSanctuaryWithRealMovement(page) {
@@ -709,8 +761,9 @@ async function separateChorus(page, scenario, screenshots) {
     createdAt: state.chorus.claims["local-player"].createdAt,
   });
   assert.equal(state.chorus.render.separatedFragments.length, 3);
-  await assertHudLayout(page, `${slugFor(scenario)} separated`);
-  screenshots.push(await saveShot(page, scenario, "chorus-separated"));
+  await assertNaturalSeparatedPresentation(page, `${slugFor(scenario)} separated`);
+  await assertHudLayout(page, `${slugFor(scenario)} separated`, { dismissBanners: false });
+  screenshots.push(await saveShot(page, scenario, "chorus-separated", { dismissBanners: false }));
 }
 
 async function finishThreeFutures(page) {

@@ -834,7 +834,6 @@ export class PixelRPG {
     if (!controller || controller.mode !== "online" || !controller.network) return controller;
     const applyLocally = controller.applyRequest.bind(controller);
     controller.applyRequest = (request, timestamp, authenticatedUid = controller.uid, context = {}) => {
-      const confirmedBefore = structuredClone(this.latestChorusSnapshot || controller.snapshot);
       const rollbackContext = {
         personalSnapshot: structuredClone(controller.personalSnapshot),
         completionClaims: structuredClone(controller.completionClaims),
@@ -848,18 +847,19 @@ export class PixelRPG {
       if (localAction && result?.ok) {
         const sequence = Number(String(request.id).split(":").at(-2));
         if (Number.isInteger(sequence) && sequence > 0) {
+          const queuedAction = { ...request, sequence };
           const appliedSnapshot = structuredClone(controller.snapshot);
-           Promise.resolve(controller.network.sendAction({ ...request, sequence }))
+           Promise.resolve(controller.network.sendAction(queuedAction))
               .then(sent => {
                 if (sent?.ok && sent.action) {
-                  this.publishChorusStateIfAuthority(sent.action, appliedSnapshot, { confirmedBefore, ...rollbackContext });
-                } else if (!this.isChorusActionConfirmed(request)) {
-                  this.reconcileRejectedChorusAction(confirmedBefore, rollbackContext);
+                  this.publishChorusStateIfAuthority(sent.action, appliedSnapshot, rollbackContext);
+                } else if (!this.isChorusActionConfirmed(queuedAction)) {
+                  this.reconcileRejectedChorusAction(rollbackContext);
                 }
               })
               .catch(error => {
-                if (this.isChorusActionConfirmed(request)) return;
-                this.reconcileRejectedChorusAction(confirmedBefore, rollbackContext);
+                if (this.isChorusActionConfirmed(queuedAction)) return;
+                this.reconcileRejectedChorusAction(rollbackContext);
                 this.reportBossCallbackError("무명의 합창 행동 전송 실패", error);
               });
         }
@@ -870,19 +870,36 @@ export class PixelRPG {
   }
 
   isChorusActionConfirmed(action) {
-    if (typeof action?.id !== "string") return false;
-    return [this.latestChorusSnapshot, this.network?.chorus?.latestState]
-      .some(snapshot => snapshot?.processedActionIds?.includes(action.id) === true);
+    if (typeof action?.id !== "string" || typeof action?.uid !== "string"
+      || !Number.isSafeInteger(action?.sequence) || action.sequence < 1) return false;
+    const receiptConfirmed = [this.latestChorusSnapshot, this.network?.chorus?.latestState]
+      .some(snapshot => snapshot?.processedActionId === action.id
+        && snapshot?.processedActionUid === action.uid
+        && snapshot?.processedActionSequence === action.sequence);
+    return receiptConfirmed
+      || Number(this.network?.chorus?.processedSequenceByUid?.[action.uid] || 0) >= action.sequence;
   }
 
-  reconcileRejectedChorusAction(
-    confirmedSnapshot = this.latestChorusSnapshot,
-    rollbackContext = {},
-    { notifyUser = true } = {},
-  ) {
+  newestConfirmedChorusSnapshot() {
+    const candidates = [this.latestChorusSnapshot, this.network?.chorus?.latestState]
+      .filter(snapshot => snapshot && typeof snapshot === "object");
+    if (candidates.length === 0) return null;
+    return structuredClone(candidates.reduce((newest, candidate) => {
+      const newestEpoch = Number(newest.authorityEpoch) || 0;
+      const candidateEpoch = Number(candidate.authorityEpoch) || 0;
+      if (candidateEpoch !== newestEpoch) return candidateEpoch > newestEpoch ? candidate : newest;
+      const newestRevision = Number(newest.combatRevision) || 0;
+      const candidateRevision = Number(candidate.combatRevision) || 0;
+      if (candidateRevision !== newestRevision) return candidateRevision > newestRevision ? candidate : newest;
+      return Number(candidate.updatedAt || 0) >= Number(newest.updatedAt || 0) ? candidate : newest;
+    }));
+  }
+
+  reconcileRejectedChorusAction(rollbackContext = {}, { notifyUser = true } = {}) {
     const controller = this.chorusController;
-    const confirmed = confirmedSnapshot || this.network?.chorus?.latestState || null;
+    const confirmed = this.newestConfirmedChorusSnapshot();
     if (!controller || !confirmed || !controller.receiveSnapshot?.(structuredClone(confirmed))) return false;
+    this.latestChorusSnapshot = structuredClone(confirmed);
     if (rollbackContext.personalSnapshot) controller.personalSnapshot = structuredClone(rollbackContext.personalSnapshot);
     if (rollbackContext.completionClaims) controller.completionClaims = structuredClone(rollbackContext.completionClaims);
     if (rollbackContext.pendingEvents) controller.pendingEvents = structuredClone(rollbackContext.pendingEvents);
@@ -910,21 +927,35 @@ export class PixelRPG {
   }
 
   receiveChorusSnapshot(snapshot) {
-    this.latestChorusSnapshot = snapshot ? structuredClone(snapshot) : null;
-    if (!this.chorusController || this.sessionMode !== "online") return false;
+    const incoming = snapshot ? structuredClone(snapshot) : null;
+    const previous = this.latestChorusSnapshot;
+    if (incoming && previous?.encounterId === incoming.encounterId) {
+      const previousEpoch = Number(previous.authorityEpoch) || 0;
+      const incomingEpoch = Number(incoming.authorityEpoch) || 0;
+      const previousRevision = Number(previous.combatRevision) || 0;
+      const incomingRevision = Number(incoming.combatRevision) || 0;
+      if (incomingEpoch < previousEpoch
+        || (incomingEpoch === previousEpoch && incomingRevision < previousRevision)) return false;
+    }
+    if (!this.chorusController || this.sessionMode !== "online") {
+      this.latestChorusSnapshot = incoming;
+      return false;
+    }
     const correctionLinked = this.progress?.worldProgress?.chapters?.sanctuary?.correctionLinked === true;
     this.chorusController.setMap?.(this.mapId, { correctionLinked: false });
-    if (snapshot) this.chorusController.receiveSnapshot?.(snapshot);
+    const accepted = incoming ? this.chorusController.receiveSnapshot?.(incoming) !== false : true;
     this.chorusController.setMap?.(this.mapId, { correctionLinked });
-    this.lastPublishedChorusSignature = snapshot ? JSON.stringify(snapshot) : null;
+    if (!accepted) return false;
+    this.latestChorusSnapshot = incoming;
+    this.lastPublishedChorusSignature = incoming ? JSON.stringify(incoming) : null;
     this.updateChorusHud(this.chorusController.renderModel?.(), Date.now());
-    if (snapshot?.authorityUid === this.network?.uid
+    if (incoming?.authorityUid === this.network?.uid
       && Object.keys(this.latestChorusActions || {}).length > 0) {
       Promise.resolve(this.receiveChorusActions(this.latestChorusActions)).catch(error => {
         this.reportBossCallbackError("관리자 이전 후 무명의 합창 행동 처리 실패", error);
       });
     }
-    if (snapshot && snapshot.status === "active" && Number(snapshot.leaseUntil) <= Date.now()
+    if (incoming && incoming.status === "active" && Number(incoming.leaseUntil) <= Date.now()
       && !this.chorusAuthorityAcquirePending) {
       this.chorusAuthorityAcquirePending = true;
       Promise.resolve(this.network?.chorus?.tryAcquireAuthority?.())
@@ -943,7 +974,6 @@ export class PixelRPG {
     const controller = this.chorusController;
     if (!network || !controller || controller.snapshot?.authorityUid !== this.network?.uid) return false;
     const actions = [];
-    const confirmedBefore = structuredClone(this.latestChorusSnapshot || controller.snapshot);
     for (const [requestUid, entries] of Object.entries(requests || {})) {
       for (const [sequence, request] of Object.entries(entries || {})) {
         if (!request || typeof request !== "object") continue;
@@ -979,7 +1009,7 @@ export class PixelRPG {
       this.lastPublishedChorusSignature = JSON.stringify(confirmedSnapshot);
     }
     if (!publishResult?.ok) {
-      this.reconcileRejectedChorusAction(confirmedBefore, {}, { notifyUser: false });
+      this.reconcileRejectedChorusAction({}, { notifyUser: false });
     }
     if (publishResult?.ok) await this.writeChorusCompletionClaimsIfAuthority();
     const confirmedSequences = publishResult?.processedSequenceByUid || network.processedSequenceByUid || {};
@@ -1013,16 +1043,16 @@ export class PixelRPG {
     const publishOptions = processedAction ? { processedAction } : undefined;
     Promise.resolve(network.publishState(snapshot, publishOptions)).then(result => {
       if (!result?.ok || !result.encounter) {
+        if (!processedAction) {
+          this.lastPublishedChorusSignature = null;
+          return;
+        }
         if (this.isChorusActionConfirmed(processedAction)) {
           this.lastPublishedChorusSignature = JSON.stringify(this.latestChorusSnapshot);
           return;
         }
         this.lastPublishedChorusSignature = null;
-        this.reconcileRejectedChorusAction(
-          rollbackContext.confirmedBefore,
-          rollbackContext,
-          { notifyUser: Boolean(processedAction) },
-        );
+        this.reconcileRejectedChorusAction(rollbackContext, { notifyUser: true });
         return;
       }
       this.latestChorusSnapshot = structuredClone(result.encounter);
@@ -1037,16 +1067,17 @@ export class PixelRPG {
         });
       }
     }).catch(error => {
+      if (!processedAction) {
+        this.lastPublishedChorusSignature = null;
+        this.reportBossCallbackError("무명의 합창 상태 전송 실패", error);
+        return;
+      }
       if (this.isChorusActionConfirmed(processedAction)) {
         this.lastPublishedChorusSignature = JSON.stringify(this.latestChorusSnapshot);
         return;
       }
       this.lastPublishedChorusSignature = null;
-      this.reconcileRejectedChorusAction(
-        rollbackContext.confirmedBefore,
-        rollbackContext,
-        { notifyUser: Boolean(processedAction) },
-      );
+      this.reconcileRejectedChorusAction(rollbackContext, { notifyUser: true });
       this.reportBossCallbackError("무명의 합창 상태 전송 실패", error);
     });
     return true;
@@ -2451,7 +2482,11 @@ export class PixelRPG {
   publishPersistedProgress(progress, notifications = []) {
     this.progress = progress;
     this.savedQuestProgress = structuredClone(progress);
-    this.questBanner?.enqueue(notifications);
+    if (this.chorusController?.snapshot?.status === "separated") {
+      this.questBanner?.reset();
+    } else {
+      this.questBanner?.enqueue(notifications);
+    }
     return true;
   }
 

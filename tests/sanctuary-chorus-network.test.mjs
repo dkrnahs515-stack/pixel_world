@@ -231,7 +231,11 @@ test("only the active authority publishes state and removes applied actions", as
   assert.equal(fake.updates.at(-1).value["state/hp"], 90);
   assert.equal(fake.updates.at(-1).value["state/stabilizedAnchorIds/forest"], true);
   assert.equal(fake.updates.at(-1).value["state/combatRevision"], 1);
+  assert.equal(fake.updates.at(-1).value["state/processedActionId"], action.id);
   assert.equal(fake.updates.at(-1).value["processedSequences/b"], 8);
+  assert.equal(published.encounter.processedActionId, action.id);
+  assert.equal(published.encounter.processedActionUid, "b");
+  assert.equal(published.encounter.processedActionSequence, 8);
   assert.equal(fake.transactions.some(value => value.path === `${BASE_PATH}/state`), false);
   assert.equal((await a.acknowledgeAction("b", 7)).ok, true);
   assert.equal(fake.removes.includes(`${BASE_PATH}/actions/b/8`), true);
@@ -297,7 +301,7 @@ test("a late non-contributor starts a fresh encounter after reformAt without inh
     phase: "separated",
     hp: 0,
     separatedAt: 2_000,
-    reformAt: 9_000,
+    reformAt: 32_000,
     leaseUntil: 8_000,
     combatRevision: 13,
     contributors: { veteran: { firstContributedAt: 1_100, lastContributedAt: 2_000, actionTypes: ["bond-cut"] } },
@@ -309,7 +313,7 @@ test("a late non-contributor starts a fresh encounter after reformAt without inh
     [`${BASE_PATH}/completionClaims/e1/veteran`]: oldClaim,
     [`${BASE_PATH}/actions/veteran/8`]: { encounterId: "e1", uid: "veteran", sequence: 8 },
   });
-  const late = createChorusNetwork(networkOptions(fake, "late", 10_000));
+  const late = createChorusNetwork(networkOptions(fake, "late", 32_000));
   await late.setMap("sanctuary-return-record");
   const next = await late.ensureEncounter();
 
@@ -322,6 +326,58 @@ test("a late non-contributor starts a fresh encounter after reformAt without inh
   assert.equal(fake.removes.includes(`${BASE_PATH}/state`), false);
   assert.equal(fake.transactions.filter(value => value.path === `${BASE_PATH}/state`).length, 1);
   assert.deepEqual(late.processedSequenceByUid, { veteran: 8 });
+});
+
+test("a continuously connected terminal authority stops renewal and reforms at the canonical deadline", async () => {
+  let clock = 10_000;
+  const jobs = [];
+  const timers = {
+    set(callback, delay) {
+      const job = { callback, delay, cancelled: false };
+      jobs.push(job);
+      return job;
+    },
+    clear(job) {
+      if (job) job.cancelled = true;
+    },
+  };
+  const terminal = normalizeChorusEncounter({
+    ...activeEncounter("veteran", clock),
+    stabilizedAnchorIds: [...ANCHOR_IDS],
+    resolvedTestimonyIds: CHORUS_TESTIMONIES.map(value => value.id),
+    severedBondIds: [...BOND_IDS],
+    status: "separated",
+    phase: "separated",
+    hp: 0,
+    separatedAt: clock,
+    reformAt: clock + 30_000,
+    leaseUntil: clock + 5_000,
+    combatRevision: 13,
+    contributors: { veteran: { firstContributedAt: 1_100, lastContributedAt: clock, actionTypes: ["bond-cut"] } },
+  });
+  const fake = firebaseModulesFake({ [`${BASE_PATH}/state`]: terminal });
+  const received = [];
+  const network = createChorusNetwork({
+    ...networkOptions(fake, "veteran", clock, { onStateChanged: state => received.push(state) }),
+    now: () => clock,
+    timers,
+  });
+  await network.setMap("sanctuary-return-record");
+  fake.emit(`${BASE_PATH}/state`, terminal);
+
+  const liveJob = jobs.find(job => !job.cancelled);
+  assert.equal(liveJob.delay, 30_000);
+  assert.equal(jobs.some(job => !job.cancelled && job.delay < 30_000), false);
+  clock = terminal.reformAt;
+  await liveJob.callback();
+
+  const fresh = network.latestState;
+  assert.equal(fresh.encounterId, `sanctuary-chorus-${terminal.reformAt}-r3`);
+  assert.equal(fresh.status, "active");
+  assert.deepEqual(fresh.contributors, {});
+  assert.equal(received.at(-1).encounterId, fresh.encounterId);
+  assert.equal(fake.transactions.filter(value => value.path === `${BASE_PATH}/state`).length, 1);
+  await network.stop();
 });
 
 test("invalid encounter keys never become completion claim paths", async () => {
@@ -705,6 +761,7 @@ test("sequence watermarks bound replay history and filter lower late actions", a
       "state/combatRevision": 1,
       "state/updatedAt": 10_000,
       "state/processedSequenceByUid/player": 900,
+      "state/processedActionId": "player-session:2:900:fragment-strike",
       "state/processedActionUid": "player",
       "state/processedActionSequence": 900,
       "processedSequences/player": 900,

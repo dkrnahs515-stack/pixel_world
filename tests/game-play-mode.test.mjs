@@ -2,7 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { PixelRPG } from "../src/game-20260903-volcano-20260905-upgrade.js";
 import { PixelRPG as SanctuaryPixelRPG } from "../src/game-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
-import { createChorusEncounter } from "../src/sanctuary-chorus-state-20260911-sanctuary.js";
+import {
+  createChorusEncounter,
+  normalizeChorusEncounter,
+} from "../src/sanctuary-chorus-state-20260911-sanctuary.js";
 
 function node() {
   return { hidden: false, textContent: "", className: "", style: {}, classList: { add() {}, remove() {} } };
@@ -183,6 +186,27 @@ test("online Chorus controller receives the dedicated network transport and auth
   assert.equal(controller.seedSnapshot, null);
 });
 
+test("a naturally separated Chorus suppresses the transient quest banner without losing persisted progress", () => {
+  const game = Object.create(SanctuaryPixelRPG.prototype);
+  const bannerCalls = [];
+  const progress = {
+    worldProgress: { chapters: { sanctuary: { chorusSeparated: true } } },
+    questNotificationIds: ["sanctuary-separate-chorus"],
+  };
+  game.chorusController = { snapshot: { status: "separated", phase: "separated" } };
+  game.questBanner = {
+    reset: () => bannerCalls.push("reset"),
+    enqueue: notifications => bannerCalls.push(["enqueue", notifications]),
+  };
+
+  assert.equal(game.publishPersistedProgress(progress, [{ id: "sanctuary-separate-chorus" }]), true);
+
+  assert.equal(game.progress, progress);
+  assert.deepEqual(game.savedQuestProgress, progress);
+  assert.notEqual(game.savedQuestProgress, progress);
+  assert.deepEqual(bannerCalls, ["reset"]);
+});
+
 test("connection fallback seeds the local Chorus from the latest shared snapshot before clearing online state", async () => {
   const game = Object.create(SanctuaryPixelRPG.prototype);
   const latest = {
@@ -246,9 +270,11 @@ test("authority rolls an applied queued action back when publishing the resultin
   const state = createChorusEncounter({ encounterId: "shared-e1", authorityUid: "host", now: 1_000 });
   const acknowledgements = [];
   game.sessionMode = "online";
+  game.latestChorusSnapshot = structuredClone(state);
   game.network = {
     uid: "host",
     chorus: {
+      latestState: structuredClone(state),
       publishState: async () => ({ ok: false, reason: "authority_changed" }),
       acknowledgeAction: async (...args) => { acknowledgements.push(args); return { ok: true }; },
     },
@@ -473,6 +499,59 @@ test("a rejected local Chorus action restores confirmed hp and anchor state with
   assert.match(notices.at(-1), /다시 시도/);
 });
 
+test("a rejected local Chorus action rolls back to a newer Firebase snapshot received while send is pending", async () => {
+  const game = Object.create(SanctuaryPixelRPG.prototype);
+  const confirmed = createChorusEncounter({ encounterId: "shared-e1", authorityUid: "host", now: 1_000 });
+  const notices = [];
+  let resolveSend;
+  game.sessionMode = "online";
+  game.mapId = "sanctuary-return-record";
+  game.progress = { worldProgress: { chapters: { sanctuary: { correctionLinked: true } } } };
+  game.latestChorusActions = {};
+  game.latestChorusSnapshot = structuredClone(confirmed);
+  game.updateChorusHud = () => {};
+  game.notify = message => notices.push(message);
+  game.reportBossCallbackError = () => {};
+  const chorusNetwork = {
+    latestState: structuredClone(confirmed),
+    sendAction: () => new Promise(resolve => { resolveSend = resolve; }),
+    publishState: async () => { throw new Error("must not publish rejected action"); },
+  };
+  game.network = { uid: "host", chorus: chorusNetwork };
+  game.chorusController = game.createChorusControllerForMode("online");
+  game.wireOnlineChorusController(game.chorusController);
+  game.chorusController.receiveSnapshot(confirmed);
+  game.chorusController.setMap("sanctuary-return-record", { correctionLinked: true });
+
+  const request = {
+    id: "host-session:1:1:anchor-stabilize", encounterId: confirmed.encounterId,
+    authorityEpoch: 1, phase: "anchors", uid: "host", type: "anchor-stabilize",
+    fragmentId: "forest", anchorId: "forest", createdAt: 1_100,
+  };
+  assert.equal(game.chorusController.applyRequest(request, 1_100).ok, true);
+  const newer = normalizeChorusEncounter({
+    ...confirmed,
+    stabilizedAnchorIds: ["coast"],
+    hp: 90,
+    combatRevision: 1,
+    updatedAt: 1_150,
+    contributors: {
+      remote: { firstContributedAt: 1_150, lastContributedAt: 1_150, actionTypes: ["anchor-stabilize"] },
+    },
+    processedActionId: "remote:1:4:anchor-stabilize",
+    processedActionUid: "remote",
+    processedActionSequence: 4,
+  });
+  chorusNetwork.latestState = structuredClone(newer);
+  assert.equal(game.receiveChorusSnapshot(newer), true);
+  resolveSend({ ok: false, reason: "permission_denied" });
+  await new Promise(resolve => setImmediate(resolve));
+
+  assert.deepEqual(game.chorusController.snapshot.stabilizedAnchorIds, ["coast"]);
+  assert.equal(game.chorusController.snapshot.combatRevision, 1);
+  assert.match(notices.at(-1), /다시 시도/);
+});
+
 test("a rejected send promise restores the confirmed state without changing solo reducer semantics", async () => {
   const game = Object.create(SanctuaryPixelRPG.prototype);
   const confirmed = createChorusEncounter({ encounterId: "shared-e1", authorityUid: "host", now: 1_000 });
@@ -586,7 +665,13 @@ test("a transport-confirmed local Chorus action never rolls personal state back 
   game.chorusController.personalSnapshot.carriedFragmentId = null;
   resolveSend({ ok: true, action: { ...request, sequence: 1 } });
   await new Promise(resolve => setImmediate(resolve));
-  chorusNetwork.latestState = structuredClone(optimistic.snapshot);
+  chorusNetwork.latestState = {
+    ...structuredClone(optimistic.snapshot),
+    processedActionIds: [],
+    processedActionId: request.id,
+    processedActionUid: request.uid,
+    processedActionSequence: 1,
+  };
   resolvePublish({ ok: false, reason: "already_processed" });
   await new Promise(resolve => setImmediate(resolve));
 

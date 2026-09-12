@@ -125,12 +125,25 @@ test("a separated encounter reforms deterministically only after reformAt with n
   assert.equal(createReformedChorusEncounter(terminal, { uid: "late", now: terminal.reformAt - 1 }), null);
   const first = createReformedChorusEncounter(terminal, { uid: "late", now: terminal.reformAt });
   const retry = createReformedChorusEncounter(terminal, { uid: "late", now: terminal.reformAt });
+  const contender = createReformedChorusEncounter(terminal, { uid: "other", now: terminal.reformAt });
   assert.deepEqual(first, retry);
+  assert.equal(first.encounterId, contender.encounterId);
+  assert.equal(first.encounterId, `sanctuary-chorus-${terminal.reformAt}-r${terminal.authorityEpoch + 1}`);
   assert.notEqual(first.encounterId, terminal.encounterId);
   assert.equal(first.status, "active");
   assert.equal(first.hp, 100);
   assert.deepEqual(first.contributors, {});
   assert.equal(first.authorityEpoch, terminal.authorityEpoch + 1);
+  assert.equal(renewChorusAuthority(terminal, {
+    uid: terminal.authorityUid,
+    authorityEpoch: terminal.authorityEpoch,
+    now: terminal.separatedAt + 1,
+  }).reason, "terminal_state");
+
+  const missing = normalizeChorusEncounter({ ...terminal, reformAt: null });
+  const far = normalizeChorusEncounter({ ...terminal, reformAt: terminal.reformAt + 99_999 });
+  assert.equal(missing.reformAt, missing.separatedAt + CHORUS_REFORM_DELAY_MS);
+  assert.equal(far.reformAt, far.separatedAt + CHORUS_REFORM_DELAY_MS);
 });
 
 test("wrong personal actions cannot mutate shared encounter", () => {
