@@ -559,7 +559,7 @@ export class PixelRPG {
       ? storedEndingChoice
       : null;
     this.savedQuestProgress = null;
-    this.questBanner ||= new QuestBanner(document.body);
+    this.questBanner ||= new QuestBanner(this.ui?.endingOverlay?.parentElement || document.body);
     this.questBanner.reset();
     this.configureClassSession(classId);
     this.ui.playerName.textContent = this.player.name;
