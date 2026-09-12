@@ -338,7 +338,12 @@ kbd { min-width: 23px; padding: 2px 5px; border: 1px solid rgba(255,255,255,.35)
   .play-mode-grid { grid-template-columns: 1fr; }
   .player-panel { width: calc(100% - 28px); }
   .chorus-hud { top: var(--player-panel-stack-top); right: 14px; bottom: auto; left: 14px; width: auto; padding: 8px 10px; }
-  .hud:has(.chorus-hud:not([hidden])) .quest-tracker { top: calc(var(--player-panel-stack-top) + 124px); }
+  .hud:has(.chorus-hud:not([hidden])) .quest-tracker { top: calc(var(--player-panel-stack-top) + 114px); }
+  .quest-tracker { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 7px; padding: 6px 9px; }
+  .quest-tracker small, .quest-tracker #questProgress { display: none; }
+  .quest-tracker strong { margin: 0; font-size: 11px; white-space: nowrap; }
+  .quest-tracker .chapter-objective { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+  .communication-log-button { width: auto; margin: 0; padding: 5px 7px; font-size: 9px; white-space: nowrap; }
   .performance-panel { display: none; }
   .npc-prompt { bottom: calc(266px + env(safe-area-inset-bottom)); max-width: calc(100% - 28px); white-space: nowrap; }
   .player-header strong { max-width: 130px; }
