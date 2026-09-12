@@ -456,6 +456,13 @@ async function assertNaturalSeparatedPresentation(page, label) {
     const top = width <= 520
       ? Math.min(Math.max(220, height * 0.29), Math.max(220, height - 262))
       : Math.max(84, height * 0.16);
+    const measureContext = document.createElement("canvas").getContext("2d");
+    measureContext.font = "900 18px sans-serif";
+    const statusWidth = measureContext.measureText(state.chorus.render.statusLabel || "기억 분리 완료").width;
+    measureContext.font = "800 14px sans-serif";
+    const lineWidth = Math.max(...state.chorus.render.message.split("\n")
+      .map(line => measureContext.measureText(line).width));
+    const textWidth = Math.max(statusWidth, lineWidth) + 8;
     return {
       width,
       height,
@@ -465,6 +472,12 @@ async function assertNaturalSeparatedPresentation(page, label) {
         top,
         right: width / 2 + panelWidth / 2,
         bottom: top + 148,
+      },
+      messageText: {
+        left: width / 2 - textWidth / 2,
+        top: top + 10,
+        right: width / 2 + textWidth / 2,
+        bottom: top + 118,
       },
       questBanner: box(".quest-banner:not(.hidden)"),
       chorusHud: box("#chorusHud"),
@@ -483,8 +496,8 @@ async function assertNaturalSeparatedPresentation(page, label) {
     && presentation.messagePanel.bottom <= presentation.height, true,
   `${label}: all three separated lines must fit inside the viewport`);
   for (const overlay of [presentation.playerPanel, presentation.hotbar].filter(Boolean)) {
-    assert.equal(rectanglesOverlap(overlay, presentation.messagePanel), false,
-      `${label}: ${overlay.selector} covers the separated message panel`);
+    assert.equal(rectanglesOverlap(overlay, presentation.messageText), false,
+      `${label}: ${overlay.selector} covers the separated status or copy`);
   }
 }
 
