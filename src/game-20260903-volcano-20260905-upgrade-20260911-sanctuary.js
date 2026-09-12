@@ -834,6 +834,13 @@ export class PixelRPG {
     if (!controller || controller.mode !== "online" || !controller.network) return controller;
     const applyLocally = controller.applyRequest.bind(controller);
     controller.applyRequest = (request, timestamp, authenticatedUid = controller.uid, context = {}) => {
+      const confirmedBefore = structuredClone(this.latestChorusSnapshot || controller.snapshot);
+      const rollbackContext = {
+        personalSnapshot: structuredClone(controller.personalSnapshot),
+        completionClaims: structuredClone(controller.completionClaims),
+        pendingEvents: structuredClone(controller.pendingEvents),
+        lastAttackPresentation: structuredClone(controller.lastAttackPresentation),
+      };
       const result = applyLocally(request, timestamp, authenticatedUid, context);
       const localAction = !controller.receivingNetworkActions
         && request?.uid === controller.uid
@@ -842,18 +849,43 @@ export class PixelRPG {
         const sequence = Number(String(request.id).split(":").at(-2));
         if (Number.isInteger(sequence) && sequence > 0) {
           const appliedSnapshot = structuredClone(controller.snapshot);
-          Promise.resolve(controller.network.sendAction({ ...request, sequence }))
-            .then(sent => {
-              if (sent?.ok && sent.action) this.publishChorusStateIfAuthority(sent.action, appliedSnapshot);
-            })
-            .catch(error => {
-              this.reportBossCallbackError("무명의 합창 행동 전송 실패", error);
-            });
+           Promise.resolve(controller.network.sendAction({ ...request, sequence }))
+             .then(sent => {
+               if (sent?.ok && sent.action) {
+                 this.publishChorusStateIfAuthority(sent.action, appliedSnapshot, { confirmedBefore, ...rollbackContext });
+               } else {
+                 this.reconcileRejectedChorusAction(confirmedBefore, rollbackContext);
+               }
+             })
+             .catch(error => {
+               this.reconcileRejectedChorusAction(confirmedBefore, rollbackContext);
+               this.reportBossCallbackError("무명의 합창 행동 전송 실패", error);
+             });
         }
       }
       return result;
     };
     return controller;
+  }
+
+  reconcileRejectedChorusAction(confirmedSnapshot = this.latestChorusSnapshot, rollbackContext = {}) {
+    const controller = this.chorusController;
+    const confirmed = confirmedSnapshot || this.network?.chorus?.latestState || null;
+    if (!controller || !confirmed || !controller.receiveSnapshot?.(structuredClone(confirmed))) return false;
+    if (rollbackContext.personalSnapshot) controller.personalSnapshot = structuredClone(rollbackContext.personalSnapshot);
+    if (rollbackContext.completionClaims) controller.completionClaims = structuredClone(rollbackContext.completionClaims);
+    if (rollbackContext.pendingEvents) controller.pendingEvents = structuredClone(rollbackContext.pendingEvents);
+    if (Object.hasOwn(rollbackContext, "lastAttackPresentation")) {
+      controller.lastAttackPresentation = structuredClone(rollbackContext.lastAttackPresentation);
+    }
+    this.lastPublishedChorusSignature = this.latestChorusSnapshot
+      ? JSON.stringify(this.latestChorusSnapshot)
+      : null;
+    this.updateChorusHud?.(controller.renderModel?.(), Date.now());
+    if (this.ui?.message || Object.hasOwn(this, "notify")) {
+      this.notify?.("온라인 동기화가 거절되었습니다. 잠시 후 다시 시도해 주세요.");
+    }
+    return true;
   }
 
   async replaceChorusControllerForMode(mode = this.sessionMode, options = {}) {
@@ -900,6 +932,7 @@ export class PixelRPG {
     const controller = this.chorusController;
     if (!network || !controller || controller.snapshot?.authorityUid !== this.network?.uid) return false;
     const actions = [];
+    const confirmedBefore = structuredClone(this.latestChorusSnapshot || controller.snapshot);
     for (const [requestUid, entries] of Object.entries(requests || {})) {
       for (const [sequence, request] of Object.entries(entries || {})) {
         if (!request || typeof request !== "object") continue;
@@ -934,6 +967,7 @@ export class PixelRPG {
       this.latestChorusSnapshot = confirmedSnapshot;
       this.lastPublishedChorusSignature = JSON.stringify(confirmedSnapshot);
     }
+    if (!publishResult?.ok) this.reconcileRejectedChorusAction(confirmedBefore);
     if (publishResult?.ok) await this.writeChorusCompletionClaimsIfAuthority();
     const confirmedSequences = publishResult?.processedSequenceByUid || network.processedSequenceByUid || {};
     await Promise.all(actions.map(action => (
@@ -955,7 +989,7 @@ export class PixelRPG {
     return result?.ok === true;
   }
 
-  publishChorusStateIfAuthority(processedAction = null, snapshotOverride = null) {
+  publishChorusStateIfAuthority(processedAction = null, snapshotOverride = null, rollbackContext = {}) {
     const snapshot = snapshotOverride || this.chorusController?.snapshot;
     const network = this.network?.chorus;
     if (this.sessionMode !== "online" || !snapshot || !network
@@ -967,6 +1001,7 @@ export class PixelRPG {
     Promise.resolve(network.publishState(snapshot, publishOptions)).then(result => {
       if (!result?.ok || !result.encounter) {
         this.lastPublishedChorusSignature = null;
+        this.reconcileRejectedChorusAction(rollbackContext.confirmedBefore, rollbackContext);
         return;
       }
       this.latestChorusSnapshot = structuredClone(result.encounter);
@@ -982,6 +1017,7 @@ export class PixelRPG {
       }
     }).catch(error => {
       this.lastPublishedChorusSignature = null;
+      this.reconcileRejectedChorusAction(rollbackContext.confirmedBefore, rollbackContext);
       this.reportBossCallbackError("무명의 합창 상태 전송 실패", error);
     });
     return true;

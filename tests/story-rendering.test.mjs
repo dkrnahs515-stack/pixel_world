@@ -178,6 +178,22 @@ test("separated chorus overlay shows the exact nonlethal completion copy", () =>
   assert.equal(context.calls.some(call => ["죽음", "폭발", "시체"].some(word => call.text?.includes(word))), false);
 });
 
+test("390x844 separated copy stays below the player HUD and above the mobile hotbar", () => {
+  const context = commandContext();
+  context.canvas = { width: 390, height: 844 };
+  const message = "무명의 합창의 결속이 풀렸습니다.\n기억들은 아직 어느 곳에도 귀속되지 않았습니다.\n이제 남겨진 기억의 운명을 결정해야 합니다.";
+  drawSanctuaryOverlays(context, {
+    active: true, separated: true, statusLabel: "기억 분리 완료", message,
+    anchors: [], bonds: [], fragments: [], separatedFragments: [],
+  }, {}, { layer: "foreground", viewWidth: 390, viewHeight: 844 });
+
+  const panel = context.calls.find(call => call.type === "fillRect" && call.width === 358);
+  assert.ok(panel, "the responsive completion panel should use the 16px mobile gutters");
+  assert.ok(panel.y >= 220, "the panel must start below the player HUD stack");
+  assert.ok(panel.y + panel.height <= 730, "the panel must end above the mobile hotbar");
+  assert.deepEqual(context.calls.filter(call => call.type === "fillText").slice(-3).map(call => call.text), message.split("\n"));
+});
+
 test("chorus HUD exposes separate cohesion and personal contamination gauges", () => {
   const element = () => ({ textContent: "", hidden: false, style: {} });
   const elements = {
@@ -188,6 +204,7 @@ test("chorus HUD exposes separate cohesion and personal contamination gauges", (
     chorusContaminationText: element(),
     chorusContaminationBar: element(),
     chorusPhaseText: element(),
+    questTracker: element(),
   };
 
   assert.equal(updateChorusHud(elements, { hp: 70, maxHp: 100, phase: "testimonies" }, {
@@ -202,8 +219,15 @@ test("chorus HUD exposes separate cohesion and personal contamination gauges", (
   assert.equal(elements.chorusContaminationBar.style.transform, "scaleX(0.35)");
   assert.match(elements.chorusPhaseText.textContent, /증언/);
 
+  updateChorusHud(elements, { hp: 0, maxHp: 100, phase: "separated", status: "separated" }, {
+    contamination: 35,
+  }, 1000);
+  assert.equal(elements.chorusHud.hidden, true);
+  assert.equal(elements.questTracker.hidden, true);
+
   updateChorusHud(elements, null, null, 1000);
   assert.equal(elements.chorusHud.hidden, true);
+  assert.equal(elements.questTracker.hidden, false);
 });
 
 test("sanctuary memory signals render as face-free archive silhouettes", () => {

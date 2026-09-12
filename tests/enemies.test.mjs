@@ -29,7 +29,9 @@ test("memory noise exists only during the local contradiction defense window", (
   progress = progressSanctuary(progress, { type: "submit-memory-sequence", sequence: MEMORY_SOUND_IDS }).progress;
   assert.deepEqual(createEnemies("sanctuary-memory-archive", progress), []);
 
-  progress = progressSanctuary(progress, { type: "reveal-truth" }).progress;
+  for (const interactionId of ["truth-resonance-time", "truth-first-archivist-log", "truth-core-self-division"]) {
+    progress = progressSanctuary(progress, { type: "examine-truth-record", interactionId }).progress;
+  }
   const defense = createEnemies("sanctuary-memory-archive", progress);
   assert.equal(defense.length, 3);
   assert.ok(defense.every(value => value.kind === "memory-noise" && value.localOnly === true));

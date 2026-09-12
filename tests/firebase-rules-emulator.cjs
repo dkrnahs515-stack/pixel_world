@@ -151,6 +151,7 @@ function separatedChorusState(overrides = {}) {
       },
     },
     separatedAt: timestamp,
+    reformAt: timestamp + 30_000,
     ...overrides,
   });
 }
@@ -226,6 +227,56 @@ async function seedChorus(environment, state, { sequence = null, playerMapId = "
       },
     });
   });
+}
+
+async function publishBoundChorusAction({
+  playerDb,
+  hostDb,
+  sequence,
+  revision,
+  phase,
+  type,
+  fields,
+  stateChanges,
+  firstContribution = false,
+  newActionType = false,
+}) {
+  await assertSucceeds(runTransaction(
+    ref(playerDb, `${chorusPath}/actionSequences/player`),
+    current => (current || 0) + 1,
+  ));
+  const action = chorusAction("player", sequence, {
+    id: `player:1:${sequence}:${type}`,
+    phase,
+    type,
+    ...fields,
+  });
+  await assertSucceeds(set(ref(playerDb, `${chorusPath}/actions/player/${sequence}`), action));
+  await assertSucceeds(update(ref(hostDb, chorusPath), {
+    ...Object.fromEntries(Object.entries(stateChanges).map(([path, value]) => [`state/${path}`, value])),
+    "state/combatRevision": revision,
+    "state/updatedAt": action.createdAt,
+    ...(firstContribution ? {
+      "state/contributors/player/firstContributedAt": action.createdAt,
+    } : {}),
+    "state/contributors/player/lastContributedAt": action.createdAt,
+    ...(newActionType ? { [`state/contributors/player/actionTypes/${type}`]: true } : {}),
+    "state/processedSequenceByUid/player": sequence,
+    "state/processedActionUid": "player",
+    "state/processedActionSequence": sequence,
+    "processedSequences/player": sequence,
+  }));
+  await assertSucceeds(remove(ref(hostDb, `${chorusPath}/actions/player/${sequence}`)));
+  return action;
+}
+
+async function assertSucceedsAt(label, promise) {
+  try {
+    await assertSucceeds(promise);
+  } catch (error) {
+    error.message = `${label}: ${error.message}`;
+    throw error;
+  }
 }
 
 function encounter({ authorityUid = "host", authorityEpoch = 1, leaseUntil = Date.now() + 6_000 } = {}) {
@@ -487,7 +538,7 @@ test("Realtime Database 규칙은 sanctuary chorus 공유 경계와 canonical cl
 
     await assertFails(update(ref(guestDb, chorusStatePath), wireChorusEncounter(chorusEncounter())));
     const initial = chorusEncounter();
-    await assertSucceeds(update(ref(hostDb, chorusStatePath), wireChorusEncounter(initial)));
+    await assertSucceedsAt("initial-state", update(ref(hostDb, chorusStatePath), wireChorusEncounter(initial)));
     await assertSucceeds(get(ref(playerDb, chorusPath)));
     await assertFails(set(ref(otherDb, chorusStatePath), { ...initial, updatedAt: Date.now() }));
     await assertFails(update(ref(hostDb, chorusStatePath), {
@@ -524,7 +575,7 @@ test("Realtime Database 규칙은 sanctuary chorus 공유 경계와 canonical cl
       },
       updatedAt: Date.now(),
     };
-    await assertSucceeds(update(ref(hostDb, chorusStatePath), {
+    await assertFails(update(ref(hostDb, chorusStatePath), {
       "stabilizedAnchorIds/forest": true,
       hp: oneAnchor.hp,
       combatRevision: oneAnchor.combatRevision,
@@ -532,6 +583,13 @@ test("Realtime Database 규칙은 sanctuary chorus 공유 경계와 canonical cl
       "contributors/player/lastContributedAt": oneAnchor.contributors.player.lastContributedAt,
       "contributors/player/actionTypes/anchor-stabilize": true,
       updatedAt: oneAnchor.updatedAt,
+    }));
+    await assertFails(update(ref(hostDb, chorusStatePath), {
+      combatRevision: 1,
+      "contributors/player/firstContributedAt": Date.now(),
+      "contributors/player/lastContributedAt": Date.now(),
+      "contributors/player/actionTypes/anchor-stabilize": true,
+      updatedAt: Date.now(),
     }));
 
     const expiredState = chorusEncounter({ leaseUntil: Date.now() - 100 });
@@ -572,7 +630,7 @@ test("Realtime Database 규칙은 sanctuary chorus 공유 경계와 canonical cl
       leaseUntil: Date.now() + 4_000,
       updatedAt: Date.now(),
     }));
-    await assertSucceeds(update(ref(otherDb, chorusStatePath), {
+    await assertSucceedsAt("valid-takeover", update(ref(otherDb, chorusStatePath), {
       authorityUid: validTakeover.authorityUid,
       authorityEpoch: validTakeover.authorityEpoch,
       leaseUntil: validTakeover.leaseUntil,
@@ -580,7 +638,7 @@ test("Realtime Database 규칙은 sanctuary chorus 공유 경계와 canonical cl
     }));
 
     await environment.withSecurityRulesDisabled(async context => {
-      await set(ref(context.database(), chorusStatePath), chorusEncounter({ leaseUntil: Date.now() + 30_000 }));
+      await set(ref(context.database(), chorusStatePath), chorusEncounter({ leaseUntil: Date.now() + 6_000 }));
       await set(ref(context.database(), "rooms/public/players/player"), player({ mapId: "sanctuary-return-record" }));
     });
     await assertSucceeds(runTransaction(ref(playerDb, `${chorusPath}/actionSequences/player`), current => (current || 0) + 1));
@@ -588,7 +646,7 @@ test("Realtime Database 규칙은 sanctuary chorus 공유 경계와 canonical cl
     await assertFails(set(ref(playerDb, `${chorusPath}/actionSequences/player`), 0));
     await assertFails(set(ref(playerDb, `${chorusPath}/actionSequences/player`), 3));
 
-    await assertSucceeds(set(ref(playerDb, `${chorusPath}/actions/player/1`), chorusAction("player", 1)));
+    await assertSucceedsAt("initial-fragment-action", set(ref(playerDb, `${chorusPath}/actions/player/1`), chorusAction("player", 1)));
     await assertFails(set(ref(playerDb, `${chorusPath}/actions/other/1`), chorusAction("other", 1)));
     await assertFails(set(ref(playerDb, `${chorusPath}/actions/player/2`), chorusAction("player", 2)));
     await assertFails(set(ref(playerDb, `${chorusPath}/actions/player/1`), chorusAction("player", 1, { id: "overwrite" })));
@@ -607,13 +665,38 @@ test("Realtime Database 규칙은 sanctuary chorus 공유 경계와 canonical cl
       testimonyId: "core-self-division-original",
       verdict: "fact",
     })));
-    await assertSucceeds(set(ref(playerDb, `${chorusPath}/actions/player/2`), chorusAction("player", 2, {
-      type: "anchor-stabilize", anchorId: "forest",
-    })));
-    await assertFails(remove(ref(hostDb, `${chorusPath}/actions/player/2`)));
-    await environment.withSecurityRulesDisabled(async context => {
-      await remove(ref(context.database(), `${chorusPath}/actions/player/2`));
+    const queuedAnchor = chorusAction("player", 2, {
+      id: "player:1:2:anchor-stabilize", type: "anchor-stabilize", anchorId: "forest",
     });
+    await assertSucceedsAt("queued-anchor", set(ref(playerDb, `${chorusPath}/actions/player/2`), queuedAnchor));
+    await assertFails(remove(ref(hostDb, `${chorusPath}/actions/player/2`)));
+    await assertFails(update(ref(hostDb, chorusPath), {
+      "state/stabilizedAnchorIds/coast": true,
+      "state/hp": 90,
+      "state/combatRevision": 1,
+      "state/contributors/player/firstContributedAt": queuedAnchor.createdAt,
+      "state/contributors/player/lastContributedAt": queuedAnchor.createdAt,
+      "state/contributors/player/actionTypes/anchor-stabilize": true,
+      "state/processedSequenceByUid/player": 2,
+      "state/processedActionUid": "player",
+      "state/processedActionSequence": 2,
+      "state/updatedAt": queuedAnchor.createdAt,
+      "processedSequences/player": 2,
+    }));
+    await assertSucceedsAt("canonical-anchor-publish", update(ref(hostDb, chorusPath), {
+      "state/stabilizedAnchorIds/forest": true,
+      "state/hp": 90,
+      "state/combatRevision": 1,
+      "state/contributors/player/firstContributedAt": queuedAnchor.createdAt,
+      "state/contributors/player/lastContributedAt": queuedAnchor.createdAt,
+      "state/contributors/player/actionTypes/anchor-stabilize": true,
+      "state/processedSequenceByUid/player": 2,
+      "state/processedActionUid": "player",
+      "state/processedActionSequence": 2,
+      "state/updatedAt": queuedAnchor.createdAt,
+      "processedSequences/player": 2,
+    }));
+    await assertSucceeds(remove(ref(hostDb, `${chorusPath}/actions/player/2`)));
 
     await assertSucceeds(runTransaction(ref(playerDb, `${chorusPath}/actionSequences/player`), current => current + 1));
     await assertSucceeds(set(ref(playerDb, `${chorusPath}/actions/player/3`), chorusAction("player", 3, {
@@ -626,7 +709,7 @@ test("Realtime Database 규칙은 sanctuary chorus 공유 경계와 canonical cl
 
     await environment.withSecurityRulesDisabled(async context => {
       await set(ref(context.database(), chorusStatePath), chorusEncounter({
-        leaseUntil: Date.now() + 30_000,
+        leaseUntil: Date.now() + 6_000,
         stabilizedAnchorIds: ["forest", "coast", "volcano"],
         phase: "testimonies",
         hp: 70,
@@ -648,7 +731,7 @@ test("Realtime Database 규칙은 sanctuary chorus 공유 경계와 canonical cl
 
     await environment.withSecurityRulesDisabled(async context => {
       await set(ref(context.database(), chorusStatePath), chorusEncounter({
-        leaseUntil: Date.now() + 30_000,
+        leaseUntil: Date.now() + 6_000,
         stabilizedAnchorIds: ["forest", "coast", "volcano"],
         resolvedTestimonyIds: [
           "core-self-division-original",
@@ -664,9 +747,10 @@ test("Realtime Database 규칙은 sanctuary chorus 공유 경계와 canonical cl
       }));
     });
     await assertSucceeds(runTransaction(ref(playerDb, `${chorusPath}/actionSequences/player`), current => current + 1));
-    await assertSucceeds(set(ref(playerDb, `${chorusPath}/actions/player/5`), chorusAction("player", 5, {
+    const queuedRecord = chorusAction("player", 5, {
       type: "record-activate", fragmentId: null, phase: "onslaught", recordId: "roan",
-    })));
+    });
+    await assertSucceeds(set(ref(playerDb, `${chorusPath}/actions/player/5`), queuedRecord));
     await assertFails(remove(ref(hostDb, `${chorusPath}/actions/player/5`)));
     await environment.withSecurityRulesDisabled(async context => {
       await remove(ref(context.database(), `${chorusPath}/actions/player/5`));
@@ -708,15 +792,6 @@ test("Realtime Database 규칙은 sanctuary chorus 공유 경계와 canonical cl
     await environment.withSecurityRulesDisabled(async context => {
       await set(ref(context.database(), chorusStatePath), chorusEncounter({
         authorityEpoch: 2, leaseUntil: Date.now() + 30_000,
-      }));
-    });
-    await assertFails(remove(ref(hostDb, `${chorusPath}/actions/player/1`)));
-    await environment.withSecurityRulesDisabled(async context => {
-      await set(ref(context.database(), chorusStatePath), chorusEncounter({
-        leaseUntil: Date.now() + 30_000,
-        processedSequenceByUid: { player: 1 },
-        processedActionUid: "player",
-        processedActionSequence: 1,
       }));
     });
     await assertSucceeds(remove(ref(hostDb, `${chorusPath}/actions/player/1`)));
@@ -1063,6 +1138,7 @@ test("Round 2 pressure는 objective membership을 순서와 무관하게 누적�
   });
   try {
     const hostDb = environment.authenticatedContext("host").database();
+    const playerDb = environment.authenticatedContext("player").database();
 
     await t.test("forest/coast/volcano의 모든 첫·후속 순열을 허용한다", async () => {
       for (const order of permutations(anchorIds)) {
@@ -1071,13 +1147,22 @@ test("Round 2 pressure는 objective membership을 순서와 무관하게 누적�
         await seedChorus(environment, initial);
         for (let index = 0; index < order.length; index += 1) {
           const complete = index === order.length - 1;
-          await assertSucceeds(update(ref(hostDb, chorusStatePath), {
-            [`stabilizedAnchorIds/${order[index]}`]: true,
-            hp: 100 - (index + 1) * 10,
-            combatRevision: index + 1,
-            updatedAt: Date.now(),
-            ...(complete ? { phase: "testimonies" } : {}),
-          }));
+          await publishBoundChorusAction({
+            playerDb,
+            hostDb,
+            sequence: index + 1,
+            revision: index + 1,
+            phase: "anchors",
+            type: "anchor-stabilize",
+            fields: { fragmentId: order[index], anchorId: order[index] },
+            stateChanges: {
+              [`stabilizedAnchorIds/${order[index]}`]: true,
+              hp: 100 - (index + 1) * 10,
+              ...(complete ? { phase: "testimonies" } : {}),
+            },
+            firstContribution: index === 0,
+            newActionType: index === 0,
+          });
         }
       }
     });
@@ -1093,18 +1178,50 @@ test("Round 2 pressure는 objective membership을 순서와 무관하게 누적�
             hp: 70,
             combatRevision: 3,
           })));
-          await assertSucceeds(update(ref(hostDb, chorusStatePath), {
-            [`resolvedTestimonyIds/${first}`]: true,
-            hp: 65,
-            combatRevision: 4,
-            updatedAt: Date.now(),
-          }));
-          await assertSucceeds(update(ref(hostDb, chorusStatePath), {
-            [`resolvedTestimonyIds/${second}`]: true,
-            hp: 60,
-            combatRevision: 5,
-            updatedAt: Date.now(),
-          }));
+          await publishBoundChorusAction({
+            playerDb,
+            hostDb,
+            sequence: 1,
+            revision: 4,
+            phase: "testimonies",
+            type: "testimony-resolve",
+            fields: {
+              fragmentId: null,
+              testimonyId: first,
+              verdict: ({
+                "core-self-division-original": "fact",
+                "lumen-caused-core-division": "unsupported",
+                "lumen-touched-seal-to-delay-eruption": "fact",
+                "return-delay-was-lumen-alone": "unsupported",
+                "first-archivist-deletion-protected-everyone": "partial",
+                "resonance-time-was-incident-time": "unsupported",
+              })[first],
+            },
+            stateChanges: { [`resolvedTestimonyIds/${first}`]: true, hp: 65 },
+            firstContribution: true,
+            newActionType: true,
+          });
+          await publishBoundChorusAction({
+            playerDb,
+            hostDb,
+            sequence: 2,
+            revision: 5,
+            phase: "testimonies",
+            type: "testimony-resolve",
+            fields: {
+              fragmentId: null,
+              testimonyId: second,
+              verdict: ({
+                "core-self-division-original": "fact",
+                "lumen-caused-core-division": "unsupported",
+                "lumen-touched-seal-to-delay-eruption": "fact",
+                "return-delay-was-lumen-alone": "unsupported",
+                "first-archivist-deletion-protected-everyone": "partial",
+                "resonance-time-was-incident-time": "unsupported",
+              })[second],
+            },
+            stateChanges: { [`resolvedTestimonyIds/${second}`]: true, hp: 60 },
+          });
         }
       }
     });
@@ -1119,18 +1236,28 @@ test("Round 2 pressure는 objective membership을 순서와 무관하게 누적�
         combatRevision: 9,
       }));
       await seedChorus(environment, current);
-      await assertSucceeds(update(ref(hostDb, chorusStatePath), {
-        "severedBondIds/roan": true,
-        hp: 30,
-        combatRevision: 10,
-        updatedAt: Date.now(),
-      }));
-      await assertSucceeds(update(ref(hostDb, chorusStatePath), {
-        "severedBondIds/sera": true,
-        hp: 20,
-        combatRevision: 11,
-        updatedAt: Date.now(),
-      }));
+      await publishBoundChorusAction({
+        playerDb,
+        hostDb,
+        sequence: 1,
+        revision: 10,
+        phase: "onslaught",
+        type: "bond-cut",
+        fields: { fragmentId: null, bondId: "roan" },
+        stateChanges: { "severedBondIds/roan": true, hp: 30 },
+        firstContribution: true,
+        newActionType: true,
+      });
+      await publishBoundChorusAction({
+        playerDb,
+        hostDb,
+        sequence: 2,
+        revision: 11,
+        phase: "onslaught",
+        type: "bond-cut",
+        fields: { fragmentId: null, bondId: "sera" },
+        stateChanges: { "severedBondIds/sera": true, hp: 20 },
+      });
     });
 
     await t.test("기존 bond 단계 순서는 membership map에서도 건너뛸 수 없다", async () => {
@@ -1254,6 +1381,7 @@ test("Round 2 pressure는 receipt와 contributor history를 add-only로 보존�
       const timestamp = Date.now();
       const current = wireChorusEncounter(oneAnchorChorusState({
         leaseUntil: timestamp + 6_000,
+        updatedAt: timestamp - 500,
         contributors: {
           player: {
             firstContributedAt: timestamp - 1_000,
@@ -1265,14 +1393,15 @@ test("Round 2 pressure는 receipt와 contributor history를 add-only로 보존�
       await seedChorus(environment, current, { sequence: 2 });
       await assertSucceeds(set(ref(environment.authenticatedContext("player").database(), `${chorusPath}/actions/player/2`),
         chorusAction("player", 2, { createdAt: timestamp })));
-      await assertSucceeds(update(ref(hostDb, chorusStatePath), {
-        "processedSequenceByUid/player": 2,
-        processedActionUid: "player",
-        processedActionSequence: 2,
-        "contributors/player/lastContributedAt": timestamp,
-        "contributors/player/actionTypes/fragment-strike": true,
-        combatRevision: 2,
-        updatedAt: timestamp,
+      await assertSucceeds(update(ref(hostDb, chorusPath), {
+        "state/processedSequenceByUid/player": 2,
+        "state/processedActionUid": "player",
+        "state/processedActionSequence": 2,
+        "state/contributors/player/lastContributedAt": timestamp,
+        "state/contributors/player/actionTypes/fragment-strike": true,
+        "state/combatRevision": 2,
+        "state/updatedAt": timestamp,
+        "processedSequences/player": 2,
       }));
       const stored = (await get(ref(hostDb, chorusStatePath))).val();
       assert.equal(stored.processedSequenceByUid.player, 2);
@@ -1395,15 +1524,16 @@ test("Round 3 pressure는 replay receipt를 per-UID sequence watermark로 제한
       await assertSucceeds(set(ref(playerDb, `${chorusPath}/actions/player/10000`), action));
       await assertFails(remove(ref(hostDb, `${chorusPath}/actions/player/10000`)));
 
-      await assertSucceeds(update(ref(hostDb, chorusStatePath), {
-        "processedSequenceByUid/player": 10_000,
-        processedActionUid: "player",
-        processedActionSequence: 10_000,
-        "contributors/player/firstContributedAt": timestamp,
-        "contributors/player/lastContributedAt": timestamp,
-        "contributors/player/actionTypes/fragment-strike": true,
-        combatRevision: 1,
-        updatedAt: timestamp,
+      await assertSucceeds(update(ref(hostDb, chorusPath), {
+        "state/processedSequenceByUid/player": 10_000,
+        "state/processedActionUid": "player",
+        "state/processedActionSequence": 10_000,
+        "state/contributors/player/firstContributedAt": timestamp,
+        "state/contributors/player/lastContributedAt": timestamp,
+        "state/contributors/player/actionTypes/fragment-strike": true,
+        "state/combatRevision": 1,
+        "state/updatedAt": timestamp,
+        "processedSequences/player": 10_000,
       }));
       await assertSucceeds(remove(ref(hostDb, `${chorusPath}/actions/player/10000`)));
       const stored = (await get(ref(hostDb, chorusStatePath))).val();
@@ -1534,6 +1664,85 @@ test("Round 3 pressure는 replay receipt를 per-UID sequence watermark로 제한
   }
 });
 
+test("만료된 separated encounter는 watermark와 기존 claim을 보존한 fresh encounter로만 교체된다", async () => {
+  const environment = await initializeTestEnvironment({
+    projectId,
+    database: { rules: readFileSync("database.rules.json", "utf8") },
+  });
+  try {
+    await environment.clearDatabase();
+    const lateDb = environment.authenticatedContext("other").database();
+    const beforeExpiry = Date.now() + 30_000;
+    const terminalBeforeExpiry = wireChorusEncounter(separatedChorusState({
+      authorityUid: "host",
+      leaseUntil: beforeExpiry,
+      reformAt: beforeExpiry,
+      processedSequenceByUid: { player: 1 },
+      processedActionUid: "player",
+      processedActionSequence: 1,
+    }));
+    const oldClaim = {
+      encounterId: terminalBeforeExpiry.encounterId,
+      uid: "player",
+      eligible: true,
+      createdAt: terminalBeforeExpiry.separatedAt,
+    };
+    await environment.withSecurityRulesDisabled(async context => {
+      await set(ref(context.database(), "rooms/public"), {
+        players: { other: player({ mapId: "sanctuary-return-record" }) },
+        chorus: {
+          "sanctuary-return-record": {
+            state: terminalBeforeExpiry,
+            processedSequences: { player: 1 },
+            actions: { player: { 1: chorusAction("player", 1) } },
+            completionClaims: {
+              [terminalBeforeExpiry.encounterId]: { player: oldClaim },
+            },
+          },
+        },
+      });
+    });
+    const deniedFresh = wireChorusEncounter(chorusEncounter({
+      encounterId: `sanctuary-chorus-${beforeExpiry}-other-r2`,
+      authorityUid: "other",
+      authorityEpoch: 2,
+      leaseUntil: Date.now() + 6_000,
+      spawnedAt: Date.now(),
+      updatedAt: Date.now(),
+      processedSequenceByUid: { player: 1 },
+    }));
+    await assertFails(set(ref(lateDb, chorusStatePath), deniedFresh));
+
+    const reformAt = Date.now() - 100;
+    const expired = wireChorusEncounter(separatedChorusState({
+      authorityUid: "host",
+      leaseUntil: reformAt,
+      reformAt,
+      processedSequenceByUid: { player: 1 },
+      processedActionUid: "player",
+      processedActionSequence: 1,
+    }));
+    await environment.withSecurityRulesDisabled(async context => {
+      await set(ref(context.database(), chorusStatePath), expired);
+    });
+    const timestamp = Date.now();
+    const fresh = wireChorusEncounter(chorusEncounter({
+      encounterId: `sanctuary-chorus-${reformAt}-other-r2`,
+      authorityUid: "other",
+      authorityEpoch: 2,
+      leaseUntil: timestamp + 6_000,
+      spawnedAt: timestamp,
+      updatedAt: timestamp,
+    }));
+    await assertSucceeds(set(ref(lateDb, chorusStatePath), fresh));
+    assert.equal((await get(ref(lateDb, `${chorusPath}/completionClaims/${expired.encounterId}/player`))).val().uid, "player");
+    assert.equal((await get(ref(lateDb, `${chorusPath}/completionClaims/${fresh.encounterId}/other`))).exists(), false);
+    await assertSucceeds(remove(ref(lateDb, `${chorusPath}/actions/player/1`)));
+  } finally {
+    await environment.cleanup();
+  }
+});
+
 test("Round 4 pressure는 confirmed action을 현재 authority가 정리한다", async t => {
   const environment = await initializeTestEnvironment({
     projectId,
@@ -1556,6 +1765,7 @@ test("Round 4 pressure는 confirmed action을 현재 authority가 정리한다",
       await seedChorus(environment, expired);
       await environment.withSecurityRulesDisabled(async context => {
         const database = context.database();
+        await set(ref(database, `${chorusPath}/processedSequences/player`), 40);
         await set(ref(database, `${chorusPath}/actions/player/40`), chorusAction("player", 40, {
           authorityEpoch: 1,
           createdAt: timestamp,
@@ -1592,15 +1802,16 @@ test("Round 4 pressure는 confirmed action을 현재 authority가 정리한다",
       await seedChorus(environment, state, { sequence: 10 });
       const action = chorusAction("player", 10, { createdAt: publishAt });
       await assertSucceeds(set(ref(playerDb, `${chorusPath}/actions/player/10`), action));
-      await assertSucceeds(update(ref(hostDb, chorusStatePath), {
-        "processedSequenceByUid/player": 10,
-        processedActionUid: "player",
-        processedActionSequence: 10,
-        "contributors/player/firstContributedAt": publishAt,
-        "contributors/player/lastContributedAt": publishAt,
-        "contributors/player/actionTypes/fragment-strike": true,
-        combatRevision: 1,
-        updatedAt: publishAt,
+      await assertSucceeds(update(ref(hostDb, chorusPath), {
+        "state/processedSequenceByUid/player": 10,
+        "state/processedActionUid": "player",
+        "state/processedActionSequence": 10,
+        "state/contributors/player/firstContributedAt": publishAt,
+        "state/contributors/player/lastContributedAt": publishAt,
+        "state/contributors/player/actionTypes/fragment-strike": true,
+        "state/combatRevision": 1,
+        "state/updatedAt": publishAt,
+        "processedSequences/player": 10,
       }));
       assert.equal((await get(ref(hostDb, `${chorusPath}/actions/player/10`))).exists(), true);
       await environment.withSecurityRulesDisabled(async context => {

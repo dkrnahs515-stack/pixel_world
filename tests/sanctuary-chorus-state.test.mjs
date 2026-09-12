@@ -5,6 +5,7 @@ import {
   BOND_IDS,
   CHORUS_AUTHORITY_LEASE_MS,
   CHORUS_AUTHORITY_RENEW_MS,
+  CHORUS_REFORM_DELAY_MS,
   CHORUS_TESTIMONIES,
 } from "../src/sanctuary-chorus-data-20260911-sanctuary.js";
 import {
@@ -12,6 +13,7 @@ import {
   applyChorusAction,
   createChorusCompletionClaims,
   createChorusEncounter,
+  createReformedChorusEncounter,
   createPersonalChorusState,
   normalizeChorusEncounter,
   reducePersonalChorusState,
@@ -105,7 +107,30 @@ test("cohesion changes only through phase objectives", () => {
     finalEvents = result.events;
   }
   assert.deepEqual([encounter.phase, encounter.status, encounter.hp], ["separated", "separated", 0]);
+  assert.equal(encounter.reformAt, encounter.separatedAt + CHORUS_REFORM_DELAY_MS);
   assert.ok(finalEvents.every(event => !["death", "defeat", "explosion", "corpse"].includes(event.type)));
+});
+
+test("a separated encounter reforms deterministically only after reformAt with no inherited contributors", () => {
+  const terminal = {
+    ...onslaughtEncounter(),
+    severedBondIds: [...BOND_IDS],
+    status: "separated",
+    phase: "separated",
+    hp: 0,
+    separatedAt: 2_000,
+    reformAt: 2_000 + CHORUS_REFORM_DELAY_MS,
+    contributors: { veteran: { firstContributedAt: 1_000, lastContributedAt: 2_000, actionTypes: ["bond-cut"] } },
+  };
+  assert.equal(createReformedChorusEncounter(terminal, { uid: "late", now: terminal.reformAt - 1 }), null);
+  const first = createReformedChorusEncounter(terminal, { uid: "late", now: terminal.reformAt });
+  const retry = createReformedChorusEncounter(terminal, { uid: "late", now: terminal.reformAt });
+  assert.deepEqual(first, retry);
+  assert.notEqual(first.encounterId, terminal.encounterId);
+  assert.equal(first.status, "active");
+  assert.equal(first.hp, 100);
+  assert.deepEqual(first.contributors, {});
+  assert.equal(first.authorityEpoch, terminal.authorityEpoch + 1);
 });
 
 test("wrong personal actions cannot mutate shared encounter", () => {

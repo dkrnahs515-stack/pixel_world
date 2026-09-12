@@ -174,6 +174,40 @@ test("the core truth stays unrevealed until the final original record is examine
   assert.equal(progress.chapters.sanctuary.coreTruthRevealed, true);
 });
 
+test("the three original records reject out-of-order access and archive only examined originals", () => {
+  const collected = collectAllSounds(chapter12ReadyProgress());
+  let progress = resolveStoryInteraction(collected, "memory-sequence-console", { sequence: MEMORY_SOUND_IDS }).progress;
+
+  const directThird = resolveStoryInteraction(progress, "truth-core-self-division");
+  assert.equal(directThird.outcome, "unavailable");
+  assert.equal(directThird.progress.chapters.sanctuary.coreTruthRevealed, false);
+  assert.deepEqual(getCollectedSanctuaryRecords(directThird.progress), []);
+
+  const directSecond = resolveStoryInteraction(progress, "truth-first-archivist-log");
+  assert.equal(directSecond.outcome, "unavailable");
+  assert.deepEqual(getCollectedSanctuaryRecords(directSecond.progress), []);
+
+  progress = resolveStoryInteraction(progress, "truth-resonance-time").progress;
+  assert.deepEqual(getCollectedSanctuaryRecords(progress).map(value => value.id), [
+    "false-return-resonance-time",
+  ]);
+  assert.equal(resolveStoryInteraction(progress, "truth-resonance-time").outcome, "unavailable");
+  assert.equal(resolveStoryInteraction(progress, "truth-core-self-division").outcome, "unavailable");
+
+  progress = resolveStoryInteraction(progress, "truth-first-archivist-log").progress;
+  assert.deepEqual(getCollectedSanctuaryRecords(progress).map(value => value.id), [
+    "false-return-resonance-time",
+    "first-archivist-deletion-log",
+  ]);
+  progress = resolveStoryInteraction(progress, "truth-core-self-division").progress;
+  assert.equal(progress.chapters.sanctuary.coreTruthRevealed, true);
+  assert.deepEqual(getCollectedSanctuaryRecords(progress).map(value => value.id), [
+    "false-return-resonance-time",
+    "first-archivist-deletion-log",
+    "core-self-division-original",
+  ]);
+});
+
 test("memory sequence dialogue offers only unselected sounds and a submit action", () => {
   const progress = collectAllSounds(chapter12ReadyProgress());
   const model = storyDialogueModel(interaction("memory-sequence-console"), progress, {
@@ -243,9 +277,11 @@ test("chapter UI merges collected coast and sanctuary records", () => {
 });
 
 test("revealing and rejecting the false return refreshes the local defense immediately", () => {
-  const solved = resolveStoryInteraction(collectAllSounds(chapter12ReadyProgress()), "memory-sequence-console", {
+  let solved = resolveStoryInteraction(collectAllSounds(chapter12ReadyProgress()), "memory-sequence-console", {
     sequence: MEMORY_SOUND_IDS,
   }).progress;
+  solved = resolveStoryInteraction(solved, "truth-resonance-time").progress;
+  solved = resolveStoryInteraction(solved, "truth-first-archivist-log").progress;
   const game = Object.create(PixelRPG.prototype);
   game.progress = { worldProgress: solved };
   game.mapId = "sanctuary-memory-archive";
@@ -270,9 +306,11 @@ test("revealing and rejecting the false return refreshes the local defense immed
 });
 
 test("a failed browser save rolls the local defense back with chapter progress", () => {
-  const solved = resolveStoryInteraction(collectAllSounds(chapter12ReadyProgress()), "memory-sequence-console", {
+  let solved = resolveStoryInteraction(collectAllSounds(chapter12ReadyProgress()), "memory-sequence-console", {
     sequence: MEMORY_SOUND_IDS,
   }).progress;
+  solved = resolveStoryInteraction(solved, "truth-resonance-time").progress;
+  solved = resolveStoryInteraction(solved, "truth-first-archivist-log").progress;
   const game = Object.create(PixelRPG.prototype);
   game.progress = { worldProgress: solved };
   game.mapId = "sanctuary-memory-archive";

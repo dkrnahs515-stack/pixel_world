@@ -6,6 +6,7 @@ import {
   CHORUS_AUTHORITY_LEASE_MS,
   CHORUS_BOSS_ID,
   CHORUS_CONFUSION_MS,
+  CHORUS_REFORM_DELAY_MS,
   CHORUS_CONTAMINATION_PER_MISTAKE,
   CHORUS_CONTRIBUTION_TYPES,
   CHORUS_MAP_ID,
@@ -380,7 +381,11 @@ export function applyChorusAction(value, validated, now = Date.now()) {
     events.push({ type: "phase-changed", phase: normalized.phase, createdAt: now });
   }
   if (normalized.phase === "separated" && encounter.phase !== "separated") {
-    normalized = normalizeChorusEncounter({ ...normalized, separatedAt: now });
+    normalized = normalizeChorusEncounter({
+      ...normalized,
+      separatedAt: now,
+      reformAt: now + CHORUS_REFORM_DELAY_MS,
+    });
     events.push({ type: "chorus-separated", createdAt: now });
   }
   return { encounter: normalized, events, personalEvent: null };
@@ -465,6 +470,20 @@ export function renewChorusAuthority(value, { uid, authorityEpoch, now = Date.no
       leaseUntil: now + CHORUS_AUTHORITY_LEASE_MS,
     },
   };
+}
+
+export function createReformedChorusEncounter(value, { uid, now = Date.now() } = {}) {
+  const terminal = normalizeChorusEncounter(value);
+  if (!terminal || terminal.phase !== "separated"
+    || !Number.isFinite(terminal.reformAt) || terminal.reformAt <= 0
+    || !Number.isFinite(now) || now < terminal.reformAt
+    || !validId(uid, 128)) return null;
+  return createChorusEncounter({
+    encounterId: `sanctuary-chorus-${Math.trunc(terminal.reformAt)}-${uid.slice(0, 12)}-r${terminal.authorityEpoch + 1}`,
+    authorityUid: uid,
+    authorityEpoch: terminal.authorityEpoch + 1,
+    now,
+  });
 }
 
 export function createChorusCompletionClaims(value, now = Date.now()) {

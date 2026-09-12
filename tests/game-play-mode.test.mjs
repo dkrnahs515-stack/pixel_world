@@ -241,7 +241,7 @@ test("switching back online never seeds shared state from a solo-completed Choru
   assert.equal(online.network, chorus);
 });
 
-test("authority keeps an applied action queued when publishing the resulting state fails", async () => {
+test("authority rolls an applied queued action back when publishing the resulting state fails", async () => {
   const game = Object.create(SanctuaryPixelRPG.prototype);
   const state = createChorusEncounter({ encounterId: "shared-e1", authorityUid: "host", now: 1_000 });
   const acknowledgements = [];
@@ -273,7 +273,8 @@ test("authority keeps an applied action queued when publishing the resulting sta
     },
   });
 
-  assert.deepEqual(game.chorusController.snapshot.stabilizedAnchorIds, ["forest"]);
+  assert.deepEqual(game.chorusController.snapshot.stabilizedAnchorIds, []);
+  assert.equal(game.chorusController.snapshot.hp, 100);
   assert.deepEqual(acknowledgements, []);
 });
 
@@ -425,9 +426,84 @@ test("a failed publish never replaces the last Firebase-confirmed fallback seed 
     },
   });
 
-  assert.deepEqual(game.chorusController.snapshot.stabilizedAnchorIds, ["forest"]);
+  assert.deepEqual(game.chorusController.snapshot.stabilizedAnchorIds, []);
+  assert.equal(game.chorusController.snapshot.hp, 100);
   assert.deepEqual(game.latestChorusSnapshot.stabilizedAnchorIds, []);
   assert.notEqual(game.latestChorusSnapshot, game.chorusController.snapshot);
+});
+
+test("a rejected local Chorus action restores confirmed hp and anchor state with retry feedback", async () => {
+  const game = Object.create(SanctuaryPixelRPG.prototype);
+  const confirmed = createChorusEncounter({ encounterId: "shared-e1", authorityUid: "host", now: 1_000 });
+  const notices = [];
+  game.sessionMode = "online";
+  game.latestChorusSnapshot = structuredClone(confirmed);
+  game.updateChorusHud = () => {};
+  game.notify = message => notices.push(message);
+  game.reportBossCallbackError = () => {};
+  game.network = {
+    uid: "host",
+    chorus: {
+      sendAction: async () => ({ ok: false, reason: "permission_denied" }),
+      publishState: async () => { throw new Error("must not publish rejected action"); },
+    },
+  };
+  game.chorusController = game.createChorusControllerForMode("online");
+  game.wireOnlineChorusController(game.chorusController);
+  game.chorusController.receiveSnapshot(confirmed);
+  game.chorusController.setMap("sanctuary-return-record", { correctionLinked: true });
+
+  const optimistic = game.chorusController.applyRequest({
+    id: "host-session:1:1:anchor-stabilize",
+    encounterId: confirmed.encounterId,
+    authorityEpoch: 1,
+    phase: "anchors",
+    uid: "host",
+    type: "anchor-stabilize",
+    fragmentId: "forest",
+    anchorId: "forest",
+    createdAt: 1_100,
+  }, 1_100);
+  assert.equal(optimistic.ok, true);
+  assert.equal(game.chorusController.snapshot.hp, 90);
+  await new Promise(resolve => setImmediate(resolve));
+
+  assert.equal(game.chorusController.snapshot.hp, 100);
+  assert.deepEqual(game.chorusController.snapshot.stabilizedAnchorIds, []);
+  assert.match(notices.at(-1), /다시 시도/);
+});
+
+test("a rejected send promise restores the confirmed state without changing solo reducer semantics", async () => {
+  const game = Object.create(SanctuaryPixelRPG.prototype);
+  const confirmed = createChorusEncounter({ encounterId: "shared-e1", authorityUid: "host", now: 1_000 });
+  game.sessionMode = "online";
+  game.latestChorusSnapshot = structuredClone(confirmed);
+  game.updateChorusHud = () => {};
+  game.notify = () => {};
+  game.reportBossCallbackError = () => {};
+  game.network = { uid: "host", chorus: { sendAction: async () => { throw new Error("offline"); } } };
+  game.chorusController = game.createChorusControllerForMode("online");
+  game.wireOnlineChorusController(game.chorusController);
+  game.chorusController.receiveSnapshot(confirmed);
+  game.chorusController.setMap("sanctuary-return-record", { correctionLinked: true });
+  game.chorusController.applyRequest({
+    id: "host-session:1:1:anchor-stabilize", encounterId: confirmed.encounterId,
+    authorityEpoch: 1, phase: "anchors", uid: "host", type: "anchor-stabilize",
+    fragmentId: "forest", anchorId: "forest", createdAt: 1_100,
+  }, 1_100);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(game.chorusController.snapshot.hp, 100);
+  assert.deepEqual(game.chorusController.snapshot.stabilizedAnchorIds, []);
+
+  const solo = game.createChorusControllerForMode("solo", { seedSnapshot: confirmed });
+  solo.setMap("sanctuary-return-record", { correctionLinked: true });
+  const local = solo.applyRequest({
+    id: "solo:1:1:anchor-stabilize", encounterId: confirmed.encounterId,
+    authorityEpoch: 1, phase: "anchors", uid: "local-player", type: "anchor-stabilize",
+    fragmentId: "forest", anchorId: "forest", createdAt: 1_100,
+  }, 1_100);
+  assert.equal(local.ok, true);
+  assert.equal(solo.snapshot.hp, 90);
 });
 
 test("a duplicate listener action is acknowledged only after its id exists in Firebase-confirmed state", async () => {

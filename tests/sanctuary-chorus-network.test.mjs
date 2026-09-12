@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createChorusNetwork } from "../src/sanctuary-chorus-network-20260911-sanctuary.js";
-import { createChorusEncounter } from "../src/sanctuary-chorus-state-20260911-sanctuary.js";
+import {
+  applyChorusAction,
+  createChorusEncounter,
+  normalizeChorusEncounter,
+  validateChorusAction,
+} from "../src/sanctuary-chorus-state-20260911-sanctuary.js";
 import {
   ANCHOR_IDS,
   BOND_IDS,
@@ -22,6 +27,9 @@ function firebaseModulesFake(initial = {}) {
     ref: (_db, path) => ({ path }),
     onValue(ref, callback) {
       listeners.set(ref.path, callback);
+      if (ref.path.endsWith("/processedSequences")) {
+        callback({ val: () => structuredClone(values.get(ref.path) ?? null) });
+      }
       return () => listeners.delete(ref.path);
     },
     async get(ref) {
@@ -96,6 +104,17 @@ function activeEncounter(authorityUid = "a", now = 1_000) {
 
 function membership(values) {
   return Object.fromEntries(values.map(value => [value, true]));
+}
+
+function applyNetworkAction(state, action) {
+  const validated = validateChorusAction(action, {
+    encounter: state,
+    authenticatedUid: action.uid,
+    now: action.createdAt,
+    lumenAssistEligible: true,
+  });
+  assert.equal(validated.ok, true, validated.reason);
+  return applyChorusAction(state, validated, action.createdAt).encounter;
 }
 
 function permutations(values) {
@@ -180,6 +199,7 @@ test("leaving the return-record map unsubscribes state actions and the user's cl
   assert.deepEqual([...fake.listeners.keys()].sort(), [
     `${BASE_PATH}/actions`,
     `${BASE_PATH}/completionClaims/e1/a`,
+    `${BASE_PATH}/processedSequences`,
     `${BASE_PATH}/state`,
   ]);
   assert.equal(await network.setMap("sanctuary-memory-archive"), false);
@@ -199,25 +219,22 @@ test("only the active authority publishes state and removes applied actions", as
   const a = createChorusNetwork(networkOptions(fake, "a"));
   await a.setMap("sanctuary-return-record");
   fake.emit(`${BASE_PATH}/state`, wireState);
-
-  assert.equal((await a.publishState({
-    ...state,
-    stabilizedAnchorIds: ["forest"],
-    combatRevision: 1,
-    updatedAt: 10_000,
-  })).ok, true);
-  assert.deepEqual(fake.updates.at(-1), {
-    path: `${BASE_PATH}/state`,
-    value: {
-      hp: 90,
-      "stabilizedAnchorIds/forest": true,
-      combatRevision: 1,
-      updatedAt: 10_000,
-    },
-  });
+  const action = {
+    id: "b:2:8:anchor-stabilize", encounterId: "e1", authorityEpoch: 2, phase: "anchors",
+    uid: "b", sequence: 8, type: "anchor-stabilize", fragmentId: "forest", anchorId: "forest",
+    createdAt: 10_000,
+  };
+  fake.emit(`${BASE_PATH}/actions`, { b: { 8: action } });
+  const published = await a.publishState(applyNetworkAction(state, action), { processedAction: action });
+  assert.equal(published.ok, true);
+  assert.equal(fake.updates.at(-1).path, BASE_PATH);
+  assert.equal(fake.updates.at(-1).value["state/hp"], 90);
+  assert.equal(fake.updates.at(-1).value["state/stabilizedAnchorIds/forest"], true);
+  assert.equal(fake.updates.at(-1).value["state/combatRevision"], 1);
+  assert.equal(fake.updates.at(-1).value["processedSequences/b"], 8);
   assert.equal(fake.transactions.some(value => value.path === `${BASE_PATH}/state`), false);
   assert.equal((await a.acknowledgeAction("b", 7)).ok, true);
-  assert.equal(fake.removes.at(-1), `${BASE_PATH}/actions/b/7`);
+  assert.equal(fake.removes.includes(`${BASE_PATH}/actions/b/8`), true);
 
   const b = createChorusNetwork(networkOptions(fake, "b"));
   await b.setMap("sanctuary-return-record");
@@ -268,6 +285,43 @@ test("authority creates immutable contributor claims and each user acknowledges 
   assert.equal(acknowledged.ok, true);
   assert.deepEqual(bFake.transactions.at(-1).next, { ...claims.b, acknowledgedAt: 12_345 });
   assert.equal(bFake.transactions.at(-1).path, `${BASE_PATH}/completionClaims/e1/b`);
+});
+
+test("a late non-contributor starts a fresh encounter after reformAt without inheriting the old claim", async () => {
+  const terminal = {
+    ...activeEncounter("veteran", 1_000),
+    stabilizedAnchorIds: [...ANCHOR_IDS],
+    resolvedTestimonyIds: CHORUS_TESTIMONIES.map(value => value.id),
+    severedBondIds: [...BOND_IDS],
+    status: "separated",
+    phase: "separated",
+    hp: 0,
+    separatedAt: 2_000,
+    reformAt: 9_000,
+    leaseUntil: 8_000,
+    combatRevision: 13,
+    contributors: { veteran: { firstContributedAt: 1_100, lastContributedAt: 2_000, actionTypes: ["bond-cut"] } },
+  };
+  const oldClaim = { encounterId: "e1", uid: "veteran", eligible: true, createdAt: 2_000 };
+  const fake = firebaseModulesFake({
+    [`${BASE_PATH}/state`]: { ...terminal, processedSequenceByUid: { veteran: 8 } },
+    [`${BASE_PATH}/processedSequences`]: { veteran: 8 },
+    [`${BASE_PATH}/completionClaims/e1/veteran`]: oldClaim,
+    [`${BASE_PATH}/actions/veteran/8`]: { encounterId: "e1", uid: "veteran", sequence: 8 },
+  });
+  const late = createChorusNetwork(networkOptions(fake, "late", 10_000));
+  await late.setMap("sanctuary-return-record");
+  const next = await late.ensureEncounter();
+
+  assert.notEqual(next.encounterId, "e1");
+  assert.equal(next.authorityUid, "late");
+  assert.equal(next.status, "active");
+  assert.deepEqual(next.contributors, {});
+  assert.equal(fake.values.get(`${BASE_PATH}/completionClaims/e1/veteran`).uid, "veteran");
+  assert.equal(fake.values.has(`${BASE_PATH}/completionClaims/e1/late`), false);
+  assert.equal(fake.removes.includes(`${BASE_PATH}/state`), false);
+  assert.equal(fake.transactions.filter(value => value.path === `${BASE_PATH}/state`).length, 1);
+  assert.deepEqual(late.processedSequenceByUid, { veteran: 8 });
 });
 
 test("invalid encounter keys never become completion claim paths", async () => {
@@ -420,31 +474,47 @@ test("Firebase wire uses order-independent add-only membership leaves for every 
       const fake = firebaseModulesFake();
       const network = createChorusNetwork(networkOptions(fake, "a"));
       await network.setMap("sanctuary-return-record");
-      let state = {
+      let state = normalizeChorusEncounter({
         ...activeEncounter("a", 9_000),
         ...(field === "resolvedTestimonyIds" || field === "severedBondIds"
           ? { stabilizedAnchorIds: [...ANCHOR_IDS] }
           : {}),
         ...(field === "severedBondIds" ? { resolvedTestimonyIds: [...TESTIMONY_IDS] } : {}),
-      };
+      });
       const completed = [];
-      for (const id of order) {
+      for (const [index, id] of order.entries()) {
         completed.push(id);
-        const canonical = ids.filter(value => completed.includes(value));
-        const next = {
-          ...state,
-          [field]: canonical,
-          combatRevision: state.combatRevision + 1,
-          updatedAt: 10_000,
+        const createdAt = 10_000 + index;
+        state = normalizeChorusEncounter(field === "severedBondIds" ? {
+          ...state, activeRecordId: id, vulnerableUntil: createdAt + 3_000, updatedAt: createdAt,
+        } : state);
+        const type = field === "stabilizedAnchorIds" ? "anchor-stabilize"
+          : field === "resolvedTestimonyIds" ? "testimony-resolve" : "bond-cut";
+        const action = {
+          id: `player:${state.authorityEpoch}:${index + 1}:${type}`,
+          encounterId: state.encounterId,
+          authorityEpoch: state.authorityEpoch,
+          phase: state.phase,
+          uid: "player",
+          sequence: index + 1,
+          type,
+          createdAt,
+          ...(field === "stabilizedAnchorIds" ? { fragmentId: id, anchorId: id } : {}),
+          ...(field === "resolvedTestimonyIds" ? {
+            testimonyId: id,
+            verdict: CHORUS_TESTIMONIES.find(value => value.id === id).verdict,
+          } : {}),
+          ...(field === "severedBondIds" ? { bondId: id } : {}),
         };
         fake.emit(`${BASE_PATH}/state`, {
           ...state,
           [field]: membership(state[field]),
         });
-        const result = await network.publishState(next);
+        fake.emit(`${BASE_PATH}/actions`, { player: { [action.sequence]: action } });
+        const result = await network.publishState(applyNetworkAction(state, action), { processedAction: action });
         assert.equal(result.ok, true, `${field}: ${order.join(" -> ")}`);
-        assert.equal(fake.updates.at(-1).value[`${field}/${id}`], true);
-        assert.equal(Object.hasOwn(fake.updates.at(-1).value, field), false);
+        assert.equal(fake.updates.at(-1).value[`state/${field}/${id}`], true);
+        assert.equal(Object.hasOwn(fake.updates.at(-1).value, `state/${field}`), false);
         state = result.encounter;
       }
       await network.stop();
@@ -455,6 +525,10 @@ test("Firebase wire uses order-independent add-only membership leaves for every 
 test("raw receipt history filters ancient replays and publishes only additive history leaves", async () => {
   const ancientId = "player:2:1:fragment-strike";
   const freshId = "player:2:999:anchor-stabilize";
+  const freshAction = {
+    id: freshId, encounterId: "e1", authorityEpoch: 2, phase: "anchors", uid: "player",
+    sequence: 999, type: "anchor-stabilize", fragmentId: "forest", anchorId: "forest", createdAt: 10_000,
+  };
   const receivedActions = [];
   const state = {
     ...activeEncounter("a", 9_000),
@@ -481,47 +555,28 @@ test("raw receipt history filters ancient replays and publishes only additive hi
   fake.emit(`${BASE_PATH}/actions`, {
     player: {
       1: { id: ancientId },
-      999: { id: freshId },
+      999: freshAction,
     },
   });
   assert.deepEqual(receivedActions, []);
   fake.emit(`${BASE_PATH}/state`, state);
 
   assert.equal(network.latestState.processedActionIds.length, 256);
-  assert.deepEqual(receivedActions.at(-1), { player: { 999: { id: freshId } } });
+  assert.deepEqual(receivedActions.at(-1), { player: { 999: freshAction } });
 
-  const result = await network.publishState({
-    ...network.latestState,
-    stabilizedAnchorIds: ["forest"],
-    processedActionIds: [...network.latestState.processedActionIds, freshId],
-    contributors: {
-      player: {
-        firstContributedAt: 9_000,
-        lastContributedAt: 10_000,
-        actionTypes: ["fragment-strike", "anchor-stabilize"],
-      },
-    },
-    combatRevision: network.latestState.combatRevision + 1,
-    updatedAt: 10_000,
-  }, {
-    processedAction: {
-      id: freshId,
-      encounterId: "e1",
-      authorityEpoch: 2,
-      phase: "anchors",
-      uid: "player",
-      sequence: 999,
-    },
+  const result = await network.publishState(applyNetworkAction(network.latestState, freshAction), {
+    processedAction: freshAction,
   });
 
   assert.equal(result.ok, true);
-  assert.equal(fake.updates.at(-1).value["processedSequenceByUid/player"], 999);
-  assert.equal(fake.updates.at(-1).value.processedActionUid, "player");
-  assert.equal(fake.updates.at(-1).value.processedActionSequence, 999);
-  assert.equal(fake.updates.at(-1).value["contributors/player/actionTypes/anchor-stabilize"], true);
-  assert.equal(fake.updates.at(-1).value["contributors/player/lastContributedAt"], 10_000);
-  assert.equal(Object.keys(fake.updates.at(-1).value).some(key => key.startsWith("processedActionIds")), false);
-  assert.equal(Object.hasOwn(fake.updates.at(-1).value, "contributors/player"), false);
+  assert.equal(fake.updates.at(-1).value["state/processedSequenceByUid/player"], 999);
+  assert.equal(fake.updates.at(-1).value["processedSequences/player"], 999);
+  assert.equal(fake.updates.at(-1).value["state/processedActionUid"], "player");
+  assert.equal(fake.updates.at(-1).value["state/processedActionSequence"], 999);
+  assert.equal(fake.updates.at(-1).value["state/contributors/player/actionTypes/anchor-stabilize"], true);
+  assert.equal(fake.updates.at(-1).value["state/contributors/player/lastContributedAt"], 10_000);
+  assert.equal(Object.keys(fake.updates.at(-1).value).some(key => key.startsWith("state/processedActionIds")), false);
+  assert.equal(Object.hasOwn(fake.updates.at(-1).value, "state/contributors/player"), false);
 });
 
 test("invalid action IDs are rejected before allocating a sequence", async () => {
@@ -642,16 +697,17 @@ test("sequence watermarks bound replay history and filter lower late actions", a
 
   assert.equal(published.ok, true);
   assert.deepEqual(fake.updates.at(-1), {
-    path: `${BASE_PATH}/state`,
+    path: BASE_PATH,
     value: {
-      "contributors/player/firstContributedAt": 10_000,
-      "contributors/player/lastContributedAt": 10_000,
-      "contributors/player/actionTypes/fragment-strike": true,
-      combatRevision: 1,
-      updatedAt: 10_000,
-      "processedSequenceByUid/player": 900,
-      processedActionUid: "player",
-      processedActionSequence: 900,
+      "state/contributors/player/firstContributedAt": 10_000,
+      "state/contributors/player/lastContributedAt": 10_000,
+      "state/contributors/player/actionTypes/fragment-strike": true,
+      "state/combatRevision": 1,
+      "state/updatedAt": 10_000,
+      "state/processedSequenceByUid/player": 900,
+      "state/processedActionUid": "player",
+      "state/processedActionSequence": 900,
+      "processedSequences/player": 900,
     },
   });
   assert.deepEqual(published.processedSequenceByUid, { player: 900 });

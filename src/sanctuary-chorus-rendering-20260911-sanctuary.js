@@ -264,7 +264,9 @@ function drawSeparatedMessage(ctx, model, options) {
   const height = Number.isFinite(options.viewHeight) ? options.viewHeight : finiteDimension(ctx.canvas?.height, 600);
   const panelWidth = Math.min(680, Math.max(320, width - 32));
   const centerX = width / 2;
-  const top = Math.max(84, height * 0.16);
+  const top = width <= 520
+    ? Math.min(Math.max(220, height * 0.29), Math.max(220, height - 262))
+    : Math.max(84, height * 0.16);
   const lines = model.message.split("\n");
   ctx.save();
   ctx.fillStyle = "rgba(7,16,24,.94)";
@@ -316,7 +318,9 @@ function transform(element, ratio) {
 export function updateChorusHud(elements, shared, personal, now = Date.now()) {
   const hud = elements?.chorusHud;
   if (!hud) return false;
-  hud.hidden = !shared;
+  const separated = shared?.phase === "separated" || shared?.status === "separated" || shared?.status === "reforming";
+  hud.hidden = !shared || separated;
+  if (elements.questTracker) elements.questTracker.hidden = separated;
   if (!shared) return false;
   if (elements.coopBossHud) elements.coopBossHud.hidden = true;
   const hp = Math.max(0, Number(shared.hp) || 0);

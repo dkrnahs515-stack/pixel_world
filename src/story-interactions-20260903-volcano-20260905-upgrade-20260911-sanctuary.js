@@ -22,6 +22,7 @@ import {
   MEMORY_SOUND_IDS,
   RECORD_FIELD_IDS,
   SANCTUARY_CORE_IDS,
+  TRUTH_RECORD_INTERACTION_IDS,
   TESTIMONY_IDS,
   FUTURE_IDS,
 } from "./sanctuary-progress-20260911-sanctuary.js";
@@ -75,7 +76,9 @@ export function isStoryInteractionEligible(interaction, worldProgress) {
         return MEMORY_SOUND_IDS.every(id => sanctuary.collectedMemoryIds.includes(id))
           && !sanctuary.memoryOrderSolved;
       case "sanctuary-truth-record":
-        return sanctuary.memoryOrderSolved && !sanctuary.falseReturnRejected;
+        return sanctuary.memoryOrderSolved
+          && !sanctuary.falseReturnRejected
+          && interaction.id === TRUTH_RECORD_INTERACTION_IDS[sanctuary.examinedTruthRecordIds.length];
       case "sanctuary-false-return":
         return sanctuary.coreTruthRevealed
           && !sanctuary.falseReturnRejected
@@ -128,9 +131,7 @@ function resolveSanctuaryInteraction(progress, interaction, response) {
       break;
     }
     case "sanctuary-truth-record":
-      if (!interaction.revealsCoreTruth) return result(initial, interaction.id, "acknowledged");
-      resolved = progressSanctuary(initial, { type: "reveal-truth" });
-      if (!changed(initial, resolved.progress)) return result(initial, interaction.id, "acknowledged");
+      resolved = progressSanctuary(initial, { type: "examine-truth-record", interactionId: interaction.id });
       break;
     case "sanctuary-false-return":
       resolved = progressSanctuary(initial, { type: "collect-memory", memoryId: interaction.id });

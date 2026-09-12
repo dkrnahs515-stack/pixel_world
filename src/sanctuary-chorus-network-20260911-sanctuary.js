@@ -6,9 +6,12 @@ import {
 } from "./sanctuary-chorus-data-20260911-sanctuary.js";
 import {
   acquireChorusAuthority,
+  applyChorusAction,
   createChorusEncounter,
+  createReformedChorusEncounter,
   normalizeChorusEncounter,
   renewChorusAuthority,
+  validateChorusAction,
 } from "./sanctuary-chorus-state-20260911-sanctuary.js";
 
 const BASE_PATH = `rooms/public/chorus/${CHORUS_MAP_ID}`;
@@ -158,6 +161,26 @@ function sameCombatState(left, right) {
   return COMBAT_STATE_FIELDS.every(field => JSON.stringify(left?.[field]) === JSON.stringify(right?.[field]));
 }
 
+function sameQueuedAction(left, right) {
+  const canonical = value => JSON.stringify(Object.fromEntries(
+    Object.entries(withoutUndefined(value || {})).sort(([a], [b]) => a.localeCompare(b)),
+  ));
+  return canonical(left) === canonical(right);
+}
+
+function actionlessRevisionIsMaintenance(current, incoming) {
+  return incoming.status === current.status
+    && incoming.phase === current.phase
+    && incoming.hp === current.hp
+    && incoming.lumenAssistUsed === current.lumenAssistUsed
+    && JSON.stringify(incoming.stabilizedAnchorIds) === JSON.stringify(current.stabilizedAnchorIds)
+    && JSON.stringify(incoming.resolvedTestimonyIds) === JSON.stringify(current.resolvedTestimonyIds)
+    && JSON.stringify(incoming.severedBondIds) === JSON.stringify(current.severedBondIds)
+    && JSON.stringify(incoming.contributors) === JSON.stringify(current.contributors)
+    && incoming.separatedAt === current.separatedAt
+    && incoming.reformAt === current.reformAt;
+}
+
 function statePatch(current, next, processedAction = null) {
   const patch = {};
   for (const field of COMBAT_STATE_FIELDS) {
@@ -226,6 +249,7 @@ export function createChorusNetwork({
   let latestActions = {};
   let processedSequenceByUid = {};
   let stateSnapshotReady = false;
+  let sequenceSnapshotReady = false;
   let actionsSnapshotReady = false;
   let pendingActions = null;
   let stateMutationQueue = Promise.resolve();
@@ -235,9 +259,15 @@ export function createChorusNetwork({
   const readCurrentState = async () => {
     if (latestState) return latestState;
     if (typeof dbModule.get !== "function") return null;
-    const snapshot = await dbModule.get(pathRef("state"));
+    const [snapshot, sequenceSnapshot] = await Promise.all([
+      dbModule.get(pathRef("state")),
+      dbModule.get(pathRef("processedSequences")),
+    ]);
     const wire = snapshot.val();
-    processedSequenceByUid = normalizeProcessedSequences(wire?.processedSequenceByUid);
+    processedSequenceByUid = {
+      ...normalizeProcessedSequences(wire?.processedSequenceByUid),
+      ...normalizeProcessedSequences(sequenceSnapshot.val()),
+    };
     return normalizeChorusEncounter(decodeWireEncounter(wire));
   };
 
@@ -341,7 +371,10 @@ export function createChorusNetwork({
     const localProcessedActionIds = latestState && latestState.encounterId === value?.encounterId
       ? latestState.processedActionIds
       : [];
-    processedSequenceByUid = normalizeProcessedSequences(value?.processedSequenceByUid);
+    const stateSequences = normalizeProcessedSequences(value?.processedSequenceByUid);
+    for (const [actionUid, sequence] of Object.entries(stateSequences)) {
+      processedSequenceByUid[actionUid] = Math.max(processedSequenceByUid[actionUid] || 0, sequence);
+    }
     const encounter = normalizeChorusEncounter(decodeWireEncounter(value, localProcessedActionIds));
     latestState = encounter;
     stateSnapshotReady = true;
@@ -352,7 +385,7 @@ export function createChorusNetwork({
       clearRenewal();
     }
     onStateChanged(encounter);
-    if (pendingActions) {
+    if (pendingActions && sequenceSnapshotReady) {
       receiveActionsSnapshot(pendingActions);
       pendingActions = null;
     } else cleanupConfirmedActions();
@@ -371,6 +404,7 @@ export function createChorusNetwork({
       latestActions = {};
       processedSequenceByUid = {};
       stateSnapshotReady = false;
+      sequenceSnapshotReady = false;
       actionsSnapshotReady = false;
       pendingActions = null;
       actionCleanupPromises.clear();
@@ -381,9 +415,20 @@ export function createChorusNetwork({
         return false;
       }
       unsubscribers.push(dbModule.onValue(pathRef("state"), snapshot => rememberState(snapshot.val() ?? null)));
+      unsubscribers.push(dbModule.onValue(pathRef("processedSequences"), snapshot => {
+        const incoming = normalizeProcessedSequences(snapshot.val());
+        for (const [actionUid, sequence] of Object.entries(incoming)) {
+          processedSequenceByUid[actionUid] = Math.max(processedSequenceByUid[actionUid] || 0, sequence);
+        }
+        sequenceSnapshotReady = true;
+        if (pendingActions && stateSnapshotReady) {
+          receiveActionsSnapshot(pendingActions);
+          pendingActions = null;
+        } else cleanupConfirmedActions();
+      }));
       unsubscribers.push(dbModule.onValue(pathRef("actions"), snapshot => {
         const actions = snapshot.val() || {};
-        if (!stateSnapshotReady) {
+        if (!stateSnapshotReady || !sequenceSnapshotReady) {
           pendingActions = structuredClone(actions);
           return;
         }
@@ -398,6 +443,31 @@ export function createChorusNetwork({
         if (!active()) return null;
         const current = await readCurrentState();
         if (current) {
+          const timestamp = now();
+          const reformed = createReformedChorusEncounter(current, { uid, now: timestamp });
+          if (reformed && current.leaseUntil <= timestamp) {
+            const transaction = await dbModule.runTransaction(pathRef("state"), wireCurrent => {
+              const observed = normalizeChorusEncounter(decodeWireEncounter(wireCurrent));
+              if (!observed || observed.encounterId !== current.encounterId
+                || observed.combatRevision !== current.combatRevision
+                || observed.reformAt !== current.reformAt
+                || observed.leaseUntil > timestamp) return undefined;
+              const wire = encodeWireEncounter(reformed);
+              return wire;
+            });
+            if (!transaction.committed) {
+              latestState = normalizeChorusEncounter(decodeWireEncounter(transaction.snapshot.val()));
+              return latestState ? structuredClone(latestState) : null;
+            }
+            const wire = transaction.snapshot.val();
+            latestState = normalizeChorusEncounter(decodeWireEncounter(wire));
+            stateSnapshotReady = true;
+            subscribeToOwnClaim(latestState.encounterId);
+            scheduleRenewal(latestState.authorityEpoch);
+            onStateChanged(latestState);
+            cleanupConfirmedActions();
+            return structuredClone(latestState);
+          }
           latestState = current;
           return structuredClone(current);
         }
@@ -497,6 +567,26 @@ export function createChorusNetwork({
         )) {
           return { ok: false, reason: "processed_action_mismatch" };
         }
+        if (processedAction) {
+          const queuedAction = latestActions?.[processedAction.uid]?.[String(processedAction.sequence)];
+          if (!queuedAction || !sameQueuedAction(queuedAction, processedAction)) {
+            return { ok: false, reason: "queued_action_mismatch" };
+          }
+          const validation = validateChorusAction(processedAction, {
+            encounter: current,
+            authenticatedUid: processedAction.uid,
+            now: processedAction.createdAt,
+            lumenAssistEligible: true,
+          });
+          if (!validation.ok) return { ok: false, reason: "queued_action_invalid" };
+          const expected = applyChorusAction(current, validation, processedAction.createdAt).encounter;
+          if (!sameCombatState(expected, incoming)) {
+            return { ok: false, reason: "action_state_mismatch" };
+          }
+        } else if (incoming.combatRevision === current.combatRevision + 1
+          && !actionlessRevisionIsMaintenance(current, incoming)) {
+          return { ok: false, reason: "processed_action_required" };
+        }
         const next = normalizeChorusEncounter(withoutUndefined({
           ...incoming,
           leaseUntil: Math.max(current.leaseUntil, incoming.leaseUntil),
@@ -506,8 +596,11 @@ export function createChorusNetwork({
           processedActionIds: mergeProcessedActionIds(current.processedActionIds, incoming.processedActionIds),
           contributors: mergeContributors(current.contributors, incoming.contributors),
         }));
-        const patch = statePatch(current, next, processedAction);
-        if (Object.keys(patch).length > 0) await dbModule.update(pathRef("state"), patch);
+        const stateChanges = statePatch(current, next, processedAction);
+        const patch = Object.fromEntries(Object.entries(stateChanges)
+          .map(([field, fieldValue]) => [`state/${field}`, fieldValue]));
+        if (processedAction) patch[`processedSequences/${processedAction.uid}`] = processedAction.sequence;
+        if (Object.keys(patch).length > 0) await dbModule.update(pathRef(""), patch);
         if (processedAction) processedSequenceByUid[processedAction.uid] = processedAction.sequence;
         latestState = next;
         cleanupConfirmedActions();

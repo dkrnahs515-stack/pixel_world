@@ -10,6 +10,7 @@ import {
   createChorusCompletionClaims,
   createChorusEncounter,
   createPersonalChorusState,
+  createReformedChorusEncounter,
   normalizeChorusEncounter,
   reducePersonalChorusState,
   validateChorusAction,
@@ -161,6 +162,19 @@ function createActionSessionId(value) {
   const uuid = globalThis.crypto?.randomUUID?.();
   if (uuid) return uuid.replaceAll("-", "");
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
+}
+
+function isExpectedReformedEncounter(current, incoming) {
+  if (!current || !incoming || current.phase !== "separated"
+    || !["separated", "reforming"].includes(current.status)
+    || incoming.phase !== "anchors" || incoming.status !== "active"
+    || incoming.combatRevision !== 0 || incoming.authorityEpoch !== current.authorityEpoch + 1
+    || !Number.isFinite(current.reformAt) || incoming.spawnedAt < current.reformAt) return false;
+  const expected = createReformedChorusEncounter(current, {
+    uid: incoming.authorityUid,
+    now: incoming.spawnedAt,
+  });
+  return Boolean(expected && expected.encounterId === incoming.encounterId);
 }
 
 export function chorusAttackPresentation(classId, actionType = "bond-cut") {
@@ -582,7 +596,8 @@ class SanctuaryChorusController {
 
   receiveSnapshot(value) {
     const snapshot = normalizeChorusEncounter(value);
-    if (!snapshot || (this.snapshot && snapshot.encounterId !== this.snapshot.encounterId)) return false;
+    if (!snapshot || (this.snapshot && snapshot.encounterId !== this.snapshot.encounterId
+      && !isExpectedReformedEncounter(this.snapshot, snapshot))) return false;
     if (snapshot.status === "active") {
       this.completionClaims = {};
       this.pendingEvents = this.pendingEvents.filter(event => event?.type !== "chorus-completion-claim");

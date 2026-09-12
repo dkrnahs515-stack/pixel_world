@@ -9,6 +9,11 @@ export const MEMORY_SOUND_IDS = Object.freeze([
   "tide-bell",
   "mine-shift-bell",
 ]);
+export const TRUTH_RECORD_INTERACTION_IDS = Object.freeze([
+  "truth-resonance-time",
+  "truth-first-archivist-log",
+  "truth-core-self-division",
+]);
 export const FALSE_RETURN_CONTRADICTION_IDS = Object.freeze([
   "false-return-garen-unscarred",
   "false-return-source-erased",
@@ -58,6 +63,7 @@ export function createInitialSanctuaryChapter() {
     collectedMemoryIds: [],
     memorySequence: [],
     memoryOrderSolved: false,
+    examinedTruthRecordIds: [],
     coreTruthRevealed: false,
     falseReturnRejected: false,
     completedRecordFieldIds: [],
@@ -78,9 +84,14 @@ export function normalizeSanctuaryChapter(value) {
   const memoryOrderSolved = source.memoryOrderSolved === true
     && hasAll(collectedMemoryIds, MEMORY_SOUND_IDS)
     && isExactOrder(memorySequence, MEMORY_SOUND_IDS);
+  const examinedTruthRecordIds = source.coreTruthRevealed === true
+    && (!Array.isArray(source.examinedTruthRecordIds) || source.examinedTruthRecordIds.length === 0)
+    ? [...TRUTH_RECORD_INTERACTION_IDS]
+    : allowedUnique(source.examinedTruthRecordIds, TRUTH_RECORD_INTERACTION_IDS);
   const coreTruthRevealed = source.coreTruthRevealed === true
     && memoryOrderSolved
-    && hasAll(activatedCoreIds, SANCTUARY_CORE_IDS);
+    && hasAll(activatedCoreIds, SANCTUARY_CORE_IDS)
+    && hasAll(examinedTruthRecordIds, TRUTH_RECORD_INTERACTION_IDS);
   const falseReturnRejected = source.falseReturnRejected === true
     && coreTruthRevealed
     && hasAll(collectedMemoryIds, FALSE_RETURN_CONTRADICTION_IDS);
@@ -102,6 +113,7 @@ export function normalizeSanctuaryChapter(value) {
     collectedMemoryIds,
     memorySequence,
     memoryOrderSolved,
+    examinedTruthRecordIds,
     coreTruthRevealed,
     falseReturnRejected,
     completedRecordFieldIds,
@@ -120,6 +132,7 @@ function cloneSanctuaryChapter(chapter) {
     activatedCoreIds: [...chapter.activatedCoreIds],
     collectedMemoryIds: [...chapter.collectedMemoryIds],
     memorySequence: [...chapter.memorySequence],
+    examinedTruthRecordIds: [...chapter.examinedTruthRecordIds],
     completedRecordFieldIds: [...chapter.completedRecordFieldIds],
     collectedTestimonyIds: [...chapter.collectedTestimonyIds],
     previewedFutureIds: [...chapter.previewedFutureIds],
@@ -145,9 +158,14 @@ function applySanctuaryAction(chapter, action) {
         chapter.memoryOrderSolved = true;
       }
       break;
-    case "reveal-truth":
-      if (chapter.memoryOrderSolved && hasAll(chapter.activatedCoreIds, SANCTUARY_CORE_IDS)) chapter.coreTruthRevealed = true;
+    case "examine-truth-record": {
+      const nextId = TRUTH_RECORD_INTERACTION_IDS[chapter.examinedTruthRecordIds.length];
+      if (chapter.memoryOrderSolved && hasAll(chapter.activatedCoreIds, SANCTUARY_CORE_IDS) && action.interactionId === nextId) {
+        chapter.examinedTruthRecordIds.push(action.interactionId);
+        if (hasAll(chapter.examinedTruthRecordIds, TRUTH_RECORD_INTERACTION_IDS)) chapter.coreTruthRevealed = true;
+      }
       break;
+    }
     case "reject-false-return":
       if (chapter.coreTruthRevealed && hasAll(chapter.collectedMemoryIds, FALSE_RETURN_CONTRADICTION_IDS)) {
         chapter.falseReturnRejected = true;

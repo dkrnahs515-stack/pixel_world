@@ -4,6 +4,7 @@ import { ANCHOR_IDS, BOND_IDS, CHORUS_TESTIMONIES } from "../src/sanctuary-choru
 import {
   applyChorusAction,
   createChorusEncounter,
+  createReformedChorusEncounter,
   validateChorusAction,
 } from "../src/sanctuary-chorus-state-20260911-sanctuary.js";
 import * as chorusController from "../src/sanctuary-chorus-controller-20260911-sanctuary.js";
@@ -310,6 +311,41 @@ test("only a record-activated black bond is targetable and attacks separate with
   assert.equal(controller.renderModel().statusLabel, "기억 분리 완료");
   assert.deepEqual(controller.renderModel().separatedFragments.map(fragment => fragment.id), ANCHOR_IDS);
   assert.equal(controller.renderModel().telegraph, null);
+});
+
+test("a controller accepts only the fresh encounter that follows its expired separated snapshot", () => {
+  let separated = encounterAt("onslaught");
+  for (const bondId of BOND_IDS) {
+    separated = advance(separated, "record-activate", { recordId: bondId });
+    separated = advance(separated, "bond-cut", { bondId });
+  }
+  const controller = createSanctuaryChorusController({
+    uid: "late-player",
+    mode: "online",
+    seedSnapshot: separated,
+    now: () => separated.reformAt,
+  });
+  controller.setMap("sanctuary-return-record", { correctionLinked: true });
+  controller.completionClaims = {
+    veteran: { encounterId: separated.encounterId, uid: "veteran", eligible: true },
+  };
+
+  const unrelated = createChorusEncounter({
+    encounterId: "unrelated-encounter",
+    authorityUid: "other",
+    now: separated.reformAt,
+  });
+  assert.equal(controller.receiveSnapshot(unrelated), false);
+
+  const fresh = createReformedChorusEncounter(separated, {
+    uid: "late-player",
+    now: separated.reformAt,
+  });
+  assert.equal(controller.receiveSnapshot(fresh), true);
+  assert.equal(controller.snapshot.encounterId, fresh.encounterId);
+  assert.equal(controller.snapshot.phase, "anchors");
+  assert.deepEqual(controller.snapshot.contributors, {});
+  assert.deepEqual(controller.completionClaims, {});
 });
 
 test("an expired record window releases F interaction so the same record can be activated again", async () => {

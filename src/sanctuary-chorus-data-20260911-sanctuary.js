@@ -9,6 +9,7 @@ export const CHORUS_MAP_ID = "sanctuary-return-record";
 export const CHORUS_MAX_HP = 100;
 export const CHORUS_AUTHORITY_LEASE_MS = 5_000;
 export const CHORUS_AUTHORITY_RENEW_MS = 2_000;
+export const CHORUS_REFORM_DELAY_MS = 30_000;
 export const CHORUS_ACTION_TIME_TOLERANCE_MS = 5_000;
 export const CHORUS_ACTION_ID_MAX_LENGTH = 160;
 export const CHORUS_PROCESSED_ACTION_LIMIT = 256;

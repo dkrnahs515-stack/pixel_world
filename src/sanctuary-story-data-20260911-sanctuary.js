@@ -443,10 +443,14 @@ export function getSanctuaryStoryContent(mapId) {
 }
 
 export function getCollectedSanctuaryRecords(worldProgress) {
-  const chapter = worldProgress?.chapters?.sanctuary;
-  if (chapter?.coreTruthRevealed !== true) return [];
+  const chapter = normalizeSanctuaryChapter(worldProgress?.chapters?.sanctuary);
+  const examinedIds = new Set(chapter.examinedTruthRecordIds);
+  const originals = SANCTUARY_ARCHIVE_RECORDS.filter((record) => {
+    const interaction = SANCTUARY_STORY_INTERACTIONS.find(value => value.archiveRecordId === record.id);
+    return interaction && examinedIds.has(interaction.id);
+  });
   const correction = createCorrectionArchiveRecord(chapter);
-  return correction ? [...SANCTUARY_ARCHIVE_RECORDS, correction] : [...SANCTUARY_ARCHIVE_RECORDS];
+  return correction ? [...originals, correction] : originals;
 }
 
 export function createCorrectionArchiveRecord(chapter) {
