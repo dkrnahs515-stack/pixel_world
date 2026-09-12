@@ -91,19 +91,22 @@ const TESTIMONY_VERDICTS = Object.freeze([
 ]);
 const BONDS = Object.freeze({
   roan: {
-    station: [700, 620], attackPosition: [890, 790],
+    station: [700, 620], attackPosition: [890, 760],
     safeApproach: [[1560, 1120], [1560, 430], [700, 430]],
+    safeEscape: [[600, 790], [600, 430], [1560, 430], [1560, 1360]],
   },
   sera: {
-    station: [1080, 560], attackPosition: [1080, 760],
-    safeApproach: [[860, 430], [1080, 430]],
+    station: [1080, 560], attackPosition: [1080, 730],
+    safeApproach: [[1560, 430], [1080, 430]],
+    safeEscape: [[1560, 760], [1560, 1360]],
   },
   garen: {
-    station: [1460, 620], attackPosition: [1270, 790],
-    safeApproach: [[1080, 430], [1460, 430]],
+    station: [1460, 620], attackPosition: [1270, 760],
+    safeApproach: [[1560, 430], [1460, 430]],
+    safeEscape: [[1560, 790], [1560, 1360]],
   },
   lumen: {
-    station: [1080, 1320], attackPosition: [1080, 1140],
+    station: [1080, 1320], attackPosition: [1080, 1110],
     safeApproach: [[1560, 760], [1560, 1360], [1080, 1360]],
   },
 });
@@ -122,59 +125,159 @@ function redactUid(uid) {
     : "<redacted>";
 }
 
-async function installReadOnlyObserver(page) {
-  await page.route("**/src/main-20260903-volcano-20260905-upgrade-20260911-sanctuary.js", async route => {
-    const response = await route.fetch();
-    const source = await response.text();
-    await route.fulfill({ response, body: `${source}\n
-window.__sanctuaryNetworkInputCodes = [];
-window.addEventListener("keydown", event => window.__sanctuaryNetworkInputCodes.push(event.code));
-window.__sanctuaryNetworkRead = () => ({
-  running: game.running,
-  inputEnabled: game.inputEnabled,
-  sessionMode: game.sessionMode,
-  mapId: game.mapId,
-  uid: game.network?.uid || null,
-  networkMode: game.network?.mode || null,
-  player: {
-    x: game.player.x,
-    y: game.player.y,
-    dir: game.player.dir,
-    hp: game.player.hp,
-    respawnTimer: game.player.respawnTimer,
-  },
-  progress: structuredClone(game.progress),
-  nearbyStoryId: game.nearbyStoryInteraction?.id || null,
-  nearbyChorus: game.nearbyChorusInteraction ? structuredClone(game.nearbyChorusInteraction) : null,
-  attackActive: Boolean(game.attackState),
-  inputCodes: [...window.__sanctuaryNetworkInputCodes],
-  chorus: game.chorusController ? {
-    shared: structuredClone(game.chorusController.snapshot),
-    firebaseState: structuredClone(game.network?.chorus?.latestState || null),
-    personal: structuredClone(game.chorusController.personalSnapshot),
-    claims: structuredClone(game.chorusController.completionClaims),
-    render: structuredClone(game.chorusController.renderModel?.() || null),
-    canAttack: game.chorusController.canAttack?.(Date.now()) !== false,
-  } : null,
-});
-` });
-  });
-}
-
 function observeDiagnostics(page, label) {
-  const diagnostics = { label, pageErrors: [], consoleErrors: [], requestFailures: [], firebaseRequests: [] };
+  const diagnostics = {
+    label,
+    pageErrors: [],
+    consoleErrors: [],
+    consoleErrorDetails: [],
+    requestFailures: [],
+    httpErrors: [],
+    firebaseRequests: [],
+    pageRequests: [],
+    webSockets: [],
+  };
   page.on("pageerror", error => diagnostics.pageErrors.push(error.message));
   page.on("console", message => {
-    if (message.type() === "error") diagnostics.consoleErrors.push(message.text());
+    if (message.type() === "error") {
+      diagnostics.consoleErrors.push(message.text());
+      diagnostics.consoleErrorDetails.push({ text: message.text(), location: message.location() });
+    }
   });
   page.on("request", request => {
+    diagnostics.pageRequests.push({
+      url: request.url(),
+      method: request.method(),
+      resourceType: request.resourceType(),
+    });
     if (request.url().includes("www.gstatic.com/firebasejs/")) diagnostics.firebaseRequests.push(request.url());
+  });
+  page.on("websocket", socket => diagnostics.webSockets.push(socket.url()));
+  page.on("response", response => {
+    if (response.status() >= 400) diagnostics.httpErrors.push({ url: response.url(), status: response.status() });
   });
   page.on("requestfailed", request => diagnostics.requestFailures.push({
     url: request.url(),
     errorText: request.failure()?.errorText || "unknown",
   }));
   return diagnostics;
+}
+
+function assertPageFirebaseEmulatorTraffic(diagnostics) {
+  const requests = diagnostics.pageRequests || [];
+  const webSockets = diagnostics.webSockets || [];
+  const authEmulatorRequests = requests.filter(({ url }) => {
+    const endpoint = new URL(url);
+    return endpoint.protocol === "http:"
+      && endpoint.hostname === "127.0.0.1"
+      && endpoint.port === "9099"
+      && /^\/(?:identitytoolkit|securetoken)\.googleapis\.com\//.test(endpoint.pathname);
+  });
+  const databaseEmulatorTransports = [...requests, ...webSockets.map(url => ({ url }))]
+    .filter(({ url }) => {
+      const endpoint = new URL(url);
+      return ["http:", "ws:"].includes(endpoint.protocol)
+        && endpoint.hostname === "127.0.0.1"
+        && endpoint.port === "9000"
+        && /^\/(?:\.lp|\.ws)$/.test(endpoint.pathname)
+        && endpoint.searchParams.has("ns");
+    });
+
+  assert.ok(authEmulatorRequests.length > 0,
+    `${diagnostics.label} must authenticate through the browser page on 127.0.0.1:9099`);
+  assert.ok(databaseEmulatorTransports.length > 0,
+    `${diagnostics.label} must open a browser RTDB transport on 127.0.0.1:9000`);
+  for (const { url } of requests) {
+    const endpoint = new URL(url);
+    assert.equal(["identitytoolkit.googleapis.com", "securetoken.googleapis.com"].includes(endpoint.hostname), false,
+      `${diagnostics.label} contacted production Auth: ${endpoint.origin}`);
+    assert.equal(/(^|\.)firebaseio\.com$|(^|\.)firebasedatabase\.app$/.test(endpoint.hostname), false,
+      `${diagnostics.label} contacted production RTDB: ${endpoint.origin}`);
+  }
+  for (const url of webSockets) {
+    const endpoint = new URL(url);
+    assert.equal(/(^|\.)firebaseio\.com$|(^|\.)firebasedatabase\.app$/.test(endpoint.hostname), false,
+      `${diagnostics.label} opened a production RTDB socket: ${endpoint.origin}`);
+  }
+
+  return {
+    authEmulatorRequests: authEmulatorRequests.length,
+    databaseEmulatorTransports: databaseEmulatorTransports.length,
+  };
+}
+
+function assertExpectedOfflineDiagnostics(diagnostics, window) {
+  assert.equal(diagnostics.consoleErrorDetails.length, diagnostics.consoleErrors.length,
+    `${diagnostics.label} console error detail collection must be complete`);
+  assert.deepEqual(diagnostics.pageErrors, [], `${diagnostics.label} page errors`);
+  assert.deepEqual(diagnostics.consoleErrors.slice(0, window.consoleStart), [],
+    `${diagnostics.label} console errors before the deliberate offline window`);
+  assert.deepEqual(diagnostics.requestFailures.slice(0, window.requestStart), [],
+    `${diagnostics.label} request failures before the deliberate offline window`);
+
+  const offlineConsoleErrors = diagnostics.consoleErrors.slice(window.consoleStart, window.consoleEnd);
+  const offlineConsoleDetails = diagnostics.consoleErrorDetails.slice(window.consoleStart, window.consoleEnd);
+  const offlineRequestFailures = diagnostics.requestFailures.slice(window.requestStart, window.requestEnd);
+  const websocketFailure = /^WebSocket connection to '(ws:\/\/127\.0\.0\.1:9000\/[^']*)' failed: Error in connection establishment: net::ERR_INTERNET_DISCONNECTED$/;
+  const resourceFailure = /^Failed to load resource: net::ERR_INTERNET_DISCONNECTED$/;
+  assert.ok(offlineConsoleErrors.length > 0,
+    `${diagnostics.label} must expose expected emulator errors while deliberately offline`);
+  assert.ok(offlineRequestFailures.length > 0,
+    `${diagnostics.label} must expose a failed emulator request while deliberately offline`);
+  const genericConsoleUrls = [];
+  for (const detail of offlineConsoleDetails) {
+    const websocketMatch = detail.text.match(websocketFailure);
+    assert.equal(Boolean(websocketMatch) || resourceFailure.test(detail.text), true,
+      `${diagnostics.label} emitted an unrelated offline console error: ${detail.text}`);
+    if (websocketMatch) {
+      const endpoint = new URL(websocketMatch[1]);
+      assert.equal(endpoint.hostname, "127.0.0.1");
+      assert.equal(endpoint.port, "9000");
+      assert.equal(endpoint.pathname, "/.ws");
+    } else {
+      genericConsoleUrls.push(detail.location.url);
+    }
+  }
+
+  for (const failure of offlineRequestFailures) {
+    const endpoint = new URL(failure.url);
+    assert.equal(endpoint.protocol, "http:", `${diagnostics.label} offline failure must use emulator HTTP`);
+    assert.equal(endpoint.hostname, "127.0.0.1",
+      `${diagnostics.label} offline failure escaped the loopback emulator: ${failure.url}`);
+    assert.equal(["9000", "9099"].includes(endpoint.port), true,
+      `${diagnostics.label} offline failure used an unapproved port: ${failure.url}`);
+    if (endpoint.port === "9000") {
+      assert.match(endpoint.pathname, /^\/(?:\.lp|\.ws)$/,
+        `${diagnostics.label} offline RTDB failure used an unexpected path`);
+    } else {
+      assert.match(endpoint.pathname, /^\/(?:identitytoolkit|securetoken)\.googleapis\.com\//,
+        `${diagnostics.label} offline Auth failure used an unexpected path`);
+    }
+    assert.equal(failure.errorText, "net::ERR_INTERNET_DISCONNECTED",
+      `${diagnostics.label} offline request failed for an unexpected reason`);
+  }
+  assert.deepEqual(genericConsoleUrls.sort(), offlineRequestFailures.map(({ url }) => url).sort(),
+    `${diagnostics.label} generic offline console errors must map one-to-one by URL to approved emulator failures`);
+
+  assert.deepEqual(diagnostics.consoleErrors.slice(window.consoleEnd), [],
+    `${diagnostics.label} console errors after restoring the BrowserContext online`);
+  assert.deepEqual(diagnostics.requestFailures.slice(window.requestEnd), [],
+    `${diagnostics.label} request failures after restoring the BrowserContext online`);
+
+  return {
+    consoleErrors: offlineConsoleErrors.length,
+    websocketErrors: offlineConsoleDetails.filter(({ text }) => websocketFailure.test(text)).length,
+    requestFailures: offlineRequestFailures.length,
+    endpoints: [...new Set(offlineRequestFailures.map(({ url }) => {
+      const endpoint = new URL(url);
+      return `${endpoint.protocol}//${endpoint.hostname}:${endpoint.port}${endpoint.pathname}`;
+    }))].sort(),
+    before: { consoleErrors: window.consoleStart, requestFailures: window.requestStart },
+    after: {
+      consoleErrors: diagnostics.consoleErrors.length - window.consoleEnd,
+      requestFailures: diagnostics.requestFailures.length - window.requestEnd,
+    },
+  };
 }
 
 async function readState(page) {
@@ -206,12 +309,6 @@ async function seedPriorChapterFixture(page, captainOutcome) {
     const key = Object.keys(localStorage).find(candidate => candidate.startsWith("pixel-world.progress.v8:"));
     if (!key) throw new Error("v8 progress checkpoint is missing");
     const value = JSON.parse(localStorage.getItem(key));
-    const rescued = outcome === "rescued";
-    if (rescued) {
-      value.equipmentByClass.warrior.ownedWeaponIds = [
-        ...new Set([...value.equipmentByClass.warrior.ownedWeaponIds, "volcanic-heartblade"]),
-      ];
-    }
     value.worldProgress = {
       unlockedRegionIds: ["village", "forest", "coast", "volcano", "sanctuary"],
       completedRegionIds: ["coast", "volcano"],
@@ -235,14 +332,16 @@ async function seedPriorChapterFixture(page, captainOutcome) {
             "garen-scorched-insignia", "garen-escort-record",
             "captain-transport-order", "captain-core-contact-record",
           ],
-          coolantAnchorIds: rescued
-            ? ["ash-gate-coolant-anchor", "magma-route-coolant-anchor", "observatory-coolant-anchor"]
-            : [],
-          routeDecision: rescued ? "rescue" : "proceed",
+          coolantAnchorIds: [
+            "ash-gate-coolant-anchor",
+            "magma-route-coolant-anchor",
+            "observatory-coolant-anchor",
+          ],
+          routeDecision: "rescue",
           eruptionTriggered: true,
           coopBossDefeated: true,
           captainOutcome: outcome,
-          hiddenWeaponRewardClaimed: rescued,
+          hiddenWeaponRewardClaimed: false,
           coreFragmentObtained: true,
           sanctuaryUnlocked: true,
         },
@@ -258,6 +357,12 @@ async function storedProgress(page) {
     const key = Object.keys(localStorage).find(candidate => candidate.startsWith("pixel-world.progress.v8:"));
     return key ? { key, value: JSON.parse(localStorage.getItem(key)) } : null;
   });
+}
+
+function withoutCaptainOutcome(progress) {
+  const comparable = structuredClone(progress);
+  delete comparable.worldProgress.chapters.volcano.captainOutcome;
+  return comparable;
 }
 
 async function reloadAndEnterOnline(page, nickname) {
@@ -482,14 +587,6 @@ async function dismissRescuedInterruption(page) {
   await page.locator("#dialogueOverlay").waitFor({ state: "hidden" });
 }
 
-async function waitForPatternImpact(page) {
-  await page.waitForFunction(() => {
-    const telegraph = window.__sanctuaryNetworkRead().chorus.render?.telegraph;
-    const now = Date.now();
-    return telegraph && now >= telegraph.impactAt && now <= telegraph.endsAt;
-  }, null, { timeout: 5_000 });
-}
-
 async function cutBond(page, pageA, pageB, bondId) {
   const bond = BONDS[bondId];
   for (const waypoint of bond.safeApproach) await walkTo(page, ...waypoint);
@@ -502,11 +599,11 @@ async function cutBond(page, pageA, pageB, bondId) {
   await Promise.all([pageA, pageB].map(candidate => candidate.waitForFunction(expected => (
     window.__sanctuaryNetworkRead().chorus.shared?.activeRecordId === expected
   ), bondId, { timeout: 12_000 })));
-  await waitForPatternImpact(page);
   await walkTo(page, ...bond.attackPosition);
   await face(page, "ArrowUp");
   await pressAttackKey(page, "Control");
   await waitForSharedObjective(pageA, pageB, "severedBondIds", bondId);
+  for (const waypoint of bond.safeEscape || []) await walkTo(page, ...waypoint);
 }
 
 async function bounceReturnRecordSubscription(page) {
@@ -619,13 +716,14 @@ async function captureFailure(pageA, pageB, reader, error, diagnostics = []) {
   let evidence = null;
 
   try {
-    await Promise.all([installReadOnlyObserver(pageA), installReadOnlyObserver(pageB)]);
     await Promise.all([
       pageA.goto(`${BASE_URL}?firebaseEmulator=1`, { waitUntil: "domcontentloaded" }),
       pageB.goto(`${BASE_URL}?firebaseEmulator=1`, { waitUntil: "domcontentloaded" }),
     ]);
     await Promise.all([enterOnline(pageA, "기록자A"), enterOnline(pageB, "기록자B")]);
-    const [uidA, uidB] = await Promise.all([readState(pageA), readState(pageB)]).then(states => states.map(state => state.uid));
+    const [authenticatedA, authenticatedB] = await Promise.all([readState(pageA), readState(pageB)]);
+    const pageFirebaseTraffic = [diagnosticsA, diagnosticsB].map(assertPageFirebaseEmulatorTraffic);
+    const [uidA, uidB] = [authenticatedA.uid, authenticatedB.uid];
     assert.notEqual(uidA, uidB, "isolated BrowserContexts must receive distinct anonymous Auth UIDs");
 
     for (const diagnostics of [diagnosticsA, diagnosticsB]) {
@@ -654,6 +752,10 @@ async function captureFailure(pageA, pageB, reader, error, diagnostics = []) {
     assert.deepEqual(reloadedB.progress.worldProgress.chapters.sanctuary, DEFAULT_SANCTUARY);
     assert.equal(reloadedA.progress.worldProgress.chapters.volcano.captainOutcome, "rescued");
     assert.equal(reloadedB.progress.worldProgress.chapters.volcano.captainOutcome, "lost");
+    assert.deepEqual(withoutCaptainOutcome(reloadedA.progress), withoutCaptainOutcome(reloadedB.progress),
+      "A/B preconditions must differ only by volcano captainOutcome");
+    assert.equal(reloadedA.chorus.shared, null, "A must not seed shared chorus success");
+    assert.equal(reloadedB.chorus.shared, null, "B must not seed shared chorus success");
 
     reader = await createFirebaseReader();
 
@@ -800,35 +902,20 @@ async function captureFailure(pageA, pageB, reader, error, diagnostics = []) {
     assert.equal(finalA.chorus.personal.contamination, 0,
       "A's personal contamination resets after a real page re-entry and must remain local");
     assert.equal(finalB.chorus.personal.contamination, 0);
-    assert.deepEqual(diagnosticsA.pageErrors, [], "A page errors");
+    const offlineDiagnostics = assertExpectedOfflineDiagnostics(diagnosticsA, offlineDiagnosticWindowA);
     assert.deepEqual(diagnosticsB.pageErrors, [], "B page errors");
-    assert.deepEqual(diagnosticsA.consoleErrors.slice(0, offlineDiagnosticWindowA.consoleStart), [],
-      "A console errors before the deliberate offline window");
-    assert.ok(offlineDiagnosticWindowA.consoleEnd > offlineDiagnosticWindowA.consoleStart,
-      "A must expose at least one expected offline console error while its BrowserContext is offline");
-    assert.equal(diagnosticsA.consoleErrors
-      .slice(offlineDiagnosticWindowA.consoleStart, offlineDiagnosticWindowA.consoleEnd)
-      .every(message => message.includes("net::ERR_INTERNET_DISCONNECTED")), true,
-    "A's deliberate offline window must contain only expected disconnected-network console errors");
-    assert.deepEqual(diagnosticsA.consoleErrors.slice(offlineDiagnosticWindowA.consoleEnd), [],
-      "A console errors after restoring the BrowserContext online");
     assert.deepEqual(diagnosticsB.consoleErrors, [], "B console errors");
-    assert.deepEqual(diagnosticsA.requestFailures.slice(0, offlineDiagnosticWindowA.requestStart), [],
-      "A request failures before the deliberate offline window");
-    assert.ok(offlineDiagnosticWindowA.requestEnd > offlineDiagnosticWindowA.requestStart,
-      "A must expose at least one failed emulator request while its BrowserContext is offline");
-    assert.equal(diagnosticsA.requestFailures
-      .slice(offlineDiagnosticWindowA.requestStart, offlineDiagnosticWindowA.requestEnd)
-      .every(failure => failure.errorText === "net::ERR_INTERNET_DISCONNECTED"), true,
-    "A's deliberate offline window must contain only expected disconnected-network request failures");
-    assert.deepEqual(diagnosticsA.requestFailures.slice(offlineDiagnosticWindowA.requestEnd), [],
-      "A request failures after restoring the BrowserContext online");
     assert.deepEqual(diagnosticsB.requestFailures, [], "B request failures");
+    assert.deepEqual(diagnosticsA.httpErrors, [], "A HTTP errors");
+    assert.deepEqual(diagnosticsB.httpErrors, [], "B HTTP errors");
+    [diagnosticsA, diagnosticsB].map(assertPageFirebaseEmulatorTraffic);
 
     evidence = {
       status: "PASS",
       uids: { A: redactUid(uidA), B: redactUid(uidB), distinct: uidA !== uidB },
       sdkVersion: FIREBASE_VERSION,
+      pageFirebaseTraffic,
+      offlineDiagnostics,
       cohesion: { testimonies: testimonyDom.cohesion, onslaught: onslaughtDom.cohesion, separated: "0 / 100" },
       phase: firebaseState.phase,
       takeover: {
