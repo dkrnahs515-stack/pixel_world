@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 const { chromium } = require("playwright");
 const { initializeApp, deleteApp } = require("firebase/app");
 const { connectAuthEmulator, getAuth, signInAnonymously, signOut } = require("firebase/auth");
@@ -8,6 +9,10 @@ const { connectDatabaseEmulator, get, getDatabase, goOffline, ref } = require("f
 
 const BASE_URL = process.env.PIXEL_WORLD_URL || "http://127.0.0.1:4173";
 const FIREBASE_VERSION = "12.16.0";
+const FIREBASE_DATABASE_NAMESPACE = "pixel-world-8cb9b-default-rtdb";
+const ACTIVE_FIREBASE_CONFIG_PATH = path.resolve(
+  "src/firebase-config-20260905-upgrade-20260911-sanctuary.js",
+);
 const CHORUS_PATH = "rooms/public/chorus/sanctuary-return-record";
 const SHOT_DIR = path.resolve("test-results", "sanctuary-network");
 const DEFAULT_SANCTUARY = Object.freeze({
@@ -173,15 +178,21 @@ function assertPageFirebaseEmulatorTraffic(diagnostics) {
       && endpoint.port === "9099"
       && /^\/(?:identitytoolkit|securetoken)\.googleapis\.com\//.test(endpoint.pathname);
   });
-  const databaseEmulatorTransports = [...requests, ...webSockets.map(url => ({ url }))]
+  const localDatabaseTransports = [...requests, ...webSockets.map(url => ({ url }))]
     .filter(({ url }) => {
       const endpoint = new URL(url);
       return ["http:", "ws:"].includes(endpoint.protocol)
         && endpoint.hostname === "127.0.0.1"
         && endpoint.port === "9000"
-        && /^\/(?:\.lp|\.ws)$/.test(endpoint.pathname)
-        && endpoint.searchParams.has("ns");
+        && /^\/(?:\.lp|\.ws)$/.test(endpoint.pathname);
     });
+  for (const { url } of localDatabaseTransports) {
+    assert.equal(new URL(url).searchParams.get("ns"), FIREBASE_DATABASE_NAMESPACE,
+      `${diagnostics.label} used an unexpected RTDB emulator namespace: ${url}`);
+  }
+  const databaseEmulatorTransports = localDatabaseTransports.filter(({ url }) => (
+    new URL(url).searchParams.get("ns") === FIREBASE_DATABASE_NAMESPACE
+  ));
 
   assert.ok(authEmulatorRequests.length > 0,
     `${diagnostics.label} must authenticate through the browser page on 127.0.0.1:9099`);
@@ -234,6 +245,7 @@ function assertExpectedOfflineDiagnostics(diagnostics, window) {
       assert.equal(endpoint.hostname, "127.0.0.1");
       assert.equal(endpoint.port, "9000");
       assert.equal(endpoint.pathname, "/.ws");
+      assert.equal(endpoint.searchParams.get("ns"), FIREBASE_DATABASE_NAMESPACE);
     } else {
       genericConsoleUrls.push(detail.location.url);
     }
@@ -249,6 +261,8 @@ function assertExpectedOfflineDiagnostics(diagnostics, window) {
     if (endpoint.port === "9000") {
       assert.match(endpoint.pathname, /^\/(?:\.lp|\.ws)$/,
         `${diagnostics.label} offline RTDB failure used an unexpected path`);
+      assert.equal(endpoint.searchParams.get("ns"), FIREBASE_DATABASE_NAMESPACE,
+        `${diagnostics.label} offline RTDB failure used an unexpected namespace`);
     } else {
       assert.match(endpoint.pathname, /^\/(?:identitytoolkit|securetoken)\.googleapis\.com\//,
         `${diagnostics.label} offline Auth failure used an unexpected path`);
@@ -697,6 +711,9 @@ async function captureFailure(pageA, pageB, reader, error, diagnostics = []) {
 }
 
 (async () => {
+  const { FIREBASE_CONFIG } = await import(pathToFileURL(ACTIVE_FIREBASE_CONFIG_PATH).href);
+  assert.equal(new URL(FIREBASE_CONFIG.databaseURL).hostname.split(".")[0], FIREBASE_DATABASE_NAMESPACE,
+    "smoke namespace must match the active checked-in Firebase config");
   const localFirebasePackage = JSON.parse(await fs.readFile(path.resolve("node_modules/firebase/package.json"), "utf8"));
   assert.equal(localFirebasePackage.version, "12.6.0", "Node Firebase reader must stay pinned to 12.6.0");
 
