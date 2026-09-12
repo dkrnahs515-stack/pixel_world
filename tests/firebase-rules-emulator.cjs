@@ -1385,12 +1385,12 @@ test("Round 3 pressure는 replay receipt를 per-UID sequence watermark로 제한
     });
 
     await t.test("gap을 가진 high sequence pending action과 state를 하나의 watermark publish로 확정한다", async () => {
-      const timestamp = Date.now();
-      const state = chorusEncounter({ leaseUntil: timestamp + 6_000 });
+      const state = chorusEncounter({ leaseUntil: Date.now() + 6_000 });
       await seedChorus(environment, state);
       await environment.withSecurityRulesDisabled(async context => {
         await set(ref(context.database(), `${chorusPath}/actionSequences/player`), 10_000);
       });
+      const timestamp = Date.now();
       const action = chorusAction("player", 10_000, { createdAt: timestamp });
       await assertSucceeds(set(ref(playerDb, `${chorusPath}/actions/player/10000`), action));
       await assertFails(remove(ref(hostDb, `${chorusPath}/actions/player/10000`)));
