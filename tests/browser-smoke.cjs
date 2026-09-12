@@ -28,6 +28,8 @@ async function expectRegion(page, regionName) {
     });
     await page.route("https://www.gstatic.com/**", route => route.abort());
     await page.goto(process.env.PIXEL_WORLD_URL || "http://127.0.0.1:4173", { waitUntil: "networkidle" });
+    await page.locator("#rpgExperienceButton").click();
+    await page.locator("#entryOverlay").waitFor({ state: "visible" });
     const screenshotDirectory = process.env.PIXEL_WORLD_SHOTS;
     if (screenshotDirectory) await fs.mkdir(screenshotDirectory, { recursive: true });
     assert.equal(await page.locator("#entryOverlay").isVisible(), true);

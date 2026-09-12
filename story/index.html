@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#102b2d" />
+    <title>제1장 — 돌아오지 않은 이름들 | Pixel World</title>
+    <link rel="stylesheet" href="./story.css" />
+  </head>
+  <body>
+    <section id="storyStartOverlay" class="story-overlay" aria-labelledby="storyStartTitle">
+      <div class="story-start-paper">
+        <p class="story-kicker">길드 기록 보관실 · 열람 허가 제01호</p>
+        <h1 id="storyStartTitle">돌아오지 않은 이름들</h1>
+        <p>
+          정식 모험가가 된 첫날, 테오에게 맡겨진 것은 네 명의 실종자 명부를 폐기하는 일이었습니다.
+        </p>
+        <p id="storyStartStatus" class="story-status" aria-live="polite"></p>
+        <div class="story-start-actions" aria-label="제1장 시작 방식">
+          <button id="storyNewButton" type="button">처음부터 조사하기</button>
+          <button id="storyContinueButton" type="button" disabled>이어하기</button>
+        </div>
+        <a class="story-back-link" href="../">← 첫 화면으로</a>
+      </div>
+    </section>
+
+    <main id="storyScreen" hidden>
+      <header class="story-header">
+        <a class="story-back-link" href="../">← 첫 화면으로</a>
+        <div>
+          <p id="storyChapterLabel" class="story-kicker">제01장 · 길드 기록 보관실</p>
+          <p id="storyProgress" class="story-progress">조사 기록을 준비하고 있습니다.</p>
+        </div>
+      </header>
+
+      <div class="story-layout">
+        <div class="story-art-panel">
+          <figure class="story-figure" aria-labelledby="storySceneTitle storyArtCaption">
+            <div class="story-art-stage">
+              <img
+                id="storyArt"
+                class="story-art"
+                alt="테오가 고대 숲을 배경으로 활을 든 공식 삽화"
+                width="1024"
+                height="1536"
+                decoding="async"
+                aria-describedby="storyArtFallback"
+              />
+            </div>
+            <figcaption id="storyArtCaption">공식 기록 삽화 · 장면에 맞춰 열람됩니다.</figcaption>
+          </figure>
+          <section id="storyArtFallback" class="story-art-fallback" role="status" aria-live="polite" hidden>
+            <p>삽화를 불러오지 못했습니다. 조사 기록은 계속 열람할 수 있습니다.</p>
+            <button id="storyArtRetryButton" type="button" hidden>삽화 다시 불러오기</button>
+          </section>
+        </div>
+
+        <section class="story-investigation" aria-label="현재 조사 기록">
+          <p id="storyNarrative" class="story-narrative">기록 보관실의 봉인을 열어 첫 장을 시작하세요.</p>
+          <h2 id="storySceneTitle" tabindex="-1">조사 준비</h2>
+
+          <article id="storyDocument" class="story-document" aria-label="현재 문서">
+            <p class="story-document-stamp">기록 대기</p>
+            <p>현재 장면의 문서와 근거는 조사를 시작하면 여기에 표시됩니다.</p>
+          </article>
+
+          <section id="storyActions" class="story-actions" aria-label="현재 조사 행동"></section>
+
+          <section class="story-clues" aria-labelledby="storyCluesTitle">
+            <h3 id="storyCluesTitle">발견한 단서</h3>
+            <ul id="storyClues">
+              <li>아직 확인한 단서가 없습니다.</li>
+            </ul>
+          </section>
+
+          <p id="storyStatus" class="story-status" aria-live="polite"></p>
+        </section>
+      </div>
+    </main>
+
+    <section id="storyResetOverlay" class="story-overlay" role="dialog" aria-modal="true" aria-labelledby="storyResetTitle" hidden>
+      <div class="story-confirm-paper">
+        <p class="story-kicker">기록 보관실 · 확인</p>
+        <h2 id="storyResetTitle">현재 조사 기록을 비울까요?</h2>
+        <p>제1장의 자동 저장 기록만 초기화합니다. 기존 RPG 기록에는 영향을 주지 않습니다.</p>
+        <div class="story-confirm-actions">
+          <button id="storyResetConfirmButton" type="button">기록 비우고 처음부터</button>
+          <button id="storyResetCancelButton" type="button">계속 열람하기</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="storyCompletion" class="story-overlay" aria-labelledby="storyCompletionTitle" hidden>
+      <div class="story-completion-paper">
+        <p class="story-kicker">제1장 기록 결재</p>
+        <h2 id="storyCompletionTitle" tabindex="-1">생존 여부 미확인. 폐기 보류.</h2>
+        <p>조사단의 다음 열람 기록은 보존됩니다.</p>
+        <div class="story-confirm-actions">
+          <button id="storyReplayButton" type="button">제1장 다시 보기</button>
+          <a class="story-back-link" href="../">첫 화면으로</a>
+        </div>
+      </div>
+    </section>
+
+    <script type="module" src="../src/story-controller.js"></script>
+  </body>
+</html>

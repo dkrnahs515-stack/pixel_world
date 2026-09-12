@@ -149,7 +149,7 @@ async function readState(page) {
 }
 
 async function installReadOnlyObserver(page) {
-  await page.route("**/src/main-20260903-volcano-20260905-upgrade-20260911-sanctuary.js", async route => {
+  await page.route("**/src/main-20260911-story.js", async route => {
     const response = await route.fetch();
     const source = await response.text();
     await route.fulfill({ response, body: source + `
@@ -182,6 +182,8 @@ window.__sanctuarySmokeRead = () => ({
 }
 
 async function enterSolo(page, nickname, classId) {
+  await page.locator("#rpgExperienceButton").click();
+  await page.locator("#entryOverlay").waitFor({ state: "visible" });
   await page.locator("#nicknameInput").fill(nickname);
   await page.locator(`[data-class-id="${classId}"]`).click();
   await page.locator('[data-play-mode="solo"]').click();

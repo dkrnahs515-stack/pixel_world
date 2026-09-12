@@ -6,12 +6,31 @@
   <meta name="theme-color" content="#111827" />
   <title>픽셀 월드 온라인 RPG</title>
   <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="./styles-20260911-story.css" />
   <link rel="stylesheet" href="./styles-20260903-volcano-20260905-upgrade-20260911-sanctuary.css" />
 </head>
 <body>
   <canvas id="game" tabindex="0" aria-label="2D 픽셀 온라인 RPG 게임 화면"></canvas>
 
-  <div id="entryOverlay" class="screen-overlay">
+  <div id="experienceOverlay" class="screen-overlay">
+    <section class="modal-card experience-card" aria-labelledby="experienceTitle">
+      <p class="eyebrow">PIXEL WORLD</p>
+      <h1 id="experienceTitle">어떤 이야기를 시작할까요?</h1>
+      <p class="modal-description">기존 RPG 모험과 소설판 조사 이야기는 서로 다른 진행을 사용합니다.</p>
+      <div class="experience-choice-grid">
+        <button id="rpgExperienceButton" class="experience-choice" type="button">
+          <strong>기존 온라인 RPG</strong>
+          <span>직업을 선택하고 픽셀 월드를 탐험합니다.</span>
+        </button>
+        <a id="storyExperienceLink" class="experience-choice story" href="./story/">
+          <strong>소설판 조사 스토리</strong>
+          <span>테오와 함께 돌아오지 않은 이름들의 단서를 조사합니다.</span>
+        </a>
+      </div>
+    </section>
+  </div>
+
+  <div id="entryOverlay" class="screen-overlay" hidden>
     <form id="nicknameForm" class="modal-card entry-card" novalidate>
       <div class="modal-emblem" aria-hidden="true">⚔</div>
       <p class="eyebrow">PIXEL WORLD ONLINE</p>
@@ -71,6 +90,7 @@
         </div>
         <p id="rewardCodeStatus" role="status" aria-live="polite">닉네임별 1회 지급됩니다. TEACHER·BOSSKILLBOSS 효과는 솔로 전용입니다.</p>
       </details>
+      <button id="returnToExperienceButton" class="secondary-button" type="button">다른 이야기 선택</button>
       <button id="enterButton" class="primary-button" type="submit" disabled>직업을 선택해 주세요</button>
       <p class="entry-note">솔로는 온라인 통신 없이 실행되며, 온라인을 선택한 경우에만 실시간 서버에 연결됩니다.</p>
     </form>
@@ -458,6 +478,6 @@
   </div>
 
   <noscript>이 게임은 JavaScript가 필요합니다.</noscript>
-  <script type="module" src="./src/main-20260903-volcano-20260905-upgrade-20260911-sanctuary.js"></script>
+  <script type="module" src="./src/main-20260911-story.js"></script>
 </body>
 </html>

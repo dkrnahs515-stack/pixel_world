@@ -114,10 +114,17 @@ test("legacy combat URLs stay on legacy weapon data while the sanctuary graph us
   assert.equal(sanctuaryProjectileGraph.has(legacyProjectileUrl.href), false);
 });
 
-test("HTML uses query-free physical sanctuary CSS and JavaScript entry files", async () => {
+test("HTML uses query-free physical story and sanctuary release files", async () => {
   const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+  assert.match(html, /href="\.\/styles-20260911-story\.css"/);
   assert.match(html, /href="\.\/styles-20260903-volcano-20260905-upgrade-20260911-sanctuary\.css"/);
-  assert.match(html, /src="\.\/src\/main-20260903-volcano-20260905-upgrade-20260911-sanctuary\.js"/);
+  assert.match(html, /src="\.\/src\/main-20260911-story\.js"/);
   assert.doesNotMatch(html, /(?:styles|main)[^"']*\?v=/);
   assert.equal(existsSync(new URL("../styles-20260903-volcano-20260905-upgrade-20260911-sanctuary.css", import.meta.url)), true);
+  assert.equal(existsSync(new URL("../styles-20260911-story.css", import.meta.url)), true);
+
+  const storyEntryUrl = new URL("../src/main-20260911-story.js", import.meta.url);
+  const storyGraph = await reachableModuleUrls(storyEntryUrl);
+  const sanctuaryGameUrl = new URL(`../src/game-${RELEASE_SUFFIX}.js`, import.meta.url);
+  assert.equal(storyGraph.has(sanctuaryGameUrl.href), true);
 });

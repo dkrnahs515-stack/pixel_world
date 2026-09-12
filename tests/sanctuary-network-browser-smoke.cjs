@@ -311,6 +311,8 @@ async function waitForPlayable(page) {
 }
 
 async function enterOnline(page, nickname) {
+  await page.locator("#rpgExperienceButton").click();
+  await page.locator("#entryOverlay").waitFor({ state: "visible" });
   await page.locator("#nicknameInput").fill(nickname);
   await page.locator('[data-class-id="warrior"]').click();
   await page.locator('[data-play-mode="online"]').click();
