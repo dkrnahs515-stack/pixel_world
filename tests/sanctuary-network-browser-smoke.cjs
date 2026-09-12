@@ -6,10 +6,13 @@ const { chromium } = require("playwright");
 const { initializeApp, deleteApp } = require("firebase/app");
 const { connectAuthEmulator, getAuth, signInAnonymously, signOut } = require("firebase/auth");
 const { connectDatabaseEmulator, get, getDatabase, goOffline, ref } = require("firebase/database");
+const {
+  FIREBASE_DATABASE_NAMESPACE,
+  isExpectedReconnectLongPollAbort,
+} = require("../scripts/sanctuary-network-diagnostics.cjs");
 
 const BASE_URL = process.env.PIXEL_WORLD_URL || "http://127.0.0.1:4173";
 const FIREBASE_VERSION = "12.16.0";
-const FIREBASE_DATABASE_NAMESPACE = "pixel-world-8cb9b-default-rtdb";
 const ACTIVE_FIREBASE_CONFIG_PATH = path.resolve(
   "src/firebase-config-20260905-upgrade-20260911-sanctuary.js",
 );
@@ -274,11 +277,6 @@ function assertExpectedOfflineDiagnostics(diagnostics, window) {
   assert.deepEqual(genericConsoleUrls.sort(), offlineRequestFailures.map(({ url }) => url).sort(),
     `${diagnostics.label} generic offline console errors must map one-to-one by URL to approved emulator failures`);
 
-  assert.deepEqual(diagnostics.consoleErrors.slice(window.consoleEnd), [],
-    `${diagnostics.label} console errors after restoring the BrowserContext online`);
-  assert.deepEqual(diagnostics.requestFailures.slice(window.requestEnd), [],
-    `${diagnostics.label} request failures after restoring the BrowserContext online`);
-
   return {
     consoleErrors: offlineConsoleErrors.length,
     websocketErrors: offlineConsoleDetails.filter(({ text }) => websocketFailure.test(text)).length,
@@ -288,10 +286,29 @@ function assertExpectedOfflineDiagnostics(diagnostics, window) {
       return `${endpoint.protocol}//${endpoint.hostname}:${endpoint.port}${endpoint.pathname}`;
     }))].sort(),
     before: { consoleErrors: window.consoleStart, requestFailures: window.requestStart },
-    after: {
-      consoleErrors: diagnostics.consoleErrors.length - window.consoleEnd,
-      requestFailures: diagnostics.requestFailures.length - window.requestEnd,
-    },
+  };
+}
+
+function assertExpectedReconnectDiagnostics(diagnostics, window) {
+  const reconnectConsoleDetails = diagnostics.consoleErrorDetails.slice(window.consoleStart);
+  const reconnectRequestFailures = diagnostics.requestFailures.slice(window.requestStart);
+  for (const detail of reconnectConsoleDetails) {
+    assert.equal(detail.text, "Failed to load resource: net::ERR_ABORTED",
+      `${diagnostics.label} emitted an unrelated console error after reconnect: ${detail.text}`);
+    assert.equal(isExpectedReconnectLongPollAbort(detail.location.url, "net::ERR_ABORTED"), true,
+      `${diagnostics.label} aborted a non-emulator reconnect request: ${detail.location.url}`);
+  }
+  for (const failure of reconnectRequestFailures) {
+    assert.equal(isExpectedReconnectLongPollAbort(failure.url, failure.errorText), true,
+      `${diagnostics.label} had an unrelated request failure after reconnect: ${failure.url}`);
+  }
+  return {
+    consoleErrors: reconnectConsoleDetails.length,
+    requestFailures: reconnectRequestFailures.length,
+    endpoints: [...new Set(reconnectRequestFailures.map(({ url }) => {
+      const endpoint = new URL(url);
+      return `${endpoint.protocol}//${endpoint.hostname}:${endpoint.port}${endpoint.pathname}`;
+    }))].sort(),
   };
 }
 
@@ -684,6 +701,28 @@ async function createFirebaseReader() {
   };
 }
 
+async function waitForFirebaseReform(reader, oldEncounterId, reformAt) {
+  assert.equal(Number.isFinite(reformAt), true, "separated state must publish a finite reformAt");
+  const deadline = Date.now() + 45_000;
+  let observed = await reader.read("state");
+  while (Date.now() <= deadline) {
+    if (observed && observed.encounterId !== oldEncounterId) return observed;
+    await new Promise(resolve => setTimeout(resolve, 100));
+    observed = await reader.read("state");
+  }
+  assert.fail(`Firebase did not automatically reform ${oldEncounterId} after ${reformAt}: ${JSON.stringify(observed)}`);
+}
+
+function claimCore(claim) {
+  assert.ok(claim && typeof claim === "object", "completion claim must remain present");
+  return {
+    encounterId: claim.encounterId,
+    uid: claim.uid,
+    eligible: claim.eligible,
+    createdAt: claim.createdAt,
+  };
+}
+
 function findForbiddenKeys(value, forbidden, currentPath = CHORUS_PATH, found = []) {
   if (!value || typeof value !== "object") return found;
   for (const [key, child] of Object.entries(value)) {
@@ -867,20 +906,55 @@ async function captureFailure(pageA, pageB, reader, error, diagnostics = []) {
     for (const type of REQUIRED_CONTRIBUTION_TYPES) {
       assert.equal(observedTypes.has(type), true, `Firebase contributors missing ${type}`);
     }
-    const encounterId = firebaseState.encounterId;
-    const claims = await reader.read(`completionClaims/${encounterId}`);
+    const oldEncounterId = firebaseState.encounterId;
+    assert.equal(firebaseState.reformAt, firebaseState.separatedAt + 30_000);
+    const claims = await reader.read(`completionClaims/${oldEncounterId}`);
     assert.equal(claims?.[uidA]?.eligible, true, "authority must create A's completion claim");
     assert.equal(claims?.[uidB]?.eligible, true, "authority must create B's completion claim");
     assert.equal(claims[uidA].uid, uidA);
     assert.equal(claims[uidB].uid, uidB);
+    const oldClaimCores = {
+      [uidA]: claimCore(claims[uidA]),
+      [uidB]: claimCore(claims[uidB]),
+    };
+    const oldInboxCores = {
+      [uidA]: claimCore(await reader.read(`completionInbox/${uidA}`)),
+      [uidB]: claimCore(await reader.read(`completionInbox/${uidB}`)),
+    };
+    assert.deepEqual(oldInboxCores, oldClaimCores,
+      "each contributor inbox must retain the same immutable claim as the historical encounter");
     assert.doesNotMatch(await pageB.locator("#message").textContent(), /온라인 동기화가 거절/,
       "a Firebase-confirmed separation must not show retry feedback");
     screenshots.push(await capture(pageB, "03-separated-by-B.png"));
 
     const savedBeforeReconnectA = await storedProgress(pageA);
     assert.equal(savedBeforeReconnectA.value.worldProgress.chapters.sanctuary.chorusSeparated, false);
+    console.log("[sanctuary-network] automatic post-separation reform while A remains offline");
+    const reformedState = await waitForFirebaseReform(reader, oldEncounterId, firebaseState.reformAt);
+    assert.notEqual(reformedState.encounterId, oldEncounterId);
+    assert.equal(
+      reformedState.encounterId,
+      `sanctuary-chorus-${firebaseState.reformAt}-r${firebaseState.authorityEpoch + 1}`,
+    );
+    assert.equal(reformedState.status, "active");
+    assert.equal(reformedState.phase, "anchors");
+    assert.equal(reformedState.hp, 100);
+    assert.equal(reformedState.maxHp, 100);
+    assert.equal(reformedState.stabilizedAnchorIds, undefined);
+    assert.equal(reformedState.resolvedTestimonyIds, undefined);
+    assert.equal(reformedState.severedBondIds, undefined);
+    assert.deepEqual(Object.keys(reformedState.contributors || {}), []);
+    const preservedClaims = await reader.read(`completionClaims/${oldEncounterId}`);
+    assert.deepEqual(claimCore(preservedClaims[uidA]), oldClaimCores[uidA]);
+    assert.deepEqual(claimCore(preservedClaims[uidB]), oldClaimCores[uidB]);
+    assert.deepEqual(claimCore(await reader.read(`completionInbox/${uidA}`)), oldInboxCores[uidA]);
+    assert.deepEqual(claimCore(await reader.read(`completionInbox/${uidB}`)), oldInboxCores[uidB]);
     offlineDiagnosticWindowA.consoleEnd = diagnosticsA.consoleErrors.length;
     offlineDiagnosticWindowA.requestEnd = diagnosticsA.requestFailures.length;
+    const reconnectDiagnosticWindowA = {
+      consoleStart: offlineDiagnosticWindowA.consoleEnd,
+      requestStart: offlineDiagnosticWindowA.requestEnd,
+    };
     await contextA.setOffline(false);
     console.log("[sanctuary-network] reconnect A and receive own claim");
     await reloadAndEnterOnline(pageA, "기록자A");
@@ -926,6 +1000,7 @@ async function captureFailure(pageA, pageB, reader, error, diagnostics = []) {
       "A's personal contamination resets after a real page re-entry and must remain local");
     assert.equal(finalB.chorus.personal.contamination, 0);
     const offlineDiagnostics = assertExpectedOfflineDiagnostics(diagnosticsA, offlineDiagnosticWindowA);
+    const reconnectDiagnostics = assertExpectedReconnectDiagnostics(diagnosticsA, reconnectDiagnosticWindowA);
     assert.deepEqual(diagnosticsB.pageErrors, [], "B page errors");
     assert.deepEqual(diagnosticsB.consoleErrors, [], "B console errors");
     assert.deepEqual(diagnosticsB.requestFailures, [], "B request failures");
@@ -939,6 +1014,7 @@ async function captureFailure(pageA, pageB, reader, error, diagnostics = []) {
       sdkVersion: FIREBASE_VERSION,
       pageFirebaseTraffic,
       offlineDiagnostics,
+      reconnectDiagnostics,
       cohesion: { testimonies: testimonyDom.cohesion, onslaught: onslaughtDom.cohesion, separated: "0 / 100" },
       phase: firebaseState.phase,
       takeover: {
@@ -949,6 +1025,14 @@ async function captureFailure(pageA, pageB, reader, error, diagnostics = []) {
       },
       contributionTypes: [...observedTypes].sort(),
       claims: [uidA, uidB].map(redactUid),
+      reform: {
+        oldEncounterId,
+        reformAt: firebaseState.reformAt,
+        newEncounterId: reformedState.encounterId,
+        resetPhase: reformedState.phase,
+        claimsPreserved: true,
+        inboxPreserved: true,
+      },
       endings: { A: "seal", B: "release" },
       forbiddenSharedKeys: [],
       screenshots,

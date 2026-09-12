@@ -57,15 +57,15 @@ async function qaApproachBoss(page) {
 
 async function storedProgress(page) {
   return page.evaluate(() => {
-    const key = Object.keys(localStorage).find(candidate => candidate.startsWith("pixel-world.progress.v7:"));
+    const key = Object.keys(localStorage).find(candidate => candidate.startsWith("pixel-world.progress.v8:"));
     return key ? JSON.parse(localStorage.getItem(key)) : null;
   });
 }
 
 async function seedCheckpoint(page, worldProgress, extra = {}) {
   await page.evaluate(({ nextWorldProgress, nextExtra }) => {
-    const key = Object.keys(localStorage).find(candidate => candidate.startsWith("pixel-world.progress.v7:"));
-    if (!key) throw new Error("v7 progress checkpoint is missing");
+    const key = Object.keys(localStorage).find(candidate => candidate.startsWith("pixel-world.progress.v8:"));
+    if (!key) throw new Error("v8 progress checkpoint is missing");
     const value = JSON.parse(localStorage.getItem(key));
     localStorage.setItem(key, JSON.stringify({
       ...value,
@@ -175,7 +175,7 @@ async function assertOnlineRoomFullFallback(browser, errors) {
     await page.locator('[data-equip-weapon="reinforced-masterwork-katana"]').click();
     await page.locator("#inventoryDoneButton").click();
     const initial = await storedProgress(page);
-    assert.equal(initial.version, 7);
+    assert.equal(initial.version, 8);
     await seedCheckpoint(page, initial.worldProgress, {
       level: 100,
       exp: 0,

@@ -8,11 +8,11 @@ const coastSmoke = read("coast-browser-smoke.cjs");
 const volcanoSmoke = read("volcano-browser-smoke.cjs");
 const emulatorFixture = read("firebase-rules-emulator.cjs");
 
-test("coast browser checkpoints use only the deployed v7 save", () => {
-  assert.doesNotMatch(coastSmoke, /pixel-world\.progress\.v6|v6 progress checkpoint|version, 6/);
-  assert.match(coastSmoke, /pixel-world\.progress\.v7/);
-  assert.match(coastSmoke, /v7 progress checkpoint is missing/);
-  assert.match(coastSmoke, /initial\.version, 7/);
+test("coast browser checkpoints use only the active v8 save", () => {
+  assert.doesNotMatch(coastSmoke, /pixel-world\.progress\.v[1-7]:|v[1-7] progress checkpoint|version, [1-7]/);
+  assert.match(coastSmoke, /pixel-world\.progress\.v8:/);
+  assert.match(coastSmoke, /v8 progress checkpoint is missing/);
+  assert.match(coastSmoke, /initial\.version, 8/);
 });
 
 test("volcano boss combat observes a successful Q separately from Ctrl", () => {
