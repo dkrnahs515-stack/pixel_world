@@ -13,6 +13,7 @@ const DEFAULT_SANCTUARY = Object.freeze({
   memorySequence: [],
   memoryOrderSolved: false,
   coreTruthRevealed: false,
+  examinedTruthRecordIds: [],
   falseReturnRejected: false,
   completedRecordFieldIds: [],
   correctionLinked: false,
@@ -182,6 +183,7 @@ window.__sanctuarySmokeRead = () => ({
 }
 
 async function enterSolo(page, nickname, classId) {
+  await page.waitForFunction(() => typeof window.__sanctuarySmokeRead === "function");
   await page.locator("#rpgExperienceButton").click();
   await page.locator("#entryOverlay").waitFor({ state: "visible" });
   await page.locator("#nicknameInput").fill(nickname);
@@ -212,7 +214,8 @@ async function seedPriorChapterFixture(page, captainOutcome) {
     }
     const sanctuary = {
       activatedCoreIds: [], collectedMemoryIds: [], memorySequence: [], memoryOrderSolved: false,
-      coreTruthRevealed: false, falseReturnRejected: false, completedRecordFieldIds: [],
+      coreTruthRevealed: false, examinedTruthRecordIds: [], falseReturnRejected: false,
+      completedRecordFieldIds: [],
       correctionLinked: false, chorusSeparated: false, collectedTestimonyIds: [],
       previewedFutureIds: [], endingChoice: null, completed: false,
     };

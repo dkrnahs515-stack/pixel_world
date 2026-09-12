@@ -21,6 +21,7 @@ const DEFAULT_SANCTUARY = Object.freeze({
   memorySequence: [],
   memoryOrderSolved: false,
   coreTruthRevealed: false,
+  examinedTruthRecordIds: [],
   falseReturnRejected: false,
   completedRecordFieldIds: [],
   correctionLinked: false,
@@ -311,6 +312,7 @@ async function waitForPlayable(page) {
 }
 
 async function enterOnline(page, nickname) {
+  await page.waitForFunction(() => typeof window.__sanctuaryNetworkRead === "function");
   await page.locator("#rpgExperienceButton").click();
   await page.locator("#entryOverlay").waitFor({ state: "visible" });
   await page.locator("#nicknameInput").fill(nickname);
