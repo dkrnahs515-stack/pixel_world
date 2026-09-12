@@ -11,7 +11,8 @@ import {
   recordChapterBossDefeat,
   repairChapterDevice,
   rescueSera,
-} from "../src/chapter-progress-20260829-coast-20260905-upgrade.js";
+  progressSanctuary,
+} from "../src/chapter-progress-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 
 const WRECK_DEVICE_IDS = ["wreck-relay-west", "wreck-relay-deck", "wreck-relay-east"];
 const WRECK_RECORD_IDS = [
@@ -51,6 +52,17 @@ test("initial world progress keeps only allow-listed serializable state", () => 
         coreFragmentObtained: false,
         shortcutUnlocked: false,
       },
+      volcano: {
+        repairedDeviceIds: [], collectedClueIds: [], coolantAnchorIds: [], routeDecision: null,
+        eruptionTriggered: false, coopBossDefeated: false, captainOutcome: null,
+        hiddenWeaponRewardClaimed: false, coreFragmentObtained: false, sanctuaryUnlocked: false,
+      },
+      sanctuary: {
+        activatedCoreIds: [], collectedMemoryIds: [], memorySequence: [], memoryOrderSolved: false,
+        examinedTruthRecordIds: [], coreTruthRevealed: false, falseReturnRejected: false, completedRecordFieldIds: [],
+        correctionLinked: false, chorusSeparated: false, collectedTestimonyIds: [],
+        previewedFutureIds: [], endingChoice: null, completed: false,
+      },
     },
   });
   assert.deepEqual(normalizeWorldProgress({
@@ -70,15 +82,28 @@ test("initial world progress keeps only allow-listed serializable state", () => 
     unlockedRegionIds: ["village", "forest"],
     completedRegionIds: ["forest"],
     unlockedMapIds: ["village", "forest", "coast-wreck-bay"],
-    chapters: { coast: {
-      repairedDeviceIds: ["wreck-relay-west"],
-      collectedRecordIds: ["sera-distress-current"],
-      supportChoice: null,
-      seraRescued: true,
-      coopBossDefeated: true,
-      coreFragmentObtained: false,
-      shortcutUnlocked: false,
-    } },
+    chapters: {
+      coast: {
+        repairedDeviceIds: ["wreck-relay-west"],
+        collectedRecordIds: ["sera-distress-current"],
+        supportChoice: null,
+        seraRescued: true,
+        coopBossDefeated: true,
+        coreFragmentObtained: false,
+        shortcutUnlocked: false,
+      },
+      volcano: {
+        repairedDeviceIds: [], collectedClueIds: [], coolantAnchorIds: [], routeDecision: null,
+        eruptionTriggered: false, coopBossDefeated: false, captainOutcome: null,
+        hiddenWeaponRewardClaimed: false, coreFragmentObtained: false, sanctuaryUnlocked: false,
+      },
+      sanctuary: {
+        activatedCoreIds: [], collectedMemoryIds: [], memorySequence: [], memoryOrderSolved: false,
+        examinedTruthRecordIds: [], coreTruthRevealed: false, falseReturnRejected: false, completedRecordFieldIds: [],
+        correctionLinked: false, chorusSeparated: false, collectedTestimonyIds: [],
+        previewedFutureIds: [], endingChoice: null, completed: false,
+      },
+    },
   });
 });
 
@@ -278,5 +303,16 @@ test("core collection requires Sera's rescue and completes coast with volcano an
 
   const repeated = collectCoastCore(completed.progress);
   assert.deepEqual(repeated.progress, completed.progress);
+  assert.deepEqual(repeated.effects, []);
+});
+
+test("three activated sanctuary cores unlock the memory archive exactly once", () => {
+  let progress = createInitialWorldProgress();
+  for (const coreId of ["forest-core-casket", "coast-core-casket", "volcano-core-casket"]) {
+    progress = progressSanctuary(progress, { type: "activate-core", coreId }).progress;
+  }
+  const repeated = progressSanctuary(progress, { type: "activate-core", coreId: "volcano-core-casket" });
+  assert.equal(isMapUnlocked(progress, "sanctuary-memory-archive"), true);
+  assert.deepEqual(repeated.progress, progress);
   assert.deepEqual(repeated.effects, []);
 });

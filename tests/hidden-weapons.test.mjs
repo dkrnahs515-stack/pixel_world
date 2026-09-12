@@ -21,6 +21,7 @@ import {
 } from "../src/chapter-progress-20260903-volcano-20260905-upgrade.js";
 import { createInitialProgress } from "../src/quest-state-20260903-volcano-20260905-upgrade.js";
 import { loadProgress, saveProgress } from "../src/progress-storage-20260903-volcano-20260905-upgrade.js";
+import { createSanctuaryChorusController } from "../src/sanctuary-chorus-controller-20260911-sanctuary.js";
 
 const HIDDEN_IDS = {
   warrior: "volcanic-heartblade",
@@ -264,4 +265,50 @@ test("세 히든 무기는 각 직업 외형으로 렌더링된다", () => {
     const signature = visual.bladeColor ?? visual.woodColor ?? visual.coreColor;
     assert.equal(context.fills.some(fill => fill.fillStyle === signature), true, weaponId);
   }
+});
+
+test("구조 성공 히든 무기는 직업별로 루멘의 일회성 닻 안정화를 허용한다", async () => {
+  for (const [classId, weaponId] of Object.entries(HIDDEN_IDS)) {
+    const controller = createSanctuaryChorusController({
+      uid: `${classId}-player`,
+      captainOutcome: "rescued",
+      classId,
+      ownedWeaponIds: [weaponId],
+      now: () => 2000,
+    });
+    controller.setMap("sanctuary-return-record", { correctionLinked: true });
+    assert.equal(typeof controller.requestLumenAssist, "function");
+    const assisted = await controller.requestLumenAssist("forest", 2000);
+    assert.equal(assisted.ok, true, classId);
+    assert.equal(controller.snapshot.lumenAssistUsed, true);
+    assert.deepEqual(controller.snapshot.stabilizedAnchorIds, ["forest"]);
+    assert.equal(controller.snapshot.hp, 90);
+    assert.equal((await controller.requestLumenAssist("coast", 2001)).reason, "duplicate_objective");
+  }
+});
+
+test("루멘 지원은 일반 공략 조건이 아니며 lost 분기에는 히든 무기가 있어도 제공되지 않는다", async () => {
+  const noWeapon = createSanctuaryChorusController({
+    uid: "rescued-no-weapon",
+    captainOutcome: "rescued",
+    classId: "warrior",
+    ownedWeaponIds: [],
+    now: () => 2000,
+  });
+  noWeapon.setMap("sanctuary-return-record", { correctionLinked: true });
+  assert.equal((await noWeapon.requestLumenAssist("forest", 2000)).reason, "assist_ineligible");
+  assert.equal(noWeapon.snapshot.hp, 100);
+  assert.equal(noWeapon.renderModel().branch.completionAccess.hiddenWeaponRequired, false);
+
+  const lost = createSanctuaryChorusController({
+    uid: "lost-hidden-weapon",
+    captainOutcome: "lost",
+    classId: "mage",
+    ownedWeaponIds: [HIDDEN_IDS.mage],
+    now: () => 2000,
+  });
+  lost.setMap("sanctuary-return-record", { correctionLinked: true });
+  assert.equal((await lost.requestLumenAssist("forest", 2000)).reason, "assist_ineligible");
+  assert.equal(lost.snapshot.hp, 100);
+  assert.equal(lost.renderModel().lumenAssist, null);
 });

@@ -1,0 +1,613 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { ANCHOR_IDS, BOND_IDS, CHORUS_TESTIMONIES } from "../src/sanctuary-chorus-data-20260911-sanctuary.js";
+import {
+  applyChorusAction,
+  createChorusEncounter,
+  createReformedChorusEncounter,
+  validateChorusAction,
+} from "../src/sanctuary-chorus-state-20260911-sanctuary.js";
+import * as chorusController from "../src/sanctuary-chorus-controller-20260911-sanctuary.js";
+
+const { createSanctuaryChorusController } = chorusController;
+
+function sharedAction(encounter, uid, type, createdAt, fields = {}) {
+  return {
+    id: `${type}:${uid}:${createdAt}:${Object.values(fields).join(":")}`,
+    encounterId: encounter.encounterId,
+    authorityEpoch: encounter.authorityEpoch,
+    phase: encounter.phase,
+    uid,
+    type,
+    createdAt,
+    ...fields,
+  };
+}
+
+function advance(encounter, type, fields, createdAt = encounter.updatedAt + 10) {
+  const request = sharedAction(encounter, "local-player", type, createdAt, fields);
+  const validation = validateChorusAction(request, {
+    encounter,
+    authenticatedUid: "local-player",
+    now: createdAt,
+  });
+  assert.equal(validation.ok, true, validation.reason);
+  return applyChorusAction(encounter, validation, createdAt).encounter;
+}
+
+function encounterAt(phase) {
+  let encounter = createChorusEncounter({
+    encounterId: "chorus-test",
+    authorityUid: "local-player",
+    now: 1000,
+  });
+  if (phase === "anchors") return encounter;
+  for (const anchorId of ANCHOR_IDS) {
+    encounter = advance(encounter, "anchor-stabilize", { fragmentId: anchorId, anchorId });
+  }
+  if (phase === "testimonies") return encounter;
+  for (const testimony of CHORUS_TESTIMONIES) {
+    encounter = advance(encounter, "testimony-resolve", {
+      testimonyId: testimony.id,
+      verdict: testimony.verdict,
+    });
+  }
+  return encounter;
+}
+
+function controllerFor(phase = "anchors", options = {}) {
+  const controller = createSanctuaryChorusController({
+    ...options,
+    uid: "local-player",
+    mode: "solo",
+    seedSnapshot: options.seedSnapshot || encounterAt(phase),
+    now: options.now || (() => 1500),
+  });
+  controller.setMap("sanctuary-return-record", { correctionLinked: true });
+  return controller;
+}
+
+async function solveEncounter(captainOutcome, classId) {
+  let now = 2000;
+  const controller = controllerFor("anchors", {
+    captainOutcome,
+    classId,
+    now: () => now,
+  });
+  const anchorPositions = {
+    forest: { x: 700, y: 1120 },
+    coast: { x: 1080, y: 1120 },
+    volcano: { x: 1460, y: 1120 },
+  };
+  for (const anchorId of ANCHOR_IDS) {
+    await controller.requestAttack({
+      targetId: "unnamed-chorus",
+      attackKind: "basic",
+      fragmentId: anchorId,
+      classId,
+    }, now += 10);
+    await controller.interact(anchorPositions[anchorId], now += 10);
+  }
+  const verdictPositions = {
+    fact: { x: 700, y: 1120 },
+    partial: { x: 1080, y: 1120 },
+    unsupported: { x: 1340, y: 1120 },
+  };
+  for (const testimony of CHORUS_TESTIMONIES) {
+    await controller.interact(verdictPositions[testimony.verdict], now += 10);
+  }
+  const recordPositions = {
+    roan: { x: 700, y: 620 },
+    sera: { x: 1080, y: 560 },
+    garen: { x: 1460, y: 620 },
+    lumen: { x: 1080, y: 1320 },
+  };
+  for (const bondId of BOND_IDS) {
+    await controller.interact(recordPositions[bondId], now += 10);
+    await controller.requestAttack({
+      targetId: `chorus-bond-${bondId}`,
+      attackKind: "basic",
+      classId,
+    }, now += 10);
+  }
+  return {
+    phase: controller.snapshot.phase,
+    status: controller.snapshot.status,
+    hp: controller.snapshot.hp,
+    stabilizedAnchorIds: controller.snapshot.stabilizedAnchorIds,
+    resolvedTestimonyIds: controller.snapshot.resolvedTestimonyIds,
+    severedBondIds: controller.snapshot.severedBondIds,
+  };
+}
+
+test("the encounter exists only in the corrected return-record room", () => {
+  const controller = createSanctuaryChorusController({ uid: "a", now: () => 1000 });
+  controller.setMap("sanctuary-return-record", { correctionLinked: false });
+  assert.equal(controller.snapshot, null);
+
+  controller.setMap("sanctuary-memory-archive", { correctionLinked: true });
+  assert.equal(controller.snapshot, null);
+
+  controller.setMap("sanctuary-return-record", { correctionLinked: true });
+  assert.equal(controller.snapshot.phase, "anchors");
+  assert.equal(controller.snapshot.hp, 100);
+});
+
+test("basic Q E and R create fragments but never direct cohesion damage", async () => {
+  const controller = controllerFor();
+  for (const [attackKind, fragmentId] of [
+    ["basic", "forest"],
+    ["strong", "coast"],
+    ["skill-e", "volcano"],
+    ["skill-r", "forest"],
+  ]) {
+    const before = controller.snapshot.hp;
+    const result = await controller.requestAttack({
+      targetId: "unnamed-chorus",
+      attackKind,
+      fragmentId,
+      hitId: `${attackKind}-hit`,
+    });
+    assert.equal(result.ok, true);
+    assert.equal(controller.snapshot.hp, before);
+    assert.equal(ANCHOR_IDS.includes(controller.personalSnapshot.carriedFragmentId), true);
+    controller.dropCarriedFragment();
+  }
+});
+
+test("F interaction places a carried fragment while a wrong anchor affects only personal contamination", async () => {
+  const controller = controllerFor();
+  await controller.requestAttack({ targetId: "unnamed-chorus", attackKind: "basic", fragmentId: "forest" });
+  const prompt = controller.nearbyInteraction({ x: 700, y: 1120 });
+  assert.equal(prompt.type, "anchor");
+  assert.match(prompt.prompt, /숲/);
+  const placed = await controller.interact({ x: 700, y: 1120 });
+  assert.equal(placed.ok, true);
+  assert.deepEqual(controller.snapshot.stabilizedAnchorIds, ["forest"]);
+  assert.equal(controller.snapshot.hp, 90);
+  assert.equal(controller.personalSnapshot.carriedFragmentId, null);
+
+  await controller.requestAttack({ targetId: "unnamed-chorus", attackKind: "strong", fragmentId: "forest" });
+  const beforeShared = structuredClone(controller.snapshot);
+  const misplaced = await controller.interact({ x: 1080, y: 1120 });
+  assert.equal(misplaced.ok, false);
+  assert.equal(misplaced.reason, "wrong_anchor");
+  assert.deepEqual(controller.snapshot, beforeShared);
+  assert.equal(controller.personalSnapshot.contamination, 10);
+});
+
+test("contamination overload returns a fragment and applies a three-second local lock and slow", async () => {
+  const controller = controllerFor("anchors", { now: () => 5000 });
+  controller.personalSnapshot.contamination = 90;
+  await controller.requestAttack({ targetId: "unnamed-chorus", attackKind: "basic", fragmentId: "forest" });
+  const result = await controller.interact({ x: 1080, y: 1120 }, 5000);
+  assert.equal(result.reason, "wrong_anchor");
+  assert.equal(controller.personalSnapshot.contamination, 50);
+  assert.equal(controller.personalSnapshot.carriedFragmentId, null);
+  assert.equal(controller.canAttack(7999), false);
+  assert.equal(controller.movementMultiplier(7999) < 1, true);
+  assert.equal(controller.canAttack(8000), true);
+  assert.equal(controller.movementMultiplier(8000), 1);
+});
+
+test("testimony verdict stations resolve facts and keep wrong answers personal", async () => {
+  const controller = controllerFor("testimonies", { now: () => 2000 });
+  const current = CHORUS_TESTIMONIES[0];
+  const before = controller.snapshot.hp;
+  const wrong = await controller.interact({ x: 1340, y: 1120 }, 2000);
+  assert.equal(wrong.ok, false);
+  assert.equal(wrong.reason, "wrong_testimony");
+  assert.equal(controller.snapshot.hp, before);
+  assert.equal(controller.personalSnapshot.contamination, 10);
+
+  const correct = await controller.interact({ x: 700, y: 1120 }, 2001);
+  assert.equal(correct.ok, true);
+  assert.deepEqual(controller.snapshot.resolvedTestimonyIds, [current.id]);
+  assert.equal(controller.snapshot.hp, before - 5);
+});
+
+test("a remote player's wrong action never changes this browser's personal contamination", () => {
+  const controller = controllerFor("anchors", { now: () => 2000 });
+  const request = sharedAction(controller.snapshot, "remote-player", "anchor-stabilize", 2000, {
+    fragmentId: "forest",
+    anchorId: "coast",
+  });
+
+  controller.receiveActions([request]);
+
+  assert.equal(controller.personalSnapshot.contamination, 0);
+  assert.equal(controller.snapshot.hp, 100);
+});
+
+test("leaving a telegraph before impact avoids damage", () => {
+  const seed = {
+    ...encounterAt("onslaught"),
+    currentPatternId: "forest-roots",
+    patternStartedAt: 1000,
+    patternEndsAt: 2000,
+  };
+  const controller = controllerFor("onslaught", { seedSnapshot: seed, now: () => 1900 });
+  controller.update(1 / 60, { player: { uid: "local-player", x: 1080, y: 900 } }, 1900);
+  const outside = controller.update(1 / 60, {
+    player: { uid: "local-player", x: 300, y: 300 },
+  }, 2000);
+  assert.equal(outside.events.some(value => value.type === "damage-player"), false);
+});
+
+test("an onslaught impact checks the current position and dedupes the pattern event", () => {
+  const seed = {
+    ...encounterAt("onslaught"),
+    currentPatternId: "coast-tide",
+    patternStartedAt: 1000,
+    patternEndsAt: 2000,
+  };
+  const controller = controllerFor("onslaught", { seedSnapshot: seed, now: () => 2000 });
+  const inside = { player: { uid: "local-player", x: 1080, y: 900 } };
+  const first = controller.update(1 / 60, inside, 2000);
+  const replay = controller.update(1 / 60, inside, 2000);
+  assert.equal(first.events.filter(value => value.type === "damage-player").length, 1);
+  assert.equal(replay.events.filter(value => value.type === "damage-player").length, 0);
+  assert.equal(controller.renderModel().telegraph.id, "coast-tide-cross");
+});
+
+test("a restored attack pattern continues the forest coast volcano cycle", () => {
+  const seed = {
+    ...encounterAt("onslaught"),
+    currentPatternId: "coast-tide",
+    patternStartedAt: 1000,
+    patternEndsAt: 2000,
+  };
+  const controller = controllerFor("onslaught", { seedSnapshot: seed, now: () => 2351 });
+
+  controller.update(1 / 60, { player: { uid: "local-player", x: 300, y: 300 } }, 2351);
+
+  assert.equal(controller.renderModel().telegraph.id, "volcano-crack-burst");
+});
+
+test("a stale telegraph never deals delayed damage after its impact window", () => {
+  const seed = {
+    ...encounterAt("onslaught"),
+    currentPatternId: "forest-roots",
+    patternStartedAt: 1000,
+    patternEndsAt: 2000,
+  };
+  const controller = controllerFor("onslaught", { seedSnapshot: seed, now: () => 3000 });
+
+  const tick = controller.update(1 / 60, {
+    player: { uid: "local-player", x: 1080, y: 900 },
+  }, 3000);
+
+  assert.equal(tick.events.some(event => event.type === "damage-player"), false);
+});
+
+test("only a record-activated black bond is targetable and attacks separate without defeat events", async () => {
+  const controller = controllerFor("onslaught", { now: () => 3000 });
+  controller.update(1 / 60, { player: { uid: "local-player", x: 300, y: 300 } }, 3000);
+  const record = controller.nearbyInteraction({ x: 700, y: 620 });
+  assert.equal(record.recordId, "roan");
+  assert.equal((await controller.interact({ x: 700, y: 620 }, 3000)).ok, true);
+  assert.deepEqual(controller.targetableBosses().map(target => target.id), ["chorus-bond-roan"]);
+
+  const result = await controller.requestAttack({
+    targetId: "chorus-bond-roan",
+    attackKind: "skill-r",
+    hitId: "cut-roan",
+  }, 3100);
+  assert.equal(result.ok, true);
+  assert.equal(controller.snapshot.hp, 30);
+
+  let lastResult = result;
+  for (let index = 1; index < BOND_IDS.length; index += 1) {
+    const bondId = BOND_IDS[index];
+    const at = 3200 + index * 100;
+    assert.equal((await controller.interact({ x: [1080, 1460, 1080][index - 1], y: [560, 620, 1320][index - 1] }, at)).ok, true);
+    lastResult = await controller.requestAttack({ targetId: `chorus-bond-${bondId}`, attackKind: "basic" }, at + 1);
+  }
+  assert.equal(controller.snapshot.status, "separated");
+  assert.equal(controller.snapshot.hp, 0);
+  assert.ok(lastResult.events.every(event => !["death", "boss-defeated", "explosion", "corpse"].includes(event.type)));
+  assert.equal(controller.renderModel().message,
+    "무명의 합창의 결속이 풀렸습니다.\n기억들은 아직 어느 곳에도 귀속되지 않았습니다.\n이제 남겨진 기억의 운명을 결정해야 합니다.");
+  assert.equal(controller.renderModel().statusLabel, "기억 분리 완료");
+  assert.deepEqual(controller.renderModel().separatedFragments.map(fragment => fragment.id), ANCHOR_IDS);
+  assert.equal(controller.renderModel().telegraph, null);
+});
+
+test("a controller accepts only the fresh encounter that follows its expired separated snapshot", () => {
+  let separated = encounterAt("onslaught");
+  for (const bondId of BOND_IDS) {
+    separated = advance(separated, "record-activate", { recordId: bondId });
+    separated = advance(separated, "bond-cut", { bondId });
+  }
+  const controller = createSanctuaryChorusController({
+    uid: "late-player",
+    mode: "online",
+    seedSnapshot: separated,
+    now: () => separated.reformAt,
+  });
+  controller.setMap("sanctuary-return-record", { correctionLinked: true });
+  controller.completionClaims = {
+    veteran: { encounterId: separated.encounterId, uid: "veteran", eligible: true },
+  };
+
+  const unrelated = createChorusEncounter({
+    encounterId: "unrelated-encounter",
+    authorityUid: "other",
+    now: separated.reformAt,
+  });
+  assert.equal(controller.receiveSnapshot(unrelated), false);
+
+  const fresh = createReformedChorusEncounter(separated, {
+    uid: "late-player",
+    now: separated.reformAt,
+  });
+  assert.equal(controller.receiveSnapshot(fresh), true);
+  assert.equal(controller.snapshot.encounterId, fresh.encounterId);
+  assert.equal(controller.snapshot.phase, "anchors");
+  assert.deepEqual(controller.snapshot.contributors, {});
+  assert.deepEqual(controller.completionClaims, {});
+});
+
+test("an expired record window releases F interaction so the same record can be activated again", async () => {
+  let now = 3000;
+  const controller = controllerFor("onslaught", { now: () => now });
+  const player = { uid: "local-player", x: 700, y: 620 };
+
+  controller.update(1 / 60, { player }, now);
+  assert.equal(controller.nearbyInteraction(player).recordId, "roan");
+  assert.equal((await controller.interact(player, now)).ok, true);
+  const firstVulnerableUntil = controller.snapshot.vulnerableUntil;
+  assert.equal(controller.nearbyInteraction(player), null);
+
+  now = firstVulnerableUntil + 1;
+  controller.update(1 / 60, { player }, now);
+  assert.equal(controller.snapshot.activeRecordId, null);
+  assert.equal(controller.nearbyInteraction(player).recordId, "roan");
+  assert.equal((await controller.interact(player, now)).ok, true);
+  assert.equal(controller.snapshot.activeRecordId, "roan");
+  assert.ok(controller.snapshot.vulnerableUntil > firstVulnerableUntil);
+});
+
+test("captain branches differ in presentation but not encounter solvability", async () => {
+  assert.equal(typeof chorusController.chorusAttackPresentation, "function");
+  assert.deepEqual(
+    await solveEncounter("rescued", "warrior"),
+    await solveEncounter("lost", "mage"),
+  );
+});
+
+test("all classes apply the same narrative bond cut with distinct presentation", async () => {
+  assert.equal(typeof chorusController.chorusAttackPresentation, "function");
+  const results = [];
+  for (const classId of ["warrior", "archer", "mage"]) {
+    let now = 3000;
+    const controller = controllerFor("onslaught", { classId, now: () => now });
+    assert.equal((await controller.interact({ x: 700, y: 620 }, now)).ok, true);
+    const before = controller.snapshot.hp;
+    const cut = await controller.requestAttack({
+      targetId: "chorus-bond-roan",
+      attackKind: "basic",
+      classId,
+    }, now += 10);
+    results.push({
+      cohesionDelta: controller.snapshot.hp - before,
+      actionType: cut.presentation?.actionType,
+      presentationId: cut.presentation?.presentationId,
+    });
+  }
+  assert.deepEqual(results.map(value => value.cohesionDelta), [-10, -10, -10]);
+  assert.deepEqual(results.map(value => value.actionType), ["bond-cut", "bond-cut", "bond-cut"]);
+  assert.deepEqual(results.map(value => value.presentationId), [
+    "warrior-sever",
+    "archer-pin",
+    "mage-dispel",
+  ]);
+});
+
+test("rescued Lumen interrupts the false order once while lost never revives an actor", () => {
+  const rescued = controllerFor("testimonies", { captainOutcome: "rescued", now: () => 3000 });
+  const first = rescued.update(1 / 60, {}, 3000);
+  const second = rescued.update(1 / 60, {}, 3001);
+  assert.deepEqual(first.events.filter(event => event.presentationId === "false-order-interrupt").map(event => event.speaker), ["lumen"]);
+  assert.deepEqual(first.events.filter(event => event.presentationId === "false-order-interrupt").map(event => event.eventId), [
+    "chorus-test:false-order-interrupt",
+  ]);
+  assert.deepEqual(second.events.filter(event => event.presentationId === "false-order-interrupt"), []);
+
+  const lost = controllerFor("testimonies", { captainOutcome: "lost", now: () => 3000 });
+  assert.deepEqual(lost.update(1 / 60, {}, 3000).events.filter(event => event.speaker === "lumen"), []);
+  assert.equal(lost.renderModel().branch.lumen.presentActor, false);
+});
+
+test("a rescued hidden-weapon player can press F at one valid anchor for the shared assist", async () => {
+  const controller = controllerFor("anchors", {
+    captainOutcome: "rescued",
+    classId: "warrior",
+    ownedWeaponIds: ["volcanic-heartblade"],
+    now: () => 3000,
+  });
+  const nearby = controller.nearbyInteraction({ x: 700, y: 1120 }, 3000);
+  assert.deepEqual(nearby, {
+    type: "lumen-assist",
+    anchorId: "forest",
+    prompt: "F · 루멘의 숲 기록 닻 안정화",
+  });
+
+  const assisted = await controller.interact({ x: 700, y: 1120 }, 3000);
+  assert.equal(assisted.ok, true);
+  assert.deepEqual(controller.snapshot.stabilizedAnchorIds, ["forest"]);
+  assert.equal(controller.snapshot.lumenAssistUsed, true);
+  assert.equal(controller.nearbyInteraction({ x: 1080, y: 1120 }, 3001), null);
+});
+
+test("lost and rescued players without a hidden weapon never receive an assist prompt", () => {
+  for (const options of [
+    { captainOutcome: "lost", classId: "warrior", ownedWeaponIds: ["volcanic-heartblade"] },
+    { captainOutcome: "rescued", classId: "warrior", ownedWeaponIds: [] },
+  ]) {
+    const controller = controllerFor("anchors", { ...options, now: () => 3000 });
+    assert.equal(controller.nearbyInteraction({ x: 700, y: 1120 }, 3000), null);
+  }
+});
+
+test("only online authority creates shared patterns while a viewer applies received impact locally once", () => {
+  const seed = encounterAt("onslaught");
+  const viewer = createSanctuaryChorusController({
+    uid: "viewer",
+    mode: "online",
+    seedSnapshot: { ...seed, authorityUid: "host" },
+    now: () => 3000,
+  });
+  viewer.setMap("sanctuary-return-record", { correctionLinked: true });
+  const before = structuredClone(viewer.snapshot);
+
+  const waiting = viewer.update(1 / 60, { player: { x: 1080, y: 900 } }, 3000);
+  assert.equal(waiting.events.some(event => event.type === "damage-player"), false);
+  assert.equal(viewer.renderModel().telegraph, null);
+  assert.deepEqual(viewer.snapshot, before);
+
+  const authority = createSanctuaryChorusController({
+    uid: "host",
+    mode: "online",
+    seedSnapshot: { ...seed, authorityUid: "host" },
+    now: () => 3000,
+  });
+  authority.setMap("sanctuary-return-record", { correctionLinked: true });
+  authority.update(1 / 60, { player: { x: 300, y: 300 } }, 3000);
+  assert.equal(authority.renderModel().telegraph.id, "forest-root-sweep");
+
+  assert.equal(viewer.receiveSnapshot(authority.snapshot), true);
+  const firstImpact = viewer.update(1 / 60, { player: { x: 1080, y: 900 } }, 3900);
+  const replay = viewer.update(1 / 60, { player: { x: 1080, y: 900 } }, 3900);
+  assert.equal(firstImpact.events.filter(event => event.type === "damage-player").length, 1);
+  assert.equal(replay.events.filter(event => event.type === "damage-player").length, 0);
+});
+
+test("recreated controllers for one uid produce collision-free action ids even when local counters restart", async () => {
+  const seed = encounterAt("anchors");
+  const first = createSanctuaryChorusController({ uid: "same-user", seedSnapshot: seed, now: () => 2000 });
+  const second = createSanctuaryChorusController({ uid: "same-user", seedSnapshot: seed, now: () => 2000 });
+  first.setMap("sanctuary-return-record", { correctionLinked: true });
+  second.setMap("sanctuary-return-record", { correctionLinked: true });
+
+  await first.requestAttack({ targetId: "unnamed-chorus", attackKind: "basic", fragmentId: "forest" }, 2000);
+  await second.requestAttack({ targetId: "unnamed-chorus", attackKind: "basic", fragmentId: "forest" }, 2000);
+
+  assert.notEqual(first.snapshot.processedActionIds.at(-1), second.snapshot.processedActionIds.at(-1));
+});
+
+test("an expired online authority does not create or advance a shared attack pattern", () => {
+  const seed = encounterAt("onslaught");
+  const controller = createSanctuaryChorusController({
+    uid: "local-player",
+    mode: "online",
+    seedSnapshot: { ...seed, leaseUntil: 2_999 },
+    now: () => 3_000,
+  });
+  controller.setMap("sanctuary-return-record", { correctionLinked: true });
+  const beforeRevision = controller.snapshot.combatRevision;
+
+  controller.update(1 / 60, { player: { x: 1080, y: 900 } }, 3_000);
+
+  assert.equal(controller.snapshot.currentPatternId, null);
+  assert.equal(controller.snapshot.combatRevision, beforeRevision);
+  assert.equal(controller.renderModel().telegraph, null);
+});
+
+test("an authoritative active rollback clears optimistic claims before the real contributor set separates", () => {
+  let active = encounterAt("onslaught");
+  for (const bondId of BOND_IDS.slice(0, -1)) {
+    active = advance(active, "record-activate", { recordId: bondId });
+    active = advance(active, "bond-cut", { bondId });
+  }
+  active = advance(active, "record-activate", { recordId: BOND_IDS.at(-1) });
+  const controller = createSanctuaryChorusController({
+    uid: "local-player",
+    mode: "online",
+    seedSnapshot: active,
+    now: () => active.updatedAt + 20,
+  });
+  controller.setMap("sanctuary-return-record", { correctionLinked: true });
+
+  const optimistic = sharedAction(active, "optimistic", "bond-cut", active.updatedAt + 10, {
+    bondId: BOND_IDS.at(-1),
+  });
+  assert.equal(controller.receiveActions([optimistic])[0].ok, true);
+  assert.equal(controller.completionClaims.optimistic.uid, "optimistic");
+
+  const authoritativeActive = {
+    ...active,
+    contributors: {
+      ...active.contributors,
+      later: {
+        firstContributedAt: active.updatedAt,
+        lastContributedAt: active.updatedAt,
+        actionTypes: ["record-activate"],
+      },
+    },
+  };
+  assert.equal(controller.receiveSnapshot(authoritativeActive), true);
+  assert.deepEqual(controller.completionClaims, {});
+
+  const actual = sharedAction(authoritativeActive, "actual", "bond-cut", active.updatedAt + 20, {
+    bondId: BOND_IDS.at(-1),
+  });
+  assert.equal(controller.receiveActions([actual])[0].ok, true);
+  assert.deepEqual(Object.keys(controller.completionClaims).sort(), ["actual", "later", "local-player"]);
+  assert.equal(controller.completionClaims.optimistic, undefined);
+});
+
+test("a retained own server claim survives the expected reform snapshot", () => {
+  let separated = encounterAt("onslaught");
+  for (const bondId of BOND_IDS) {
+    separated = advance(separated, "record-activate", { recordId: bondId });
+    separated = advance(separated, "bond-cut", { bondId });
+  }
+  const claim = {
+    encounterId: separated.encounterId,
+    uid: "local-player",
+    eligible: true,
+    createdAt: separated.separatedAt,
+  };
+  const controller = createSanctuaryChorusController({
+    uid: "local-player",
+    mode: "online",
+    seedSnapshot: separated,
+    now: () => separated.reformAt,
+  });
+  controller.setMap("sanctuary-return-record", { correctionLinked: true });
+  assert.equal(controller.receiveCompletionClaims({ "local-player": claim }), true);
+
+  const fresh = createReformedChorusEncounter(separated, {
+    uid: "late-player",
+    now: separated.reformAt,
+  });
+  assert.equal(controller.receiveSnapshot(fresh), true);
+  assert.deepEqual(controller.completionClaims, { "local-player": claim });
+});
+
+test("a reloaded controller accepts only its own retained server claim after reform", () => {
+  const fresh = createChorusEncounter({
+    encounterId: "sanctuary-chorus-32000-r3",
+    authorityUid: "late-player",
+    authorityEpoch: 3,
+    now: 32_000,
+  });
+  const controller = createSanctuaryChorusController({
+    uid: "returning-player",
+    mode: "online",
+    seedSnapshot: fresh,
+    now: () => 32_001,
+  });
+  controller.setMap("sanctuary-return-record", { correctionLinked: true });
+  const ownClaim = {
+    encounterId: "old-encounter",
+    uid: "returning-player",
+    eligible: true,
+    createdAt: 2_000,
+  };
+
+  assert.equal(controller.receiveCompletionClaims({ other: { ...ownClaim, uid: "other" } }), false);
+  assert.equal(controller.receiveCompletionClaims({ "returning-player": ownClaim }), true);
+  assert.deepEqual(controller.completionClaims, { "returning-player": ownClaim });
+});

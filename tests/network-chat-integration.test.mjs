@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createNetworkAdapter } from "../src/network-20260903-volcano-20260905-upgrade.js";
+import { createNetworkAdapter as createSanctuaryNetworkAdapter } from "../src/network-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import { getFirebaseEmulatorConfig } from "../src/firebase-config-20260905-upgrade-20260911-sanctuary.js";
 
 const VOLCANO_RELEASE_MAP_IDS = Object.freeze([
   "village",
@@ -309,4 +311,56 @@ test("공개방이 가득 차면 인증과 Database 연결을 정리한 뒤 솔�
   assert.equal(adapter.reason, "room_full");
   assert.equal(fake.signOutCalls, 0);
   assert.equal(fake.offlineCalls, 1);
+});
+
+test("Firebase emulator는 localhost 명시 opt-in에서만 선택된다", () => {
+  assert.deepEqual(getFirebaseEmulatorConfig({ hostname: "localhost", search: "?firebaseEmulator=1" }), {
+    authUrl: "http://127.0.0.1:9099",
+    databaseHost: "127.0.0.1",
+    databasePort: 9000,
+  });
+  assert.deepEqual(getFirebaseEmulatorConfig({ hostname: "127.0.0.1", search: "?x=1&firebaseEmulator=1" }), {
+    authUrl: "http://127.0.0.1:9099",
+    databaseHost: "127.0.0.1",
+    databasePort: 9000,
+  });
+  assert.equal(getFirebaseEmulatorConfig({ hostname: "pixel-world.example", search: "?firebaseEmulator=1" }), null);
+  assert.equal(getFirebaseEmulatorConfig({ hostname: "localhost", search: "" }), null);
+});
+
+test("emulator endpoints connect before anonymous sign-in and expose a dedicated chorus transport", async () => {
+  const fake = firebaseModulesFake();
+  const order = [];
+  fake.modules.authModule.connectAuthEmulator = (_auth, url) => order.push(["auth-emulator", url]);
+  fake.modules.dbModule.connectDatabaseEmulator = (_db, host, port) => order.push(["database-emulator", host, port]);
+  fake.modules.authModule.signInAnonymously = async () => {
+    order.push(["sign-in"]);
+    return { user: { uid: "user-a" } };
+  };
+
+  const adapter = await createSanctuaryNetworkAdapter({ playMode: "online" }, {
+    firebaseConfig: { apiKey: "public-id", databaseURL: "https://example.invalid" },
+    loadFirebaseModules: async () => fake.modules,
+    locationRef: { hostname: "localhost", search: "?firebaseEmulator=1" },
+  });
+
+  assert.deepEqual(order, [
+    ["auth-emulator", "http://127.0.0.1:9099"],
+    ["database-emulator", "127.0.0.1", 9000],
+    ["sign-in"],
+  ]);
+  assert.equal(typeof adapter.chorus.setMap, "function");
+  await adapter.stop();
+});
+
+test("sanctuary solo adapter never loads Firebase and has no chorus transport", async () => {
+  let loads = 0;
+  const adapter = await createSanctuaryNetworkAdapter({ playMode: "solo" }, {
+    firebaseConfig: { apiKey: "x", databaseURL: "https://example.invalid" },
+    loadFirebaseModules: async () => { loads += 1; throw new Error("should not load"); },
+    locationRef: { hostname: "localhost", search: "?firebaseEmulator=1" },
+  });
+
+  assert.equal(loads, 0);
+  assert.equal(adapter.chorus, null);
 });

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { renderCommunicationLog } from "../src/communication-log-20260829-coast-20260905-upgrade.js";
+import { renderCommunicationLog } from "../src/communication-log-20260829-coast-20260905-upgrade-20260911-sanctuary.js";
 
 function fakeDocument() {
   return {
@@ -8,6 +8,7 @@ function fakeDocument() {
       return {
         children: [],
         className: "",
+        dataset: {},
         textContent: "",
         append(...children) {
           this.children.push(...children);
@@ -37,7 +38,7 @@ test("통신 기록은 입력 순서와 무관하게 timelineOrder 순서로 DOM
   ]);
 
   assert.deepEqual(list.children.map(entry => entry.children[0].textContent), ["로안", "가렌", "세라"]);
-  assert.deepEqual(list.children.map(entry => entry.children[1].textContent), [
+  assert.deepEqual(list.children.map(entry => entry.children[2].textContent), [
     "만에서 대기한다",
     "시간대를 확인한다",
     "현재 구조 신호",

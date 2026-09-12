@@ -72,14 +72,14 @@ async function qaPrepareWeapons(page) {
 
 async function storedProgress(page) {
   return page.evaluate(() => {
-    const key = Object.keys(localStorage).find(candidate => candidate.startsWith("pixel-world.progress.v7:"));
+    const key = Object.keys(localStorage).find(candidate => candidate.startsWith("pixel-world.progress.v8:"));
     return key ? JSON.parse(localStorage.getItem(key)) : null;
   });
 }
 
 async function runtimeProgress(page, nickname) {
   return page.evaluate(async activeNickname => {
-    const { loadPlayerProgress } = await import("./src/game-20260903-volcano-20260905-upgrade.js");
+    const { loadPlayerProgress } = await import("./src/game-20260903-volcano-20260905-upgrade-20260911-sanctuary.js");
     return loadPlayerProgress(localStorage, activeNickname).progress;
   }, nickname);
 }
@@ -88,8 +88,8 @@ async function seedObservatoryCheckpoint(page, prepared) {
   await page.locator("#qaButton").click();
   await page.locator('[data-qa-weapons="prepare"]').click();
   await page.evaluate(({ withAllAnchors }) => {
-    const key = Object.keys(localStorage).find(candidate => candidate.startsWith("pixel-world.progress.v7:"));
-    if (!key) throw new Error("v7 progress checkpoint is missing");
+    const key = Object.keys(localStorage).find(candidate => candidate.startsWith("pixel-world.progress.v8:"));
+    if (!key) throw new Error("v8 progress checkpoint is missing");
     const value = JSON.parse(localStorage.getItem(key));
     value.inventory = { hpPotion: 99, mpPotion: 99 };
     value.equipmentByClass.warrior.equippedWeaponId = "reinforced-masterwork-katana";
@@ -226,7 +226,7 @@ async function fightCaptain(page, label) {
       event.type === "boss-defeated" && event.encounterId === state.boss.encounterId);
   }, null, { timeout: 3000 });
   await page.waitForFunction(() => {
-    const key = Object.keys(localStorage).find(key => key.startsWith("pixel-world.progress.v7:"));
+    const key = Object.keys(localStorage).find(key => key.startsWith("pixel-world.progress.v8:"));
     return key && JSON.parse(localStorage.getItem(key)).worldProgress.chapters.volcano.coopBossDefeated;
   }, null, { timeout: 3000 });
   assert.equal(strongAttackObserved, true, `${label}: no successful Q was observed`);
@@ -320,7 +320,7 @@ async function runRoute(browser, { nickname, prepared }) {
     await collectCore(page, { prepareWeapons: prepared });
 
     const beforeReload = await storedProgress(page);
-    assert.equal(beforeReload.version, 7);
+    assert.equal(beforeReload.version, 8);
     await reloadCheckpoint(page, nickname);
     const loaded = await runtimeProgress(page, nickname);
     const volcano = loaded.worldProgress.chapters.volcano;
@@ -330,7 +330,10 @@ async function runRoute(browser, { nickname, prepared }) {
     assert.equal(volcano.hiddenWeaponRewardClaimed, prepared);
     assert.equal(volcano.coreFragmentObtained, true);
     assert.equal(volcano.sanctuaryUnlocked, true);
-    assert.match(await page.locator("#chapterObjective").textContent(), /픽셀 코어 성역/);
+    assert.match(
+      await page.locator("#chapterObjective").textContent(),
+      /세 코어 조각을 성역 석관에 안치한다\./,
+    );
     for (const [classId, weaponId] of Object.entries(HIDDEN_WEAPONS)) {
       assert.equal(
         loaded.equipmentByClass[classId].ownedWeaponIds.includes(weaponId),

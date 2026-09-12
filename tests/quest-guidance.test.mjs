@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createInitialProgress } from '../src/quest-state-20260903-volcano-20260905-upgrade.js';
-import { completeRegion } from '../src/chapter-progress-20260903-volcano-20260905-upgrade.js';
-import { questNotifications } from '../src/quest-notifications-20260905-upgrade.js';
-import { storyGuidance } from '../src/quest-guidance-20260905-upgrade.js';
-import { ALL_STORY_INTERACTIONS } from '../src/story-interactions-20260903-volcano-20260905-upgrade.js';
+import { createInitialProgress } from '../src/quest-state-20260903-volcano-20260905-upgrade-20260911-sanctuary.js';
+import { completeRegion } from '../src/chapter-progress-20260903-volcano-20260905-upgrade-20260911-sanctuary.js';
+import { questNotifications } from '../src/quest-notifications-20260905-upgrade-20260911-sanctuary.js';
+import { storyGuidance } from '../src/quest-guidance-20260905-upgrade-20260911-sanctuary.js';
+import { ALL_STORY_INTERACTIONS } from '../src/story-interactions-20260903-volcano-20260905-upgrade-20260911-sanctuary.js';
 
 test('first quest has location controls reward and appears once across reload', () => {
  const progress = createInitialProgress();
@@ -42,7 +42,7 @@ test('onscreen nearest target suppresses offscreen arrow and minimap mapping is 
 });
 
 test('quest completion save failure restores reward and does not announce success', async () => {
- const {PixelRPG} = await import('../src/game-20260903-volcano-20260905-upgrade.js');
+ const {PixelRPG} = await import('../src/game-20260903-volcano-20260905-upgrade-20260911-sanctuary.js');
  const game=Object.create(PixelRPG.prototype); game.progress=createInitialProgress(); game.progress.quests.adventureStart={status:'ready_to_report',progress:3};
  const before=structuredClone(game.progress), notices=[];
  game.persistProgress=()=>false;game.notify=text=>notices.push(text);
@@ -52,7 +52,7 @@ test('quest completion save failure restores reward and does not announce succes
 });
 
 test('notification receipts roundtrip in v7 with old saves unchanged', async () => {
- const {saveProgress,loadProgress}=await import('../src/progress-storage-20260903-volcano-20260905-upgrade.js');
+ const {saveProgress,loadProgress}=await import('../src/progress-storage-20260903-volcano-20260905-upgrade-20260911-sanctuary.js');
  const values=new Map(),storage={getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,v)};
  const progress=createInitialProgress();progress.questNotificationIds=['objective:adventure-available'];
  assert.equal(saveProgress(storage,'guide',progress).ok,true);
@@ -60,7 +60,7 @@ test('notification receipts roundtrip in v7 with old saves unchanged', async () 
  assert.deepEqual(questNotifications(null,loadProgress(storage,'guide'),{saved:true}).notifications,[]);
 });
 test('runtime queues completion only after real successful storage write and deduplicates retry', async () => {
- const {PixelRPG}=await import('../src/game-20260903-volcano-20260905-upgrade.js');
+ const {PixelRPG}=await import('../src/game-20260903-volcano-20260905-upgrade-20260911-sanctuary.js');
  const game=Object.create(PixelRPG.prototype);game.player={name:'quest-save'}; game.progress=createInitialProgress();game.progress.quests.adventureStart={status:'ready_to_report',progress:3};
  game.savedQuestProgress=structuredClone(game.progress);game.progress.quests.adventureStart.status='completed';game.progress.completedQuests=['adventureStart'];
  const queued=[];game.questBanner={enqueue:events=>queued.push(...events)};game.notify=()=>{};

@@ -1,24 +1,33 @@
-import { bindRewardCodeEntry } from "./reward-code-entry-20260905-upgrade.js";
+import { bindRewardCodeEntry } from "./reward-code-entry-20260905-upgrade-20260911-sanctuary.js";
 import { bindExperienceSelector } from "./experience-entry.js";
-import { loadProgress as loadCodeProgress, saveProgress as saveCodeProgress } from "./progress-storage-20260903-volcano-20260905-upgrade.js";
-import { PixelRPG, interactionKeyAction } from "./game-20260903-volcano-20260905-upgrade.js";
-import { chatKeyAction } from "./chat-controller-20260903-volcano-20260905-upgrade.js";
-import { drawClassPreview } from "./class-rendering-20260905-upgrade.js";
-import { renderCommunicationLog } from "./communication-log-20260829-coast-20260905-upgrade.js";
+import { loadProgress as loadCodeProgress, saveProgress as saveCodeProgress } from "./progress-storage-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import {
+  PixelRPG,
+  interactionKeyAction,
+  isSanctuaryNetworkDiagnosticsEnabled,
+} from "./game-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import { chatKeyAction } from "./chat-controller-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import { drawClassPreview } from "./class-rendering-20260905-upgrade-20260911-sanctuary.js";
+import { renderCommunicationLog } from "./communication-log-20260829-coast-20260905-upgrade-20260911-sanctuary.js";
 import {
   entryButtonLabel,
   getBrowserStorage,
   readStoredClassId,
   storeClassId,
   validateEntrySelection,
-} from "./class-selection-20260905-upgrade.js";
-import { readStoredPlayMode, storePlayMode } from "./play-mode-20260905-upgrade.js";
-import { isQaMode } from "./qa-mode-20260903-volcano-20260905-upgrade.js";
+} from "./class-selection-20260905-upgrade-20260911-sanctuary.js";
+import { readStoredPlayMode, storePlayMode } from "./play-mode-20260905-upgrade-20260911-sanctuary.js";
+import { isQaMode } from "./qa-mode-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 
 const qaEnabled = isQaMode(location.search);
+const sanctuaryNetworkDiagnosticsEnabled = isSanctuaryNetworkDiagnosticsEnabled(
+  location.hostname,
+  location.search,
+);
 
 const elements = {
   qaEnabled,
+  sanctuaryNetworkDiagnosticsEnabled,
   canvas: document.querySelector("#game"),
   minimap: document.querySelector("#minimap"),
   hpBar: document.querySelector("#hpBar"),
@@ -50,6 +59,12 @@ const elements = {
   coopBossHpText: document.querySelector("#coopBossHpText"),
   coopBossParticipants: document.querySelector("#coopBossParticipants"),
   coopBossStatus: document.querySelector("#coopBossStatus"),
+  chorusHud: document.querySelector("#chorusHud"),
+  chorusCohesionText: document.querySelector("#chorusCohesionText"),
+  chorusCohesionBar: document.querySelector("#chorusCohesionBar"),
+  chorusContaminationText: document.querySelector("#chorusContaminationText"),
+  chorusContaminationBar: document.querySelector("#chorusContaminationBar"),
+  chorusPhaseText: document.querySelector("#chorusPhaseText"),
   chatMessages: document.querySelector("#chatMessages"),
   chatForm: document.querySelector("#chatForm"),
   chatInput: document.querySelector("#chatInput"),
@@ -60,6 +75,21 @@ const elements = {
   dialogueActionButton: document.querySelector("#dialogueActionButton"),
   dialogueActionContainer: document.querySelector("#dialogueActions"),
   dialogueCloseButton: document.querySelector("#dialogueCloseButton"),
+  endingOverlay: document.querySelector("#endingOverlay"),
+  endingFirstConfirmation: document.querySelector("#endingFirstConfirmation"),
+  endingSecondConfirmation: document.querySelector("#endingSecondConfirmation"),
+  endingCutscene: document.querySelector("#endingCutscene"),
+  endingChoiceButtons: [...document.querySelectorAll("[data-ending-choice]")],
+  endingPreviewTitle: document.querySelector("#endingPreviewTitle"),
+  endingPreviewBody: document.querySelector("#endingPreviewBody"),
+  endingConfirmButton: document.querySelector("#endingConfirmButton"),
+  endingDeferButton: document.querySelector("#endingDeferButton"),
+  endingBackButton: document.querySelector("#endingBackButton"),
+  endingCloseButton: document.querySelector("#endingCloseButton"),
+  endingCutsceneTitle: document.querySelector("#endingCutsceneTitle"),
+  endingCutsceneBody: document.querySelector("#endingCutsceneBody"),
+  endingLastLine: document.querySelector("#endingLastLine"),
+  endingRewardStatus: document.querySelector("#endingRewardStatus"),
   communicationLogButton: document.querySelector("#communicationLogButton"),
   communicationLogOverlay: document.querySelector("#communicationLogOverlay"),
   communicationLogCloseButton: document.querySelector("#communicationLogCloseButton"),
@@ -126,6 +156,14 @@ const elements = {
 elements.qaButton.hidden = !qaEnabled;
 
 const game = new PixelRPG(elements);
+if (sanctuaryNetworkDiagnosticsEnabled) {
+  Object.defineProperty(globalThis, "__sanctuaryNetworkRead", {
+    configurable: false,
+    enumerable: false,
+    writable: false,
+    value: () => game.readSanctuaryNetworkDiagnostics(),
+  });
+}
 const hud = document.querySelector("#hud");
 const experienceOverlay = document.querySelector("#experienceOverlay");
 const entryOverlay = document.querySelector("#entryOverlay");

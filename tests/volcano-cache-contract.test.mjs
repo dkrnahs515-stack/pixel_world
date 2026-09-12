@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 
-const RELEASE_SUFFIX = "20260903-volcano-20260905-upgrade";
+const RELEASE_SUFFIX = "20260903-volcano-20260905-upgrade-20260911-sanctuary";
 const RELEASE_MODULE_BASENAMES = Object.freeze([
   "chapter-progress",
   "chat-bubble-layout",
@@ -40,16 +40,16 @@ const RELEASE_MODULE_BASENAMES = Object.freeze([
   "world-data",
 ]);
 const IMMUTABLE_COMPOSITION_FILES = new Set([
-  "chapter-progress-20260829-coast-20260905-upgrade.js",
-  "equipment-state-20260905-upgrade.js",
-  "npc-data-20260829-coast-20260905-upgrade.js",
-  "quest-state-20260829-coast-20260905-upgrade.js",
-  "region-data-20260829-coast-20260905-upgrade.js",
-  "story-dialogue-20260829-coast-20260905-upgrade.js",
-  "story-interactions-20260829-coast-20260905-upgrade.js",
-  "weapon-data-20260905-upgrade.js",
-  "world-20260829-coast-20260905-upgrade.js",
-  "world-data-20260829-coast-20260905-upgrade.js",
+  "chapter-progress-20260829-coast-20260905-upgrade-20260911-sanctuary.js",
+  "equipment-state-20260905-upgrade-20260911-sanctuary.js",
+  "npc-data-20260829-coast-20260905-upgrade-20260911-sanctuary.js",
+  "quest-state-20260829-coast-20260905-upgrade-20260911-sanctuary.js",
+  "region-data-20260829-coast-20260905-upgrade-20260911-sanctuary.js",
+  "story-dialogue-20260829-coast-20260905-upgrade-20260911-sanctuary.js",
+  "story-interactions-20260829-coast-20260905-upgrade-20260911-sanctuary.js",
+  "weapon-data-20260905-upgrade-20260911-sanctuary.js",
+  "world-20260829-coast-20260905-upgrade-20260911-sanctuary.js",
+  "world-data-20260829-coast-20260905-upgrade-20260911-sanctuary.js",
 ]);
 
 function relativeModuleSpecifiers(source) {
@@ -71,7 +71,7 @@ async function reachableModuleUrls(entryUrl) {
   return reachable;
 }
 
-test("the volcano entry graph reaches every changed module through a physical release URL", async () => {
+test("the sanctuary entry graph reaches every changed module through a physical release URL", async () => {
   const entryUrl = new URL(`../src/main-${RELEASE_SUFFIX}.js`, import.meta.url);
   const reachable = await reachableModuleUrls(entryUrl);
   const missing = [];
@@ -91,33 +91,40 @@ test("the volcano entry graph reaches every changed module through a physical re
   assert.deepEqual({ missing, supersededReachable }, { missing: [], supersededReachable: [] });
 });
 
-test("legacy combat URLs stay on legacy weapon data while the volcano graph uses physical release URLs", async () => {
+test("legacy combat URLs stay on legacy weapon data while the sanctuary graph uses physical release URLs", async () => {
   const legacyWeaponUrl = new URL("../src/weapon-data.js", import.meta.url);
-  const volcanoWeaponUrl = new URL(`../src/weapon-data-${RELEASE_SUFFIX}.js`, import.meta.url);
+  const sanctuaryWeaponUrl = new URL(`../src/weapon-data-${RELEASE_SUFFIX}.js`, import.meta.url);
   const legacyCombatUrl = new URL("../src/combat.js", import.meta.url);
   const legacyProjectileUrl = new URL("../src/projectile-combat.js", import.meta.url);
-  const volcanoCombatUrl = new URL(`../src/combat-${RELEASE_SUFFIX}.js`, import.meta.url);
-  const volcanoProjectileUrl = new URL(`../src/projectile-combat-${RELEASE_SUFFIX}.js`, import.meta.url);
+  const sanctuaryCombatUrl = new URL(`../src/combat-${RELEASE_SUFFIX}.js`, import.meta.url);
+  const sanctuaryProjectileUrl = new URL(`../src/projectile-combat-${RELEASE_SUFFIX}.js`, import.meta.url);
   const legacyCombatGraph = await reachableModuleUrls(legacyCombatUrl);
   const legacyProjectileGraph = await reachableModuleUrls(legacyProjectileUrl);
-  const volcanoCombatGraph = await reachableModuleUrls(volcanoCombatUrl);
-  const volcanoProjectileGraph = await reachableModuleUrls(volcanoProjectileUrl);
+  const sanctuaryCombatGraph = await reachableModuleUrls(sanctuaryCombatUrl);
+  const sanctuaryProjectileGraph = await reachableModuleUrls(sanctuaryProjectileUrl);
 
   assert.equal(legacyCombatGraph.has(legacyWeaponUrl.href), true);
-  assert.equal(legacyCombatGraph.has(volcanoWeaponUrl.href), false);
+  assert.equal(legacyCombatGraph.has(sanctuaryWeaponUrl.href), false);
   assert.equal(legacyProjectileGraph.has(legacyWeaponUrl.href), true);
-  assert.equal(legacyProjectileGraph.has(volcanoWeaponUrl.href), false);
-  assert.equal(volcanoCombatGraph.has(volcanoWeaponUrl.href), true);
-  assert.equal(volcanoCombatGraph.has(legacyCombatUrl.href), false);
-  assert.equal(volcanoProjectileGraph.has(volcanoWeaponUrl.href), true);
-  assert.equal(volcanoProjectileGraph.has(volcanoCombatUrl.href), true);
-  assert.equal(volcanoProjectileGraph.has(legacyProjectileUrl.href), false);
+  assert.equal(legacyProjectileGraph.has(sanctuaryWeaponUrl.href), false);
+  assert.equal(sanctuaryCombatGraph.has(sanctuaryWeaponUrl.href), true);
+  assert.equal(sanctuaryCombatGraph.has(legacyCombatUrl.href), false);
+  assert.equal(sanctuaryProjectileGraph.has(sanctuaryWeaponUrl.href), true);
+  assert.equal(sanctuaryProjectileGraph.has(sanctuaryCombatUrl.href), true);
+  assert.equal(sanctuaryProjectileGraph.has(legacyProjectileUrl.href), false);
 });
 
-test("HTML uses query-free physical story-release CSS and JavaScript entry files", async () => {
+test("HTML uses query-free physical story and sanctuary release files", async () => {
   const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
   assert.match(html, /href="\.\/styles-20260911-story\.css"/);
+  assert.match(html, /href="\.\/styles-20260903-volcano-20260905-upgrade-20260911-sanctuary\.css"/);
   assert.match(html, /src="\.\/src\/main-20260911-story\.js"/);
   assert.doesNotMatch(html, /(?:styles|main)[^"']*\?v=/);
+  assert.equal(existsSync(new URL("../styles-20260903-volcano-20260905-upgrade-20260911-sanctuary.css", import.meta.url)), true);
   assert.equal(existsSync(new URL("../styles-20260911-story.css", import.meta.url)), true);
+
+  const storyEntryUrl = new URL("../src/main-20260911-story.js", import.meta.url);
+  const storyGraph = await reachableModuleUrls(storyEntryUrl);
+  const sanctuaryGameUrl = new URL(`../src/game-${RELEASE_SUFFIX}.js`, import.meta.url);
+  assert.equal(storyGraph.has(sanctuaryGameUrl.href), true);
 });

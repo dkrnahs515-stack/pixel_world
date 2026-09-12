@@ -4,36 +4,54 @@ import {
   drawInvestigationZone,
   drawStorySignal,
   getStoryRenderablesForMap,
-} from "../src/world-20260829-coast-20260905-upgrade.js";
-import { appendStorySignalEntities, PixelRPG } from "../src/game-20260903-volcano-20260905-upgrade.js";
+} from "../src/world-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import { appendStorySignalEntities, PixelRPG } from "../src/game-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 import {
   collectChapterRecord,
   completeRegion,
   createInitialWorldProgress,
   repairChapterDevice,
-} from "../src/chapter-progress-20260829-coast-20260905-upgrade.js";
+  progressSanctuary,
+} from "../src/chapter-progress-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import { SANCTUARY_CORE_IDS } from "../src/sanctuary-progress-20260911-sanctuary.js";
+import {
+  drawSanctuaryOverlays,
+  updateChorusHud,
+} from "../src/sanctuary-chorus-rendering-20260911-sanctuary.js";
+import { CHORUS_TESTIMONIES } from "../src/sanctuary-chorus-data-20260911-sanctuary.js";
 
 function commandContext() {
   const calls = [];
   let fillStyle = "";
   let strokeStyle = "";
   let lineWidth = 1;
+  let font = "";
+  let textAlign = "start";
   return {
+    canvas: { width: 800, height: 600 },
     calls,
     save() { calls.push({ type: "save" }); },
     restore() { calls.push({ type: "restore" }); },
     beginPath() { calls.push({ type: "beginPath" }); },
     moveTo(x, y) { calls.push({ type: "moveTo", x, y }); },
     lineTo(x, y) { calls.push({ type: "lineTo", x, y }); },
+    closePath() { calls.push({ type: "closePath" }); },
     arc(x, y, radius, start, end) { calls.push({ type: "arc", x, y, radius, start, end }); },
     stroke() { calls.push({ type: "stroke", strokeStyle, lineWidth }); },
+    fill() { calls.push({ type: "fill", fillStyle }); },
+    setLineDash(value) { calls.push({ type: "setLineDash", value }); },
     fillRect(x, y, width, height) { calls.push({ type: "fillRect", fillStyle, x, y, width, height }); },
+    fillText(text, x, y) { calls.push({ type: "fillText", text, x, y, fillStyle, font, textAlign }); },
     set fillStyle(value) { fillStyle = value; },
     get fillStyle() { return fillStyle; },
     set strokeStyle(value) { strokeStyle = value; },
     get strokeStyle() { return strokeStyle; },
     set lineWidth(value) { lineWidth = value; },
     get lineWidth() { return lineWidth; },
+    set font(value) { font = value; },
+    get font() { return font; },
+    set textAlign(value) { textAlign = value; },
+    get textAlign() { return textAlign; },
   };
 }
 
@@ -47,6 +65,185 @@ test("Echo signal uses a pixel face and a camera-relative waveform", () => {
   assert.ok(context.calls.some(call => call.type === "fillRect"
     && call.fillStyle === "#b8f8ff" && call.x === 68 && call.y === 142 && call.width === 24 && call.height === 20));
   assert.equal(context.calls.filter(call => call.type === "fillRect" && call.fillStyle === "#163e5e").length, 2);
+});
+
+test("chorus telegraphs and black bonds render on independently selectable layers", () => {
+  const context = commandContext();
+  const model = {
+    active: true,
+    telegraph: {
+      id: "forest-root-sweep",
+      shape: "rect",
+      x: 900,
+      y: 500,
+      width: 360,
+      height: 800,
+      impactAt: 2000,
+    },
+    body: { x: 1080, y: 780, radius: 92 },
+    bonds: [{ id: "roan", x1: 1080, y1: 780, x2: 700, y2: 620, vulnerable: true }],
+    fragments: [{ id: "forest", x: 1000, y: 820 }],
+    separated: false,
+  };
+
+  drawSanctuaryOverlays(context, model, { x: 100, y: 200 }, { layer: "telegraph", now: 1500 });
+  assert.ok(context.calls.some(call => call.type === "fillRect" && call.x === 800 && call.y === 300));
+  assert.equal(context.calls.some(call => call.type === "lineTo"), false);
+
+  context.calls.length = 0;
+  drawSanctuaryOverlays(context, model, { x: 100, y: 200 }, { layer: "foreground", now: 1500 });
+  assert.ok(context.calls.some(call => call.type === "lineTo" && call.x === 600 && call.y === 420));
+  assert.equal(context.calls.some(call => call.type === "fillRect" && call.x === 800 && call.y === 300), false);
+});
+
+test("chorus testimony verdicts and record activations render at their exact interaction positions", () => {
+  const context = commandContext();
+  const testimony = CHORUS_TESTIMONIES[0];
+  const camera = { x: 100, y: 200 };
+
+  drawSanctuaryOverlays(context, {
+    active: true,
+    shared: { phase: "testimonies", severedBondIds: [], activeRecordId: null },
+    testimony,
+    verdictStations: [
+      { verdict: "fact", name: "사실", x: 700, y: 1120 },
+      { verdict: "partial", name: "일부 사실", x: 1080, y: 1120 },
+      { verdict: "unsupported", name: "근거 없음", x: 1340, y: 1120 },
+    ],
+    recordStations: [],
+    anchors: [],
+    bonds: [],
+    fragments: [],
+  }, camera, { layer: "foreground" });
+
+  assert.ok(context.calls.some(call => call.type === "fillText" && call.text === testimony.statement));
+  assert.deepEqual(
+    context.calls.filter(call => call.type === "fillText" && call.text.startsWith("F · "))
+      .map(call => [call.text, call.x, call.y]),
+    [
+      ["F · 사실", 600, 920],
+      ["F · 일부 사실", 980, 920],
+      ["F · 근거 없음", 1240, 920],
+    ],
+  );
+
+  context.calls.length = 0;
+  drawSanctuaryOverlays(context, {
+    active: true,
+    shared: { phase: "onslaught", severedBondIds: ["sera"], activeRecordId: "roan" },
+    testimony: null,
+    verdictStations: [],
+    recordStations: [
+      { id: "roan", name: "로안 기록", x: 700, y: 620 },
+      { id: "sera", name: "세라 기록", x: 1080, y: 560 },
+      { id: "garen", name: "가렌 기록", x: 1460, y: 620 },
+      { id: "lumen", name: "루멘 기록", x: 1080, y: 1320 },
+    ],
+    anchors: [],
+    bonds: [],
+    fragments: [],
+  }, camera, { layer: "foreground" });
+
+  assert.deepEqual(
+    context.calls.filter(call => call.type === "fillText" && call.text.includes("기록"))
+      .map(call => [call.text, call.x, call.y]),
+    [
+      ["활성 중 · 로안 기록", 600, 420],
+      ["대기 · 가렌 기록", 1360, 420],
+      ["대기 · 루멘 기록", 980, 1120],
+    ],
+  );
+});
+
+test("separated chorus overlay shows the exact nonlethal completion copy", () => {
+  const context = commandContext();
+  const message = "무명의 합창의 결속이 풀렸습니다.\n기억들은 아직 어느 곳에도 귀속되지 않았습니다.\n이제 남겨진 기억의 운명을 결정해야 합니다.";
+
+  drawSanctuaryOverlays(context, {
+    active: true,
+    shared: { phase: "separated", severedBondIds: [], activeRecordId: null },
+    separated: true,
+    statusLabel: "기억 분리 완료",
+    message,
+    anchors: [],
+    bonds: [],
+    fragments: [],
+    separatedFragments: [],
+  }, {}, { layer: "foreground", viewWidth: 800, viewHeight: 600 });
+
+  assert.deepEqual(
+    context.calls.filter(call => call.type === "fillText").map(call => call.text),
+    ["기억 분리 완료", ...message.split("\n")],
+  );
+  assert.equal(context.calls.some(call => ["죽음", "폭발", "시체"].some(word => call.text?.includes(word))), false);
+});
+
+test("390x844 separated copy stays below the player HUD and above the mobile hotbar", () => {
+  const context = commandContext();
+  context.canvas = { width: 390, height: 844 };
+  const message = "무명의 합창의 결속이 풀렸습니다.\n기억들은 아직 어느 곳에도 귀속되지 않았습니다.\n이제 남겨진 기억의 운명을 결정해야 합니다.";
+  drawSanctuaryOverlays(context, {
+    active: true, separated: true, statusLabel: "기억 분리 완료", message,
+    anchors: [], bonds: [], fragments: [], separatedFragments: [],
+  }, {}, { layer: "foreground", viewWidth: 390, viewHeight: 844 });
+
+  const panel = context.calls.find(call => call.type === "fillRect" && call.width === 358);
+  assert.ok(panel, "the responsive completion panel should use the 16px mobile gutters");
+  assert.ok(panel.y >= 220, "the panel must start below the player HUD stack");
+  assert.ok(panel.y + panel.height <= 730, "the panel must end above the mobile hotbar");
+  assert.deepEqual(context.calls.filter(call => call.type === "fillText").slice(-3).map(call => call.text), message.split("\n"));
+});
+
+test("chorus HUD exposes separate cohesion and personal contamination gauges", () => {
+  const element = () => ({ textContent: "", hidden: false, style: {} });
+  const elements = {
+    coopBossHud: element(),
+    chorusHud: element(),
+    chorusCohesionText: element(),
+    chorusCohesionBar: element(),
+    chorusContaminationText: element(),
+    chorusContaminationBar: element(),
+    chorusPhaseText: element(),
+    questTracker: element(),
+  };
+
+  assert.equal(updateChorusHud(elements, { hp: 70, maxHp: 100, phase: "testimonies" }, {
+    contamination: 35,
+    confusedUntil: 0,
+  }, 1000), true);
+  assert.equal(elements.chorusHud.hidden, false);
+  assert.equal(elements.coopBossHud.hidden, true);
+  assert.equal(elements.chorusCohesionText.textContent, "70 / 100");
+  assert.equal(elements.chorusCohesionBar.style.transform, "scaleX(0.7)");
+  assert.equal(elements.chorusContaminationText.textContent, "35 / 100");
+  assert.equal(elements.chorusContaminationBar.style.transform, "scaleX(0.35)");
+  assert.match(elements.chorusPhaseText.textContent, /증언/);
+
+  updateChorusHud(elements, { hp: 0, maxHp: 100, phase: "separated", status: "separated" }, {
+    contamination: 35,
+  }, 1000);
+  assert.equal(elements.chorusHud.hidden, true);
+  assert.equal(elements.questTracker.hidden, true);
+
+  updateChorusHud(elements, null, null, 1000);
+  assert.equal(elements.chorusHud.hidden, true);
+  assert.equal(elements.questTracker.hidden, false);
+});
+
+test("sanctuary memory signals render as face-free archive silhouettes", () => {
+  let progress = createInitialWorldProgress();
+  for (const coreId of SANCTUARY_CORE_IDS) {
+    progress = progressSanctuary(progress, { type: "activate-core", coreId }).progress;
+  }
+  const renderables = getStoryRenderablesForMap("sanctuary-memory-archive", progress);
+  const signal = renderables.signals.find(value => value.id === "departure-bell");
+  assert.equal(signal.chapterId, "sanctuary");
+  assert.equal(signal.visualVariant, "architecture");
+
+  const context = commandContext();
+  drawStorySignal(context, signal, 0, 0);
+  assert.ok(context.calls.some(call => call.type === "stroke"));
+  assert.equal(context.calls.some(call => call.type === "fillRect" && call.fillStyle === "#163e5e"), false);
 });
 
 test("investigation guidance draws only broad concentric zone rings, not an exact target beacon", () => {

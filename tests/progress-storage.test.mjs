@@ -10,6 +10,11 @@ import {
   v6ProgressStorageKey,
 } from "../src/progress-storage-20260903-volcano-20260905-upgrade.js";
 import { createInitialProgress as createInitialV7Progress } from "../src/quest-state-20260903-volcano-20260905-upgrade.js";
+import {
+  loadProgress as loadSanctuaryProgress,
+  saveProgress as saveSanctuaryProgress,
+} from "../src/progress-storage-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
+import { createInitialProgress as createInitialSanctuaryProgress } from "../src/quest-state-20260903-volcano-20260905-upgrade-20260911-sanctuary.js";
 
 const {
   legacyProgressStorageKey,
@@ -732,4 +737,37 @@ test("v6 boolean core receipt는 누락된 해안 완료·지름길·활화산 u
   assert.equal(loaded.worldProgress.completedRegionIds.includes("coast"), true);
   assert.equal(loaded.worldProgress.unlockedRegionIds.includes("volcano"), true);
   assert.equal(loaded.worldProgress.unlockedMapIds.includes("volcano"), true);
+});
+
+test("sanctuary ending choice and a partial component ledger round-trip independently", () => {
+  const storage = memoryStorage();
+  const source = createInitialSanctuaryProgress();
+  source.worldProgress.chapters.sanctuary = {
+    activatedCoreIds: ["forest-core-casket", "coast-core-casket", "volcano-core-casket"],
+    collectedMemoryIds: [
+      "departure-bell", "dawn-bird", "tide-bell", "mine-shift-bell",
+      "false-return-garen-unscarred", "false-return-source-erased", "false-return-resonance-time",
+    ],
+    memorySequence: ["departure-bell", "dawn-bird", "tide-bell", "mine-shift-bell"],
+    memoryOrderSolved: true,
+    coreTruthRevealed: true,
+    falseReturnRejected: true,
+    completedRecordFieldIds: [
+      "vanguard-return-state", "core-division-cause", "delay-roan",
+      "delay-sera", "delay-garen", "delay-lumen",
+    ],
+    correctionLinked: true,
+    chorusSeparated: true,
+    collectedTestimonyIds: ["roan", "sera", "garen", "lumen", "echo"],
+    previewedFutureIds: ["seal", "restore", "release"],
+    endingChoice: "restore",
+    completed: true,
+  };
+  source.claimedNarrativeRewardIds = ["sanctuary-ending-restore-exp"];
+
+  assert.equal(saveSanctuaryProgress(storage, "부분복구", source).ok, true);
+  const loaded = loadSanctuaryProgress(storage, "부분복구");
+  assert.equal(loaded.worldProgress.chapters.sanctuary.endingChoice, "restore");
+  assert.deepEqual(loaded.claimedNarrativeRewardIds, ["sanctuary-ending-restore-exp"]);
+  assert.deepEqual(loaded.earnedTitleIds, []);
 });

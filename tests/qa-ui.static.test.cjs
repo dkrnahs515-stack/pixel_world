@@ -4,8 +4,8 @@ const { readFileSync } = require("node:fs");
 const path = require("node:path");
 
 const html = readFileSync(path.join(__dirname, "../index.html"), "utf8");
-const main = readFileSync(path.join(__dirname, "../src/main-20260903-volcano-20260905-upgrade.js"), "utf8");
-const css = readFileSync(path.join(__dirname, "../styles-20260903-volcano-20260905-upgrade.css"), "utf8");
+const main = readFileSync(path.join(__dirname, "../src/main-20260903-volcano-20260905-upgrade-20260911-sanctuary.js"), "utf8");
+const css = readFileSync(path.join(__dirname, "../styles-20260903-volcano-20260905-upgrade-20260911-sanctuary.css"), "utf8");
 const readme = readFileSync(path.join(__dirname, "../README.md"), "utf8");
 const coastSmoke = readFileSync(path.join(__dirname, "coast-browser-smoke.cjs"), "utf8");
 
@@ -28,7 +28,14 @@ test("QA 도구는 기본 문서에서 숨겨진 버튼과 모달로 제공된�
   ]) {
     assert.match(html, new RegExp(`data-qa-world="${mapId}"`));
   }
-  assert.doesNotMatch(html, /data-qa-world="sanctuary"/);
+  for (const mapId of [
+    "sanctuary",
+    "sanctuary-memory-archive",
+    "sanctuary-return-record",
+    "sanctuary-three-futures",
+  ]) {
+    assert.match(html, new RegExp(`data-qa-world="${mapId}"`));
+  }
   assert.match(html, /data-qa-world="forest"/);
   assert.equal((html.match(/data-qa-monster=/g) || []).length, 7);
   assert.equal((html.match(/data-qa-weapons="prepare"/g) || []).length, 1);
