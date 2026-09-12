@@ -506,6 +506,53 @@ test("a rejected send promise restores the confirmed state without changing solo
   assert.equal(solo.snapshot.hp, 90);
 });
 
+test("an actionless frame publish rejection stays silent while the exact local action is still pending", async () => {
+  const game = Object.create(SanctuaryPixelRPG.prototype);
+  const confirmed = createChorusEncounter({ encounterId: "shared-e1", authorityUid: "host", now: 1_000 });
+  const notices = [];
+  let resolveSend;
+  let publishCount = 0;
+  game.sessionMode = "online";
+  game.latestChorusSnapshot = structuredClone(confirmed);
+  game.updateChorusHud = () => {};
+  game.notify = message => notices.push(message);
+  game.reportBossCallbackError = () => {};
+  const chorusNetwork = {
+    latestState: structuredClone(confirmed),
+    sendAction: () => new Promise(resolve => { resolveSend = resolve; }),
+    async publishState(snapshot, { processedAction = null } = {}) {
+      publishCount += 1;
+      if (!processedAction) return { ok: false, reason: "processed_action_required" };
+      this.latestState = structuredClone(snapshot);
+      return { ok: true, encounter: structuredClone(snapshot) };
+    },
+    acknowledgeAction: async () => ({ ok: true }),
+  };
+  game.network = { uid: "host", chorus: chorusNetwork };
+  game.chorusController = game.createChorusControllerForMode("online");
+  game.wireOnlineChorusController(game.chorusController);
+  game.chorusController.receiveSnapshot(confirmed);
+  game.chorusController.setMap("sanctuary-return-record", { correctionLinked: true });
+  const request = {
+    id: "host-session:1:1:anchor-stabilize", encounterId: confirmed.encounterId,
+    authorityEpoch: 1, phase: "anchors", uid: "host", type: "anchor-stabilize",
+    fragmentId: "forest", anchorId: "forest", createdAt: 1_100,
+  };
+
+  const optimistic = game.chorusController.applyRequest(request, 1_100);
+  assert.equal(optimistic.ok, true);
+  game.lastPublishedChorusSignature = null;
+  assert.equal(game.publishChorusStateIfAuthority(), true);
+  await new Promise(resolve => setImmediate(resolve));
+  resolveSend({ ok: true, action: { ...request, sequence: 1 } });
+  await new Promise(resolve => setImmediate(resolve));
+  await new Promise(resolve => setImmediate(resolve));
+
+  assert.equal(publishCount, 2);
+  assert.deepEqual(chorusNetwork.latestState.processedActionIds, [request.id]);
+  assert.deepEqual(notices, []);
+});
+
 test("a transport-confirmed local Chorus action never rolls personal state back on a duplicate publish rejection", async () => {
   const game = Object.create(SanctuaryPixelRPG.prototype);
   const confirmed = createChorusEncounter({ encounterId: "shared-e1", authorityUid: "host", now: 1_000 });

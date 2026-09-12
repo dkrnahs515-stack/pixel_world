@@ -875,7 +875,11 @@ export class PixelRPG {
       .some(snapshot => snapshot?.processedActionIds?.includes(action.id) === true);
   }
 
-  reconcileRejectedChorusAction(confirmedSnapshot = this.latestChorusSnapshot, rollbackContext = {}) {
+  reconcileRejectedChorusAction(
+    confirmedSnapshot = this.latestChorusSnapshot,
+    rollbackContext = {},
+    { notifyUser = true } = {},
+  ) {
     const controller = this.chorusController;
     const confirmed = confirmedSnapshot || this.network?.chorus?.latestState || null;
     if (!controller || !confirmed || !controller.receiveSnapshot?.(structuredClone(confirmed))) return false;
@@ -889,7 +893,7 @@ export class PixelRPG {
       ? JSON.stringify(this.latestChorusSnapshot)
       : null;
     this.updateChorusHud?.(controller.renderModel?.(), Date.now());
-    if (this.ui?.message || Object.hasOwn(this, "notify")) {
+    if (notifyUser && (this.ui?.message || Object.hasOwn(this, "notify"))) {
       this.notify?.("온라인 동기화가 거절되었습니다. 잠시 후 다시 시도해 주세요.");
     }
     return true;
@@ -974,7 +978,9 @@ export class PixelRPG {
       this.latestChorusSnapshot = confirmedSnapshot;
       this.lastPublishedChorusSignature = JSON.stringify(confirmedSnapshot);
     }
-    if (!publishResult?.ok) this.reconcileRejectedChorusAction(confirmedBefore);
+    if (!publishResult?.ok) {
+      this.reconcileRejectedChorusAction(confirmedBefore, {}, { notifyUser: false });
+    }
     if (publishResult?.ok) await this.writeChorusCompletionClaimsIfAuthority();
     const confirmedSequences = publishResult?.processedSequenceByUid || network.processedSequenceByUid || {};
     await Promise.all(actions.map(action => (
@@ -1012,7 +1018,11 @@ export class PixelRPG {
           return;
         }
         this.lastPublishedChorusSignature = null;
-        this.reconcileRejectedChorusAction(rollbackContext.confirmedBefore, rollbackContext);
+        this.reconcileRejectedChorusAction(
+          rollbackContext.confirmedBefore,
+          rollbackContext,
+          { notifyUser: Boolean(processedAction) },
+        );
         return;
       }
       this.latestChorusSnapshot = structuredClone(result.encounter);
@@ -1032,7 +1042,11 @@ export class PixelRPG {
         return;
       }
       this.lastPublishedChorusSignature = null;
-      this.reconcileRejectedChorusAction(rollbackContext.confirmedBefore, rollbackContext);
+      this.reconcileRejectedChorusAction(
+        rollbackContext.confirmedBefore,
+        rollbackContext,
+        { notifyUser: Boolean(processedAction) },
+      );
       this.reportBossCallbackError("무명의 합창 상태 전송 실패", error);
     });
     return true;
