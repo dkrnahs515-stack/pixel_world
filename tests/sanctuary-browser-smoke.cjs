@@ -351,6 +351,21 @@ function rectanglesOverlap(a, b) {
 
 async function dismissQuestBanners(page) {
   const banner = page.locator(".quest-banner:not(.hidden)");
+  const ending = page.locator("#endingOverlay:not([hidden])");
+  if (await ending.isVisible().catch(() => false)) {
+    if (!await banner.isVisible().catch(() => false)) return;
+    const endingCoversBanner = await page.evaluate(() => {
+      const activeEnding = document.querySelector("#endingOverlay:not([hidden])");
+      const visibleBanner = document.querySelector(".quest-banner:not(.hidden)");
+      if (!activeEnding || !visibleBanner) return false;
+      const rect = visibleBanner.getBoundingClientRect();
+      const topElement = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      return Boolean(topElement && (topElement === activeEnding || activeEnding.contains(topElement)));
+    });
+    assert.equal(endingCoversBanner, true,
+      "the ending overlay must visually cover a queued quest banner at its center point");
+    return;
+  }
   for (let index = 0; index < 100 && await banner.isVisible().catch(() => false); index += 1) {
     const button = banner.locator('button[aria-label="퀘스트 알림 닫기"]');
     await button.click();
